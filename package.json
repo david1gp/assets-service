@@ -1,0 +1,88 @@
+{
+  "name": "@adaptive-ds/assets-service",
+  "version": "0.1.0",
+  "description": "HTTP service for storing, transforming, and serving images, video, fonts, and documents for Adaptive DS sites.",
+  "keywords": [
+    "assets",
+    "images",
+    "video",
+    "fonts",
+    "optimization",
+    "cdn",
+    "media",
+    "imagemagick",
+    "typescript",
+    "bun",
+    "adaptive-ds"
+  ],
+  "homepage": "https://github.com/david1gp/assets-service",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/david1gp/assets-service.git"
+  },
+  "bugs": {
+    "url": "https://github.com/david1gp/assets-service/issues"
+  },
+  "author": {
+    "name": "David Siewert",
+    "url": "https://david-siewert.com/"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/david1gp"
+  },
+  "license": "MIT",
+  "readme": "README.md",
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "main": "./dist/library.js",
+  "types": "./dist/library.d.ts",
+  "engines": {
+    "node": ">=22",
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "dev": "bun run src/server.ts",
+    "test": "bun test",
+    "test:w": "bun test --watch",
+    "typecheck": "tsc -p ./tsconfig.json --noEmit",
+    "tsc": "tsc -p ./tsconfig.json --noEmit",
+    "build": "bun run clean && bun run typecheck && tsc -p ./tsconfig.lib.json",
+    "check": "bun run format:check && bun run typecheck && bun test && bun run build",
+    "release": "bash ./ops/release.sh",
+    "deploy": "bash ./ops/deploy.sh",
+    "format": "biome format --write src test ops package.json tsconfig.json tsconfig.lib.json biome.json bunfig.toml cliff.toml README.md",
+    "format:check": "biome format src test ops package.json tsconfig.json tsconfig.lib.json biome.json bunfig.toml cliff.toml README.md",
+    "update": "bun update",
+    "update:commit": "bun update && git add package.json && bun run tsc && git commit -m \"chore(deps): update dependencies\" && git push",
+    "clean": "rm -rf ./dist",
+    "reset": "rm -rf ./node_modules"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
+    "@types/bun": "^1.3.14",
+    "typescript": "^6.0.3"
+  },
+  "prettier": {
+    "semi": false,
+    "printWidth": 120,
+    "trailingComma": "all"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/library.d.ts",
+      "import": "./dist/library.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
