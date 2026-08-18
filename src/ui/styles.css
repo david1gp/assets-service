@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@source "./**/*.{ts,tsx}";
+@source "../../ui/**/*.{ts,tsx}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    min-width: 320px;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+}

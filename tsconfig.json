@@ -5,12 +5,19 @@
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": false,
     "resolveJsonModule": true,
+    "paths": {
+      "#ui/*.js": ["./ui/*.ts"],
+      "#ui/*.jsx": ["./ui/*.tsx"],
+      "#ui/*": ["./ui/*"]
+    },
     "noEmit": true,
     //
     // dom
     //
-    "lib": ["esnext"],
-    "types": ["bun"],
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["bun", "vite/client"],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     //
     // performance
     //
@@ -47,7 +54,7 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["client", "src", "test"],
+  "include": ["client", "src", "test", "vite.config.ts", "rsbuild.config.ts"],
   "exclude": [
     ".github",
     ".roo",
