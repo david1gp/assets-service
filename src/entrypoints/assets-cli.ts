@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import * as v from "valibot"
@@ -9,6 +9,19 @@ import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
 import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { assetIdentifierCreate } from "../asset/assetIdentifierCreate.js"
+import {
+  assetDiffClassify,
+  assetDiffStatuses,
+  type AssetDiff,
+  type AssetDiffEntry,
+  type AssetDiffStatus,
+} from "../asset-cli/assetDiffClassify.js"
+import { assetFileFingerprint, type AssetFileFingerprint } from "../asset-cli/assetFileFingerprint.js"
+import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
+import {
+  remoteAssetHistoryManifestLoad,
+  type RemoteAssetHistoryManifest,
+} from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
@@ -17,6 +30,8 @@ import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
+import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 
@@ -52,6 +67,7 @@ type ParsedCommand = {
 type CommandOutput = {
   result: Result<unknown>
   exitCode?: number
+  humanOutput?: string
 }
 
 type AssetsApiClient = Extract<ReturnType<typeof assetsApiClientCreate>, { success: true }>["data"]
@@ -74,13 +90,17 @@ const optionNames = new Set([
   "atomicity",
   "class",
   "config",
+  "document-list",
   "dir",
+  "document-dir",
   "environment",
   "file",
   "folder",
   "font-list",
+  "font-dir",
   "format",
   "height",
+  "image-dir",
   "image-list",
   "include",
   "integration-note",
@@ -98,16 +118,45 @@ const optionNames = new Set([
   "status",
   "token",
   "to",
+  "video-dir",
   "video-list",
   "width",
 ])
 
-const flagNames = new Set(["check", "help", "json", "no-wait", "show-ai-label", "token-stdin", "wait", "write"])
+const flagNames = new Set([
+  "check",
+  "dry-run",
+  "help",
+  "json",
+  "no-document-dir",
+  "no-font-dir",
+  "no-image-dir",
+  "no-video-dir",
+  "no-wait",
+  "show-ai-label",
+  "token-stdin",
+  "wait",
+  "write",
+  "delete",
+])
+
+const diffSourceDirectoryOptionNames = new Set([
+  "document-dir",
+  "font-dir",
+  "image-dir",
+  "no-document-dir",
+  "no-font-dir",
+  "no-image-dir",
+  "no-video-dir",
+  "video-dir",
+])
 
 const commandHelp = {
   commands: [
     "auth login",
     "doctor --environment <development|production>",
+    "diff [root]",
+    "upload-all [root] --integration-note <text>",
     "import <root>",
     "upload <file> --path <folder/file> --integration-note <text>",
     "list",
@@ -118,6 +167,15 @@ const commandHelp = {
     "delete <asset-key>",
     "lists [--check] [--dir <directory>]",
   ],
+  diff: {
+    root: "Default: .",
+    sourceDirectories: [
+      "image: ./images, --image-dir <directory>, --no-image-dir",
+      "video: ./videos, --video-dir <directory>, --no-video-dir",
+      "document: ./documents, --document-dir <directory>, --no-document-dir",
+      "font: ./fonts, --font-dir <directory>, --no-font-dir",
+    ],
+  },
   options: [
     "--api-url",
     "--project",
@@ -128,6 +186,8 @@ const commandHelp = {
     "--wait",
     "--no-wait",
     "--poll-interval",
+    "--dry-run",
+    "--delete",
     "--token-stdin",
     "--atomicity",
     "--show-ai-label",
@@ -152,6 +212,15 @@ const commandHelp = {
     "--image-list",
     "--video-list",
     "--font-list",
+    "--document-list",
+    "--image-dir",
+    "--video-dir",
+    "--document-dir",
+    "--font-dir",
+    "--no-image-dir",
+    "--no-video-dir",
+    "--no-document-dir",
+    "--no-font-dir",
     "--check",
     "--write",
   ],
@@ -374,6 +443,85 @@ const fileRead = async (filePath: string): Promise<Result<Uint8Array>> => {
   }
 }
 
+type UploadTransportResult = {
+  uploadId: string
+  status: string
+  completion: {
+    uploadId: string
+    assetId: string
+    sourceRevisionId: string
+    workflowId: string
+    status: "accepted"
+  }
+}
+
+const uploadTransportExecute = async (
+  client: AssetsApiClient,
+  projectId: string,
+  input: {
+    environment?: string
+    originalFilename: string
+    folders: readonly string[]
+    integrationNote: string
+    bytes: Uint8Array
+    mediaType: string
+  },
+): Promise<Result<UploadTransportResult>> => {
+  const sha256 = contentSha256Create(input.bytes)
+  const intent = await client.uploadIntentCreate(projectId, {
+    ...(input.environment === undefined ? {} : { environment: input.environment }),
+    originalFilename: input.originalFilename,
+    folders: input.folders,
+    integrationNote: input.integrationNote,
+    byteSize: input.bytes.byteLength,
+    mediaType: input.mediaType,
+    sha256,
+  })
+  if (!intent.success) return intent
+  const uploaded = await client.uploadObjectPut(intent.data.intent, input.bytes)
+  if (!uploaded.success) return uploaded
+  const completion = await client.uploadCompletionComplete(projectId, intent.data.uploadId, { sha256 })
+  if (!completion.success) return completion
+  return {
+    success: true,
+    data: {
+      uploadId: intent.data.uploadId,
+      status: intent.data.status,
+      completion: completion.data,
+    },
+  }
+}
+
+const assetFileFingerprintEqual = (left: AssetFileFingerprint, right: AssetFileFingerprint): boolean =>
+  left.byteSize === right.byteSize &&
+  left.sha256 === right.sha256 &&
+  left.identity.device === right.identity.device &&
+  left.identity.inode === right.identity.inode &&
+  left.identity.size === right.identity.size
+
+const localAssetUnlink = async (input: {
+  filePath: string
+  mapping: Parameters<typeof assetFileFingerprint>[0]
+  mediaType: Parameters<typeof assetFileFingerprint>[1]
+  fingerprint: AssetFileFingerprint
+}): Promise<Result<true>> => {
+  const checked = await assetFileFingerprint(input.mapping, input.mediaType)
+  if (!checked.success)
+    return resultFailure(
+      "assetsCliUploadAllDelete",
+      `Could not verify the unchanged local file before deletion: ${input.filePath}`,
+      checked,
+    )
+  if (!assetFileFingerprintEqual(input.fingerprint, checked.data))
+    return resultFailure("assetsCliUploadAllDelete", `The local file changed before deletion: ${input.filePath}`)
+  try {
+    await unlink(input.filePath)
+  } catch {
+    return resultFailure("assetsCliUploadAllDelete", `Could not delete the local file: ${input.filePath}`)
+  }
+  return { success: true, data: true }
+}
+
 const assetReferenceRead = async (
   client: AssetsApiClient,
   projectId: string,
@@ -425,6 +573,471 @@ const filesRead = (parsed: ParsedCommand) => {
     imageListPath: optionRead(parsed, "image-list") ?? join(directory, "imageList.ts"),
     videoListPath: optionRead(parsed, "video-list") ?? join(directory, "videoList.ts"),
     fontListPath: optionRead(parsed, "font-list") ?? join(directory, "fontList.ts"),
+    documentListPath: optionRead(parsed, "document-list") ?? join(directory, "documentList.ts"),
+  }
+}
+
+type DiffOutputEntry = {
+  status: AssetDiffStatus
+  class: string
+  sourcePath: string
+  logicalPath: string
+  deletionEligible: boolean
+  reason?: string
+}
+
+type DiffOutput = {
+  root: string
+  environment: string
+  entries: readonly DiffOutputEntry[]
+}
+
+const diffOutputCreate = (root: string, environment: string, diff: AssetDiff): DiffOutput => ({
+  root,
+  environment,
+  entries: diff.entries.map((entry) => ({
+    status: entry.status,
+    class: entry.class,
+    sourcePath: entry.sourcePath,
+    logicalPath: entry.logicalPath,
+    deletionEligible: entry.deletionEligible,
+    ...(entry.reason === undefined ? {} : { reason: entry.reason }),
+  })),
+})
+
+const diffHumanOutputRead = (output: DiffOutput): string => {
+  const counts = new Map<AssetDiffStatus, number>()
+  for (const status of assetDiffStatuses) counts.set(status, 0)
+  for (const entry of output.entries) counts.set(entry.status, (counts.get(entry.status) ?? 0) + 1)
+  const lines = [`Root: ${output.root}`, `Environment: ${output.environment}`]
+  for (const entry of output.entries) {
+    const eligibility =
+      entry.status === "matching" ? (entry.deletionEligible ? " deletion-eligible" : " deletion-ineligible") : ""
+    const reason = entry.reason === undefined ? "" : ` ${entry.reason}`
+    lines.push(`${entry.status} ${entry.class} ${entry.sourcePath}${eligibility}${reason}`)
+  }
+  if (output.entries.length === 0) lines.push("No asset differences.")
+  lines.push(`Summary: ${assetDiffStatuses.map((status) => `${status}=${counts.get(status) ?? 0}`).join(" ")}`)
+  return `${lines.join("\n")}\n`
+}
+
+type UploadAllOutputEntry = {
+  status: AssetDiffStatus
+  class: AssetDiffEntry["class"]
+  sourcePath: string
+  logicalPath: string
+  action: "uploaded" | "skipped" | "planned" | "failed"
+  uploadId?: string
+  assetId?: string
+  sourceRevisionId?: string
+  workflowId?: string
+  workflowStatus?: string
+  eligible?: boolean
+  deleted?: boolean
+  error?: string
+}
+
+type UploadAllOutput = {
+  root: string
+  environment: string
+  wait: boolean
+  delete: boolean
+  dryRun: boolean
+  entries: readonly UploadAllOutputEntry[]
+}
+
+const uploadAllOutputEntryCreate = (
+  entry: AssetDiffEntry,
+  action: UploadAllOutputEntry["action"],
+  details: Partial<Omit<UploadAllOutputEntry, "status" | "class" | "sourcePath" | "logicalPath" | "action">> = {},
+): UploadAllOutputEntry => ({
+  status: entry.status,
+  class: entry.class,
+  sourcePath: entry.sourcePath,
+  logicalPath: entry.logicalPath,
+  action,
+  ...details,
+})
+
+const uploadAllHumanOutputRead = (output: UploadAllOutput): string => {
+  const counts = new Map<UploadAllOutputEntry["action"], number>()
+  for (const action of ["uploaded", "skipped", "planned", "failed"] as const) counts.set(action, 0)
+  const lines = [
+    `Root: ${output.root}`,
+    `Environment: ${output.environment}`,
+    `Wait: ${output.wait ? "yes" : "no"}`,
+    `Delete: ${output.delete ? "yes" : "no"}`,
+    `Dry run: ${output.dryRun ? "yes" : "no"}`,
+  ]
+  for (const entry of output.entries) {
+    counts.set(entry.action, (counts.get(entry.action) ?? 0) + 1)
+    const details = [
+      entry.action,
+      entry.deleted === true ? "deleted" : "",
+      entry.error === undefined ? "" : entry.error,
+    ]
+      .filter((value) => value.length > 0)
+      .join(" ")
+    lines.push(`${entry.status} ${entry.class} ${entry.sourcePath} ${details}`)
+  }
+  lines.push(
+    `Summary: ${(["uploaded", "skipped", "planned", "failed"] as const)
+      .map((action) => `${action}=${counts.get(action) ?? 0}`)
+      .join(" ")}`,
+  )
+  return `${lines.join("\n")}\n`
+}
+
+const diffDeletionEligibilityApply = async (
+  client: AssetsApiClient,
+  projectId: string,
+  environment: string,
+  local: Parameters<typeof assetDiffClassify>[0]["local"],
+  remoteManifest: RemoteAssetHistoryManifest,
+  initialDiff: AssetDiff,
+): Promise<Result<AssetDiff>> => {
+  const op = "assetsCliDiff"
+  const eligibilityByRevision = new Map<
+    string,
+    NonNullable<RemoteAssetHistoryManifest["entries"][number]["deletionEligibility"]>
+  >()
+  for (const entry of initialDiff.entries) {
+    if (entry.status !== "matching" || entry.remote === undefined) continue
+    const sourceRevisionId = entry.remote.currentSourceRevisionId
+    if (eligibilityByRevision.has(sourceRevisionId)) continue
+    const eligibility = await client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
+    if (!eligibility.success) return eligibility
+    if (eligibility.data.sourceRevisionId !== sourceRevisionId)
+      return resultFailure(op, "The deletion eligibility revision did not match")
+    eligibilityByRevision.set(sourceRevisionId, eligibility.data)
+  }
+  if (eligibilityByRevision.size === 0) return { success: true, data: initialDiff }
+  const remote = remoteManifest.entries.map((entry) => {
+    const eligibility = eligibilityByRevision.get(entry.currentSourceRevisionId)
+    return eligibility === undefined ? entry : { ...entry, deletionEligibility: eligibility }
+  })
+  return assetDiffClassify({ local, remote })
+}
+
+const uploadAllCommandRun = async (
+  parsed: ParsedCommand,
+  client: AssetsApiClient,
+  projectId: string,
+  environment: string | undefined,
+): Promise<CommandOutput> => {
+  const op = "assetsCliUploadAll"
+  if (parsed.positionals.length > 1)
+    return { result: resultFailure(op, "The upload-all command takes zero or one root argument") }
+  const allowed = optionAllowed(parsed, [
+    ...diffSourceDirectoryOptionNames,
+    "integration-note",
+    "wait",
+    "no-wait",
+    "poll-interval",
+    "dry-run",
+    "delete",
+  ])
+  if (!allowed.success) return { result: allowed }
+  if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+    return { result: resultFailure(op, "--wait and --no-wait cannot be used together") }
+  if (flagRead(parsed, "delete") && flagRead(parsed, "no-wait"))
+    return { result: resultFailure(op, "--delete requires waiting and cannot be used with --no-wait") }
+  if (environment === undefined) return { result: resultFailure(op, "Upload-all requires an environment") }
+  const integrationNote = optionRead(parsed, "integration-note")
+  if (integrationNote === undefined || integrationNote.length === 0 || integrationNote.length > 10000)
+    return { result: resultFailure(op, "Upload-all requires --integration-note with 1 to 10000 characters") }
+
+  const rootInput = parsed.positionals[0] ?? "."
+  const overrides = projectSourceConfigurationOverridesParse(
+    Object.fromEntries(Object.entries(parsed.options).filter(([name]) => diffSourceDirectoryOptionNames.has(name))),
+  )
+  if (!overrides.success) return { result: overrides }
+  const configuration = await projectSourceConfigurationRead(rootInput, overrides.data)
+  if (!configuration.success) return { result: configuration }
+  const local = await localAssetManifestLoad(configuration.data.root, configuration.data.sourceDirectories)
+  if (!local.success) return { result: local }
+  const remote = await remoteAssetHistoryManifestLoad({ client, projectId })
+  if (!remote.success) return { result: remote }
+  const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
+  if (!classified.success) return { result: classified }
+
+  const wait = flagRead(parsed, "wait") || flagRead(parsed, "delete")
+  const deleteLocal = flagRead(parsed, "delete")
+  const dryRun = flagRead(parsed, "dry-run")
+  const localEntries = classified.data.entries.filter((entry) => entry.local !== undefined)
+  const preflightFailures = localEntries.filter(
+    (entry) => entry.status === "unsupported" || entry.status === "conflict",
+  )
+  if (preflightFailures.length > 0) {
+    const entries = localEntries.map((entry) =>
+      entry.status === "unsupported" || entry.status === "conflict"
+        ? uploadAllOutputEntryCreate(entry, "failed", {
+            error: entry.reason ?? "The local asset did not pass preflight",
+          })
+        : uploadAllOutputEntryCreate(entry, "skipped"),
+    )
+    const output: UploadAllOutput = {
+      root: configuration.data.root,
+      environment,
+      wait,
+      delete: deleteLocal,
+      dryRun,
+      entries,
+    }
+    return {
+      result: { success: true, data: output },
+      exitCode: 1,
+      humanOutput: uploadAllHumanOutputRead(output),
+    }
+  }
+
+  const actionableEntries = classified.data.entries.filter(
+    (entry) =>
+      entry.local !== undefined &&
+      (entry.status === "new" || entry.status === "changed" || entry.status === "matching"),
+  )
+  const entries: UploadAllOutputEntry[] = []
+  let failed = false
+  for (const entry of actionableEntries) {
+    const localEntry = entry.local
+    if (localEntry === undefined || localEntry.mapping === undefined || localEntry.mediaType === undefined) {
+      failed = true
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "failed", { error: "The local asset was missing its upload mapping" }),
+      )
+      continue
+    }
+    if (dryRun) {
+      entries.push(uploadAllOutputEntryCreate(entry, entry.status === "matching" ? "skipped" : "planned"))
+      continue
+    }
+
+    if (entry.status === "matching") {
+      if (!deleteLocal) {
+        entries.push(uploadAllOutputEntryCreate(entry, "skipped"))
+        continue
+      }
+      const sourceRevisionId = entry.remote?.currentSourceRevisionId
+      if (sourceRevisionId === undefined) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", { error: "The matching asset had no source revision" }),
+        )
+        continue
+      }
+      const eligibility = await client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
+      if (!eligibility.success) {
+        failed = true
+        entries.push(uploadAllOutputEntryCreate(entry, "failed", { error: eligibility.errorMessage }))
+        continue
+      }
+      if (eligibility.data.sourceRevisionId !== sourceRevisionId) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            eligible: false,
+            error: "The deletion eligibility revision did not match",
+          }),
+        )
+        continue
+      }
+      if (!eligibility.data.eligible) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            eligible: false,
+            error: "The source revision was not eligible for local deletion",
+          }),
+        )
+        continue
+      }
+      const deleted = await localAssetUnlink({
+        filePath: localEntry.mapping.filePath,
+        mapping: localEntry.mapping,
+        mediaType: localEntry.mediaType,
+        fingerprint: localEntry.fingerprint!,
+      })
+      if (!deleted.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            eligible: true,
+            deleted: false,
+            error: deleted.errorMessage,
+          }),
+        )
+        continue
+      }
+      entries.push(uploadAllOutputEntryCreate(entry, "skipped", { eligible: true, deleted: true }))
+      continue
+    }
+
+    const fingerprint = localEntry.fingerprint
+    if (fingerprint === undefined) {
+      failed = true
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "failed", {
+          error: `The local file could not be revalidated before upload: ${localEntry.mapping.filePath}`,
+        }),
+      )
+      continue
+    }
+    const revalidated = await assetFileFingerprint(localEntry.mapping, localEntry.mediaType)
+    if (!revalidated.success || !assetFileFingerprintEqual(fingerprint, revalidated.data)) {
+      failed = true
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "failed", {
+          error: `The local file changed before upload: ${localEntry.mapping.filePath}`,
+        }),
+      )
+      continue
+    }
+    const bytes = await fileRead(localEntry.mapping.filePath)
+    if (!bytes.success) {
+      failed = true
+      entries.push(uploadAllOutputEntryCreate(entry, "failed", { error: bytes.errorMessage }))
+      continue
+    }
+    const sha256 = contentSha256Create(bytes.data)
+    if (revalidated.data.byteSize !== bytes.data.byteLength || revalidated.data.sha256 !== sha256) {
+      failed = true
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "failed", {
+          error: `The local file changed before upload: ${localEntry.mapping.filePath}`,
+        }),
+      )
+      continue
+    }
+    const uploaded = await uploadTransportExecute(client, projectId, {
+      ...(environment === undefined ? {} : { environment }),
+      originalFilename: localEntry.mapping.filename,
+      folders: localEntry.mapping.folders,
+      integrationNote,
+      bytes: bytes.data,
+      mediaType: localEntry.mediaType,
+    })
+    if (!uploaded.success) {
+      failed = true
+      entries.push(uploadAllOutputEntryCreate(entry, "failed", { error: uploaded.errorMessage }))
+      continue
+    }
+    const uploadDetails = {
+      uploadId: uploaded.data.uploadId,
+      assetId: uploaded.data.completion.assetId,
+      sourceRevisionId: uploaded.data.completion.sourceRevisionId,
+      workflowId: uploaded.data.completion.workflowId,
+    }
+    let workflowStatus: string | undefined
+    if (wait) {
+      const workflow = await client.workflowWait(projectId, uploaded.data.completion.workflowId)
+      if (!workflow.success) {
+        failed = true
+        entries.push(uploadAllOutputEntryCreate(entry, "failed", { ...uploadDetails, error: workflow.errorMessage }))
+        continue
+      }
+      workflowStatus = workflow.data.status
+      if (workflow.data.status !== "succeeded") {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            workflowStatus,
+            error: `The upload workflow ended with status ${workflow.data.status}`,
+          }),
+        )
+        continue
+      }
+    }
+    if (deleteLocal) {
+      const eligibility = await client.sourceRevisionDeletionEligibilityRead(
+        projectId,
+        environment,
+        uploaded.data.completion.sourceRevisionId,
+      )
+      if (!eligibility.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            error: eligibility.errorMessage,
+          }),
+        )
+        continue
+      }
+      if (eligibility.data.sourceRevisionId !== uploaded.data.completion.sourceRevisionId) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: false,
+            error: "The deletion eligibility revision did not match",
+          }),
+        )
+        continue
+      }
+      if (!eligibility.data.eligible) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: false,
+            error: "The source revision was not eligible for local deletion",
+          }),
+        )
+        continue
+      }
+      const deleted = await localAssetUnlink({
+        filePath: localEntry.mapping.filePath,
+        mapping: localEntry.mapping,
+        mediaType: localEntry.mediaType,
+        fingerprint: fingerprint!,
+      })
+      if (!deleted.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: true,
+            deleted: false,
+            error: deleted.errorMessage,
+          }),
+        )
+        continue
+      }
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "uploaded", {
+          ...uploadDetails,
+          ...(workflowStatus === undefined ? {} : { workflowStatus }),
+          eligible: true,
+          deleted: true,
+        }),
+      )
+      continue
+    }
+    entries.push(
+      uploadAllOutputEntryCreate(entry, "uploaded", {
+        ...uploadDetails,
+        ...(workflowStatus === undefined ? {} : { workflowStatus }),
+      }),
+    )
+  }
+
+  const output: UploadAllOutput = {
+    root: configuration.data.root,
+    environment,
+    wait,
+    delete: deleteLocal,
+    dryRun,
+    entries,
+  }
+  return {
+    result: { success: true, data: output },
+    exitCode: failed ? 1 : 0,
+    humanOutput: uploadAllHumanOutputRead(output),
   }
 }
 
@@ -500,12 +1113,68 @@ const commandRun = async (
     }
   }
 
-  if (!["import", "upload", "list", "lists", "show", "outputs", "metadata", "move", "delete"].includes(parsed.command))
+  if (
+    ![
+      "diff",
+      "upload-all",
+      "import",
+      "upload",
+      "list",
+      "lists",
+      "show",
+      "outputs",
+      "metadata",
+      "move",
+      "delete",
+    ].includes(parsed.command)
+  )
     return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
 
   const selected = await projectAndEnvironmentRead(client, parsed, config)
   if (!selected.success) return { result: selected }
   const projectId = selected.data.projectId
+
+  if (parsed.command === "upload-all") return uploadAllCommandRun(parsed, client, projectId, selected.data.environment)
+
+  if (parsed.command === "diff") {
+    if (parsed.positionals.length > 1)
+      return { result: resultFailure("assetsCliDiff", "The diff command takes zero or one root argument") }
+    const allowed = optionAllowed(parsed, [...diffSourceDirectoryOptionNames])
+    if (!allowed.success) return { result: allowed }
+    if (selected.data.environment === undefined)
+      return { result: resultFailure("assetsCliDiff", "Diff requires an environment") }
+    const rootInput = parsed.positionals[0] ?? "."
+    const overrides = projectSourceConfigurationOverridesParse(
+      Object.fromEntries(Object.entries(parsed.options).filter(([name]) => diffSourceDirectoryOptionNames.has(name))),
+    )
+    if (!overrides.success) return { result: overrides }
+    const configuration = await projectSourceConfigurationRead(rootInput, overrides.data)
+    if (!configuration.success) return { result: configuration }
+    const local = await localAssetManifestLoad(configuration.data.root, configuration.data.sourceDirectories)
+    if (!local.success) return { result: local }
+    const remote = await remoteAssetHistoryManifestLoad({
+      client,
+      projectId,
+    })
+    if (!remote.success) return { result: remote }
+    const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
+    if (!classified.success) return { result: classified }
+    const diff = await diffDeletionEligibilityApply(
+      client,
+      projectId,
+      selected.data.environment,
+      local.data.entries,
+      remote.data,
+      classified.data,
+    )
+    if (!diff.success) return { result: diff }
+    const output = diffOutputCreate(configuration.data.root, selected.data.environment, diff.data)
+    return {
+      result: { success: true, data: output },
+      exitCode: output.entries.every((entry) => entry.status === "matching") ? 0 : 1,
+      humanOutput: diffHumanOutputRead(output),
+    }
+  }
 
   if (parsed.command === "import") {
     const positional = positionalRequire(parsed, 1)
@@ -559,26 +1228,19 @@ const commandRun = async (
     if (!bytes.success) return { result: bytes }
     const mediaType = mediaTypeRead(filePath)
     if (!mediaType.success) return { result: mediaType }
-    const intent = await client.uploadIntentCreate(projectId, {
+    const uploaded = await uploadTransportExecute(client, projectId, {
       ...(selected.data.environment === undefined ? {} : { environment: selected.data.environment }),
       originalFilename: parsedTarget.data.filename,
       folders: parsedTarget.data.folders,
       integrationNote,
-      byteSize: bytes.data.byteLength,
+      bytes: bytes.data,
       mediaType: mediaType.data,
-      sha256: contentSha256Create(bytes.data),
     })
-    if (!intent.success) return { result: intent }
-    const uploaded = await client.uploadObjectPut(intent.data.intent, bytes.data)
     if (!uploaded.success) return { result: uploaded }
-    const completion = await client.uploadCompletionComplete(projectId, intent.data.uploadId, {
-      sha256: contentSha256Create(bytes.data),
-    })
-    if (!completion.success) return { result: completion }
-    const uploadResult = { uploadId: intent.data.uploadId, status: intent.data.status, completion: completion.data }
+    const uploadResult = uploaded.data
     if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait"))
       return { result: { success: true, data: uploadResult } }
-    const workflow = await client.workflowWait(projectId, completion.data.workflowId)
+    const workflow = await client.workflowWait(projectId, uploaded.data.completion.workflowId)
     if (!workflow.success) return { result: workflow }
     return {
       result: { success: true, data: { ...uploadResult, workflow: workflow.data } },
@@ -624,6 +1286,7 @@ const commandRun = async (
       "image-list",
       "video-list",
       "font-list",
+      "document-list",
       "write",
     ])
     if (!allowed.success) return { result: allowed }
@@ -798,8 +1461,9 @@ const structuredFailureRead = (result: Extract<Result<unknown>, { success: false
   const inferredCode =
     result.op === "assetsCliConfig" || result.op === "assetsCliSessionRead"
       ? "not_configured"
-      : /Parse|Validate|Target|Media|Command|Environment|Project/u.test(result.op) ||
-          /invalid|requires|must be|missing|outside|did not match/u.test(result.errorMessage)
+      : /Parse|Validate|Target|Media|Command|Environment|Project|SourceConfiguration|RootScan|Preflight|Diff/u.test(
+            result.op,
+          ) || /invalid|requires|must be|missing|outside|did not match/u.test(result.errorMessage)
         ? "validation_failed"
         : "internal_error"
   const code =
@@ -836,7 +1500,9 @@ const outputWrite = (
 ): number => {
   if (output.result.success) {
     stdout(
-      json ? jsonEnvelopeStringify(apiSuccessEnvelopeCreate(output.result.data)) : humanValueRead(output.result.data),
+      json
+        ? jsonEnvelopeStringify(apiSuccessEnvelopeCreate(output.result.data))
+        : (output.humanOutput ?? humanValueRead(output.result.data)),
     )
     return output.exitCode ?? 0
   }

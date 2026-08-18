@@ -32,6 +32,101 @@ R2 uses separate private staging/source and public output namespaces. Public ver
 `public, max-age=31536000, immutable`. Private objects use `no-store`. The R2 doctor checks the configured bucket and,
 when a probe key is configured, the public custom domain.
 
+## Bulk project upload
+
+The remote CLI reads `<root>/assets.config.json` for `assets diff [root]` and `assets upload-all [root]`. `root` defaults
+to `.`. Each class maps to one directory, relative to the project root:
+
+```json
+{
+  "image": "content/images",
+  "video": null,
+  "document": "content/documents",
+  "font": "fonts"
+}
+```
+
+The defaults are `images`, `videos`, `documents`, and `fonts`. Set a class to `null` to disable it. For one command,
+use `--image-dir`, `--video-dir`, `--document-dir`, or `--font-dir`; use `--no-image-dir`, `--no-video-dir`,
+`--no-document-dir`, or `--no-font-dir` to disable a class without editing the file. CLI overrides do not change
+`assets.config.json`. Paths must stay inside the project root, and class directories must not overlap.
+
+The scanner walks each configured directory recursively in deterministic lexical order. It rejects symlinks and special
+files. A missing configured directory contributes no local entries. The configured class directory is stripped from the
+logical path, but `sourcePath` remains project-relative. Thus `content/images/home/hero.png` is uploaded as image
+`home/hero.png`, with source path `content/images/home/hero.png`. A logical path may contain at most three folders.
+
+Documents use one byte-preserving `default` output. The accepted extensions and media types are:
+
+| Extensions | Media type |
+| --- | --- |
+| `pdf` | `application/pdf` |
+| `json` | `application/json` |
+| `doc` | `application/msword` |
+| `docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| `xls` | `application/vnd.ms-excel` |
+| `xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| `xlsm` | `application/vnd.ms-excel.sheet.macroenabled.12` |
+| `ppt` | `application/vnd.ms-powerpoint` |
+| `pptx` | `application/vnd.openxmlformats-officedocument.presentationml.presentation` |
+| `odt` | `application/vnd.oasis.opendocument.text` |
+| `ods` | `application/vnd.oasis.opendocument.spreadsheet` |
+| `odp` | `application/vnd.oasis.opendocument.presentation` |
+| `rtf` | `application/rtf` |
+| `csv` | `text/csv` |
+| `txt` | `text/plain` |
+
+### Compare before uploading
+
+Run a read-only comparison before changing the service:
+
+```bash
+bun run assets diff . --json
+bun run assets diff . --document-dir content/documents --no-font-dir
+```
+
+The comparison uses normalized class, logical path, SHA-256, byte size, and media type. It reports these statuses:
+
+- `new`: a local entry has no remote match.
+- `changed`: the local fingerprint differs from the remote current source.
+- `matching`: all compared identity and fingerprint fields match.
+- `remote-only`: the remote entry has no local entry. This is informational; it does not delete the remote asset.
+- `unsupported`: the local extension is not supported for its configured class.
+- `conflict`: local or remote identities, paths, or targets conflict.
+
+For matching entries, `diff` also reports whether the current source revision is eligible for local deletion. The command
+does not upload or delete anything. It exits 0 only when every entry is `matching`; any other status returns exit 1.
+
+### Upload and local cleanup
+
+`upload-all` requires an integration note of 1 to 10,000 characters. A safe run is:
+
+```bash
+bun run assets upload-all . --integration-note "bulk upload" --dry-run --json
+bun run assets upload-all . --integration-note "bulk upload" --wait
+bun run assets upload-all . --integration-note "bulk upload" --wait --delete
+```
+
+The command uploads only `new` and `changed` entries. It skips matching entries for upload and takes no action for
+remote-only entries. Unsupported or conflict local entries fail preflight and block the upload set before network
+mutations. During an upload, independent failures do not stop later entries. Any failed entry makes the command exit
+nonzero.
+
+`--dry-run` loads and compares the local and remote manifests only. It neither uploads nor deletes. `--wait` polls each
+uploaded workflow; without it, the command returns after upload completion is accepted. `--wait` and `--no-wait` cannot
+be combined. `--delete` implies `--wait`, and `--delete --no-wait` is rejected.
+
+With `--delete`, the CLI deletes a local file only after the service confirms eligibility for that exact source revision:
+the revision has a verified backup, a successful workflow, output versions from that revision, and entries in the current
+catalog. The CLI then re-reads the file identity and SHA-256 immediately before unlinking it. If the file changed, the
+eligibility check failed, or unlinking failed, it keeps the file and reports a failure. It deletes files only, never
+directories. These commands never perform remote deletion or bidirectional synchronization. A remote-only entry remains
+remote.
+
+`--json` writes one newline-terminated deterministic envelope to stdout. Human-readable failures go to stderr; JSON
+failures go to stdout. A status mismatch or per-entry upload failure is returned in a success-shaped result with exit 1,
+while command validation and transport failures use the failure envelope and a nonzero exit.
+
 ## Process lifecycle
 
 Run the API and worker separately:

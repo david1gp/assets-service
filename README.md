@@ -42,6 +42,49 @@ bun run assets lists --dir src/app/assets
 bun run assets lists --check --dir src/app/assets
 ```
 
+### Bulk project upload
+
+`assets diff [root]` and `assets upload-all [root]` default `root` to `.`. They scan the configured `image`, `video`,
+`document`, and `font` directories recursively. Without a project configuration, those directories are `images`,
+`videos`, `documents`, and `fonts`.
+
+Create `<root>/assets.config.json` to change or disable a class. Values are project-root-relative directories; `null`
+disables a class:
+
+```json
+{
+  "image": "content/images",
+  "video": null,
+  "document": "content/documents",
+  "font": "fonts"
+}
+```
+
+Use `--image-dir`, `--video-dir`, `--document-dir`, or `--font-dir` to override one mapping for one invocation. Use
+`--no-image-dir`, `--no-video-dir`, `--no-document-dir`, or `--no-font-dir` to disable it. Class roots are removed
+from logical asset paths, while `sourcePath` keeps the project-relative path. For example,
+`content/images/home/hero.png` maps to logical path `home/hero.png`.
+
+Documents are byte-preserving passthrough assets. Supported extensions are `pdf`, `json`, `doc`, `docx`, `xls`,
+`xlsx`, `xlsm`, `ppt`, `pptx`, `odt`, `ods`, `odp`, `rtf`, `csv`, and `txt`.
+
+```bash
+bun run assets diff . --json
+bun run assets upload-all . --integration-note "bulk upload" --dry-run --json
+bun run assets upload-all . --integration-note "bulk upload" --wait
+```
+
+`diff` is read-only and reports `new`, `changed`, `matching`, `remote-only`, `unsupported`, and `conflict` entries.
+`upload-all` uploads only `new` and `changed` entries; matching entries are skipped for upload. `--integration-note` is required
+and must contain 1 to 10,000 characters. `--delete` implies `--wait` and removes a local file only after the service
+proves that the exact source revision is backed up, processed successfully, published, and in the current catalog.
+The bulk commands recheck the file immediately before unlinking it, never delete directories, and never delete remote
+assets.
+
+`--json` writes one newline-terminated deterministic envelope to stdout. `diff` exits 0 only when every entry is
+`matching`; `upload-all` exits nonzero when an entry fails. `--dry-run` performs comparison only and does not upload or
+delete. `--wait` and `--no-wait` cannot be combined. `--delete --no-wait` is rejected.
+
 Use `ASSETS_API_URL`, `ASSETS_TOKEN`, `ASSETS_PROJECT`, and `ASSETS_ENVIRONMENT` for non-interactive calls. `--json`
 writes one newline-terminated deterministic envelope to stdout. Failed commands return a nonzero exit code.
 
