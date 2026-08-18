@@ -192,7 +192,7 @@ test("source revision deletion eligibility proves every current safety condition
           outputVersionId: "version-eligibility",
           class: "image",
           key: "default",
-          property: "hero_default",
+          property: "hero",
           path: "images/hero.webp",
           metadata: {
             kind: "image",

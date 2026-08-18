@@ -36,7 +36,8 @@ describe("asset invariants", () => {
     expect(assetBasenameCreate("hero.original.jpg")).toBe("hero.original")
     expect(assetSourcePathCreate(folders, "hero.jpg")).toBe("home/hero.jpg")
     expect(assetIdentifierCreate(folders, "hero", "1920x1080-webp")).toBe("home_hero_1920x1080_webp")
-    expect(assetIdentifierCreate([], "123", "default")).toBe("i123_default")
+    expect(assetIdentifierCreate(folders, "hero", "default")).toBe("home_hero")
+    expect(assetIdentifierCreate([], "123", "default")).toBe("i123")
     expect(
       outputRemoteObjectKeyCreate({
         assetClass: "image",

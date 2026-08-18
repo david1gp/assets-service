@@ -21,6 +21,7 @@ import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import type { AssetClass } from "../schemas/assetClassSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import { storageCopyImmutable } from "../storage/storageCopyImmutable.js"
@@ -73,6 +74,14 @@ export const uploadIngestionComplete = async (
           .where(eq(environmentTable.id, upload.environmentId))
           .get()
         if (environment === undefined) return resultErrorCreate(op, `Environment not found: ${upload.environmentId}`)
+        const acceptedAsset = transaction.select().from(assetTable).where(eq(assetTable.id, acceptedAssetId)).get()
+        if (acceptedAsset === undefined) return resultErrorCreate(op, `Asset not found: ${acceptedAssetId}`)
+        const defaults = outputDefinitionsEnsure(transaction, {
+          assetId: acceptedAssetId,
+          assetClass: acceptedAsset.class,
+          now,
+        })
+        if (!defaults.success) return defaults
         const workflow = transaction
           .select()
           .from(workflowTable)
@@ -300,6 +309,9 @@ export const uploadIngestionComplete = async (
         if (!insertedDefinition.success) return insertedDefinition
       }
 
+      const defaults = outputDefinitionsEnsure(transaction, { assetId, assetClass, now })
+      if (!defaults.success) return defaults
+
       const workflowId = `workflow-upload-${upload.id}`
       const existingWorkflow = transaction.select().from(workflowTable).where(eq(workflowTable.id, workflowId)).get()
       if (existingWorkflow !== undefined) {
@@ -513,6 +525,30 @@ function workflowJobsEnsure(
       .where(and(eq(workflowTable.id, input.workflowId), eq(workflowTable.status, "succeeded")))
       .run()
   }
+  return { success: true, data: null }
+}
+
+function outputDefinitionsEnsure(
+  db: AssetDatabase,
+  input: { assetId: string; assetClass: AssetClass; now: string },
+): Result<null> {
+  const existing = db.select().from(outputDefinitionTable).where(eq(outputDefinitionTable.assetId, input.assetId)).all()
+  if (existing.length > 0) return { success: true, data: null }
+
+  const inserted = databaseRecordInsert(db, outputDefinitionTable, {
+    id: `output-${input.assetId}-default`,
+    assetId: input.assetId,
+    kind: input.assetClass,
+    key: "default",
+    width: input.assetClass === "image" ? 3840 : null,
+    height: input.assetClass === "image" ? 2160 : null,
+    format: input.assetClass === "image" ? "webp" : input.assetClass === "font" ? "woff2" : null,
+    quality: input.assetClass === "image" ? 80 : null,
+    showAiLabel: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
+  if (!inserted.success) return inserted
   return { success: true, data: null }
 }
 

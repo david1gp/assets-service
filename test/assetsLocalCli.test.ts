@@ -99,9 +99,7 @@ test("local fallback imports byte-preserving documents and writes documentList",
 
     const listed = await cliRun(root, ["lists"])
     expect(listed.exitCode).toBe(0)
-    expect(await readFile(join(root, "src", "app", "assets", "documentList.ts"), "utf8")).toContain(
-      "guides_guide_default",
-    )
+    expect(await readFile(join(root, "src", "app", "assets", "documentList.ts"), "utf8")).toContain("guides_guide")
   } finally {
     await rm(root, { recursive: true, force: true })
   }

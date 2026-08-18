@@ -218,7 +218,7 @@ const setup = async () => {
     outputVersionId: "version-delete",
     class: "image",
     key: "default",
-    property: "home_hero_default",
+    property: "home_hero",
     path: "images/home/hero_default_v1.png",
     metadata: imageMetadata,
   })

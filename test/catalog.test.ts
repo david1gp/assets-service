@@ -49,8 +49,9 @@ test("canonical JSON sorts object keys without changing array order", () => {
   expect(canonicalJsonDigest({ a: 1, b: 2 })).toBe(canonicalJsonDigest({ b: 2, a: 1 }))
 })
 
-test("catalog properties use folders, basename, and output key", () => {
+test("catalog properties omit the default output key", () => {
   expect(catalogEntryPropertyCreate(imageEntry)).toBe("home_hero_1920x1080_webp")
+  expect(catalogEntryPropertyCreate({ ...imageEntry, key: "default" })).toBe("home_hero")
   expect(catalogEntryPropertyCreate({ ...imageEntry, folders: [], basename: "9-lives", key: "small-large" })).toBe(
     "i9_lives_small_large",
   )
@@ -107,7 +108,7 @@ test("catalog renderer canonicalizes and renders documents in documentList", () 
   expect(result.success).toBe(true)
   if (!result.success) return
   expect(result.data.documentList).toContain("export const documentList")
-  expect(result.data.documentList).toContain("guidé_manuaĺ_default")
+  expect(result.data.documentList).toContain("guidé_manuaĺ")
   expect(result.data.documentList).not.toContain("guide\\u0301")
 })
 

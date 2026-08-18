@@ -27,6 +27,7 @@ export const apiMain = () => {
       const uiResponse = await uiHandle(request)
       return uiResponse ?? apiResponse
     },
+    hostname: process.env.ASSETS_API_BIND || "127.0.0.1",
     port: config.data.service.apiPort,
   })
   return 0

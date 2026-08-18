@@ -65,7 +65,7 @@
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "typecheck:ui": "tsc -p ./tsconfig.ui.json --noEmit",
     "tsc": "tsc -p ./tsconfig.json --noEmit",
-    "build": "bun run clean && bun run typecheck && tsc -p ./tsconfig.lib.json",
+    "build": "bun run clean && bun run typecheck && tsc -p ./tsconfig.lib.json && chmod +x dist/entrypoints/assets-cli.js dist/entrypoints/assets-local-cli.js",
     "check": "bun run format:check && bun run typecheck && bun run typecheck:ui && bun test && bun run build && bun run vite:build",
     "release": "bash ./ops/release.sh",
     "deploy": "bash ./ops/deploy.sh",

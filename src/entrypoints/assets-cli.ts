@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"

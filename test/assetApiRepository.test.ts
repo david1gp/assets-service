@@ -241,6 +241,21 @@ describe("asset API persistence", () => {
       const repeated = await repository.uploadCompletionComplete("project-1", "upload-1", { sha256: checksum })
       expect(completed).toMatchObject({ success: true, data: { uploadId: "upload-1", status: "accepted" } })
       expect(repeated).toEqual(completed)
+      expect(connection.db.select().from(outputDefinitionTable).all()).toMatchObject([
+        {
+          id: "output-asset-upload-1-default",
+          assetId: "asset-upload-1",
+          kind: "image",
+          key: "default",
+          width: 3840,
+          height: 2160,
+          format: "webp",
+          quality: 80,
+          showAiLabel: null,
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+        },
+      ])
       expect(connection.db.select().from(assetTable).all()).toHaveLength(2)
     } finally {
       databaseClose(connection)

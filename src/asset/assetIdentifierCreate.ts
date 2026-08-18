@@ -49,7 +49,7 @@ const reservedTypeScriptWords = new Set([
 ])
 
 export const assetIdentifierCreate = (folders: Folders, basename: string, outputKey: string): string => {
-  const identifier = [...folders, basename, outputKey]
+  const identifier = [...folders, basename, ...(outputKey === "default" ? [] : [outputKey])]
     .map((part) => part.normalize("NFC"))
     .join("_")
     .replace(/[\\/-]/g, "_")
