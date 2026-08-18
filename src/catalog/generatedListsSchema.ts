@@ -6,6 +6,7 @@ export const generatedListsSchema = v.strictObject({
   imageList: v.string(),
   videoList: v.string(),
   fontList: v.string(),
+  documentList: v.string(),
   digest: sha256Schema,
 })
 

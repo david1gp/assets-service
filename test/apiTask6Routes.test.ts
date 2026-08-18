@@ -141,6 +141,12 @@ const deletionState = {
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
 
+type Received = {
+  projectId?: string
+  actorId?: string
+  eligibility?: { projectId: string; environment: string; sourceRevisionId: string }
+}
+
 const projectRepositoryCreate = (): ProjectRepository => ({
   projectsRead: () => ({ success: true, data: [project] }),
   projectRead: (identifier) => ({
@@ -233,7 +239,7 @@ const catalogRepositoryCreate = (): CatalogApiRepository => ({
   catalogRead: () => ({ success: true, data: catalog }),
   catalogListsRead: () => ({
     success: true,
-    data: { imageList: "", videoList: "", fontList: "", digest: "d".repeat(64) },
+    data: { imageList: "", videoList: "", fontList: "", documentList: "", digest: "d".repeat(64) },
   }),
   manifestsRead: () => ({ success: true, data: { items: [manifest], nextCursor: null } }),
   manifestRead: () => ({ success: true, data: manifest }),
@@ -251,18 +257,32 @@ const uploadRepositoryCreate = (): UploadApiRepository => ({
   uploadRead: () => ({ success: true, data: upload }),
 })
 
-const deletionRepositoryCreate = (): DeletionApiRepository => ({
+const deletionRepositoryCreate = (received?: Received): DeletionApiRepository => ({
   deletionRequestEnqueue: () => ({
     success: true,
     data: { deletionId: "deletion-1", workflowId: "workflow-1", status: "requested" },
   }),
   deletionStateRead: () => ({ success: true, data: deletionState }),
+  sourceRevisionDeletionEligibilityRead: (projectId, environmentName, sourceRevisionId) => {
+    if (received) received.eligibility = { projectId, environment: environmentName, sourceRevisionId }
+    return {
+      success: true,
+      data: {
+        sourceRevisionId: "source-1",
+        eligible: true,
+        checks: {
+          sourceIdentity: true,
+          verifiedBackup: true,
+          successfulWorkflow: true,
+          lineageMatchingCurrentOutputs: true,
+          currentCatalogInclusion: true,
+        },
+      },
+    }
+  },
 })
 
-const optionsCreate = (
-  role: "assets.uploader" | "assets.admin",
-  received: { projectId?: string; actorId?: string },
-): ApiAppOptions => {
+const optionsCreate = (role: "assets.uploader" | "assets.admin", received: Received): ApiAppOptions => {
   const authenticationConfig = {
     issuer: "https://zitadel.example.test",
     clientId: "human-client-1",
@@ -308,7 +328,7 @@ const optionsCreate = (
     catalogApiRepository: catalogRepositoryCreate(),
     auditApiRepository: auditRepositoryCreate(),
     uploadApiRepository: uploadRepositoryCreate(),
-    deletionApiRepository: deletionRepositoryCreate(),
+    deletionApiRepository: deletionRepositoryCreate(received),
     legacyImportExecutor: importExecutorCreate(received),
     requestIdCreate: () => "task-6-request",
   }
@@ -370,6 +390,7 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/jobs/job-1/retry", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/backups"],
       ["/api/v1/projects/project-service/backups/backup-1"],
+      ["/api/v1/projects/project-service/source-revisions/source-1/deletion-eligibility?environment=development"],
       ["/api/v1/projects/project-service/catalogs/development"],
       ["/api/v1/projects/project-service/catalogs/development/history"],
       ["/api/v1/projects/project-service/catalogs/development/lists"],
@@ -452,6 +473,7 @@ describe("task 6 API routes", () => {
     const paths = [
       "/api/v1/projects/project-service/backups?limit=1",
       "/api/v1/projects/project-service/source-revisions/source-1/backup-status",
+      "/api/v1/projects/project-service/source-revisions/source-1/deletion-eligibility?environment=development",
       "/api/v1/projects/project-service/catalogs/development",
       "/api/v1/projects/project-service/catalogs/development/history?limit=1",
       "/api/v1/projects/project-service/catalogs/development/lists",
@@ -468,5 +490,40 @@ describe("task 6 API routes", () => {
       requestCreate("/api/v1/projects/project-service/audit-events", await sessionCreate(options, "assets.uploader")),
     )
     expect(deniedAudit.status).toBe(403)
+  })
+
+  test("validates and scopes the eligibility environment", async () => {
+    const received: Received = {}
+    const options = optionsCreate("assets.uploader", received)
+    const app = apiAppCreate(options)
+    const uploader = await sessionCreate(options, "assets.uploader")
+
+    const valid = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/source-revisions/source-1/deletion-eligibility?environment=production",
+        uploader,
+      ),
+    )
+    const invalid = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/source-revisions/source-1/deletion-eligibility?environment=staging",
+        uploader,
+      ),
+    )
+    const isolated = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/other-project/source-revisions/source-1/deletion-eligibility?environment=production",
+        uploader,
+      ),
+    )
+
+    expect(valid.status).toBe(200)
+    expect(received.eligibility).toEqual({
+      projectId: "project-1",
+      environment: "production",
+      sourceRevisionId: "source-1",
+    })
+    expect(invalid.status).toBe(400)
+    expect(isolated.status).toBe(404)
   })
 })

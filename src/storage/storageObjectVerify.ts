@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import { documentMediaTypeSchema } from "../document/documentMediaTypeSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
@@ -75,7 +76,7 @@ async function streamVerify(
     reader.releaseLock()
   }
   if (byteSize !== input.byteSize) return resultErrorCreate(op, "Storage object byte size changed during verification")
-  const detected = storageMediaTypeDetect(prefix.subarray(0, prefixLength))
+  const detected = mediaTypeDetect(prefix.subarray(0, prefixLength), expectedMediaType)
   if (!detected.success) return detected
   if (detected.data !== expectedMediaType) return resultErrorCreate(op, "Storage object media type does not match")
   const sha256 = hasher.digest("hex")
@@ -89,7 +90,7 @@ function bytesVerify(
   expectedSha: string,
   expectedMediaType: string,
 ): Result<StorageVerification> {
-  const detected = storageMediaTypeDetect(bytes)
+  const detected = mediaTypeDetect(bytes, expectedMediaType)
   if (!detected.success) return detected
   if (detected.data !== expectedMediaType)
     return resultErrorCreate("storageObjectVerify", "Storage object media type does not match")
@@ -98,4 +99,10 @@ function bytesVerify(
   if (bytes.byteLength !== input.byteSize)
     return resultErrorCreate("storageObjectVerify", "Storage object byte size changed during verification")
   return { success: true, data: { byteSize: bytes.byteLength, sha256, mediaType: detected.data } }
+}
+
+function mediaTypeDetect(bytes: Uint8Array, expectedMediaType: string): Result<string> {
+  const document = v.safeParse(documentMediaTypeSchema, expectedMediaType)
+  if (document.success) return { success: true, data: expectedMediaType }
+  return storageMediaTypeDetect(bytes)
 }

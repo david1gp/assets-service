@@ -22,6 +22,7 @@ const valueOptions = new Set([
   "alt",
   "atomicity",
   "class",
+  "document-list",
   "dir",
   "file",
   "folder",
@@ -53,7 +54,7 @@ const commandHelp = {
     "import <root>",
     "process",
     "upload <file> --path <class/folder/file> [--integration-note <text>]",
-    "list [--kind image|video|font]",
+    "list [--kind image|video|font|document]",
     "show <asset-key>",
     "outputs list|add|remove|set <asset-key>",
     "metadata set|unset <asset-key>",
@@ -70,6 +71,7 @@ const commandHelp = {
     "--image-list",
     "--video-list",
     "--font-list",
+    "--document-list",
     "--integration-note",
     "--include",
     "--references",
@@ -267,8 +269,14 @@ async function localCommandRun(
     const allowed = optionAllowed(parsed, ["kind", "class", "search", "folder", "include"])
     if (!allowed.success) return { result: allowed }
     const className = optionRead(parsed, "kind") ?? optionRead(parsed, "class")
-    if (className !== undefined && className !== "image" && className !== "video" && className !== "font")
-      return { result: resultErrorCreate("assetsLocalList", "--kind must be image, video, or font") }
+    if (
+      className !== undefined &&
+      className !== "image" &&
+      className !== "video" &&
+      className !== "font" &&
+      className !== "document"
+    )
+      return { result: resultErrorCreate("assetsLocalList", "--kind must be image, video, font, or document") }
     const include = optionRead(parsed, "include")
     if (
       include !== undefined &&
@@ -330,13 +338,20 @@ async function localCommandRun(
   if (parsed.command === "references" || parsed.command === "refs") {
     const valid = positionalsRequire(parsed, 0)
     if (!valid.success) return { result: valid }
-    const allowed = optionAllowed(parsed, ["include", "references", "image-list", "video-list", "font-list"])
+    const allowed = optionAllowed(parsed, [
+      "include",
+      "references",
+      "image-list",
+      "video-list",
+      "font-list",
+      "document-list",
+    ])
     if (!allowed.success) return { result: allowed }
     const locations = (optionRead(parsed, "include") ?? optionRead(parsed, "references") ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter((value) => value.length > 0)
-    const generatedListPaths = ["image-list", "video-list", "font-list"]
+    const generatedListPaths = ["image-list", "video-list", "font-list", "document-list"]
       .map((name) => optionRead(parsed, name))
       .filter((value): value is string => value !== undefined)
     return { result: await service.references(locations, generatedListPaths) }
@@ -464,13 +479,22 @@ async function listsCommandRun(
 ): Promise<CommandOutput> {
   const valid = positionalsRequire(parsed, 0)
   if (!valid.success) return { result: valid }
-  const allowed = optionAllowed(parsed, ["check", "dir", "image-list", "video-list", "font-list", "write"])
+  const allowed = optionAllowed(parsed, [
+    "check",
+    "dir",
+    "image-list",
+    "video-list",
+    "font-list",
+    "document-list",
+    "write",
+  ])
   if (!allowed.success) return { result: allowed }
   const directory = resolve(root, optionRead(parsed, "dir") ?? "src/app/assets")
   const files = {
     imageListPath: resolve(root, optionRead(parsed, "image-list") ?? join(directory, "imageList.ts")),
     videoListPath: resolve(root, optionRead(parsed, "video-list") ?? join(directory, "videoList.ts")),
     fontListPath: resolve(root, optionRead(parsed, "font-list") ?? join(directory, "fontList.ts")),
+    documentListPath: resolve(root, optionRead(parsed, "document-list") ?? join(directory, "documentList.ts")),
   }
   const result = await service.lists({
     files,

@@ -1,4 +1,4 @@
-type WorkflowResource = "image" | "video" | "font" | "rclone" | "cleanup"
+type WorkflowResource = "image" | "video" | "font" | "document" | "rclone" | "cleanup"
 
 type WorkflowResourceLimits = Partial<Record<WorkflowResource, number>>
 
@@ -6,6 +6,7 @@ const defaultLimits: Record<WorkflowResource, number> = {
   image: 2,
   video: 1,
   font: 1,
+  document: 1,
   rclone: 1,
   cleanup: 1,
 }

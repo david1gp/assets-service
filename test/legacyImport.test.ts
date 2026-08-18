@@ -32,6 +32,7 @@ const fixtureCreate = async (root: string, conflicting = false): Promise<void> =
   await mkdir(join(root, "images", "home", "100x100_webp_ai_generated"), { recursive: true })
   await mkdir(join(root, "videos", "home"), { recursive: true })
   await mkdir(join(root, "fonts", "ui"), { recursive: true })
+  await mkdir(join(root, "documents", "guides"), { recursive: true })
   await mkdir(join(root, "src", "app", "assets"), { recursive: true })
   const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
   await writeFile(join(root, "images", "home", "500x500_webp", "hero.png"), imageBytes)
@@ -45,6 +46,7 @@ const fixtureCreate = async (root: string, conflicting = false): Promise<void> =
     new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]),
   )
   await writeFile(join(root, "fonts", "ui", "Inter-Regular.woff2"), new Uint8Array([119, 79, 70, 50]))
+  await writeFile(join(root, "documents", "guides", "guide.txt"), "Guide document\n")
   await writeFile(
     join(root, "src", "app", "assets", "imageList.ts"),
     `export const imageList = ${JSON.stringify({
@@ -78,6 +80,12 @@ const fixtureCreate = async (root: string, conflicting = false): Promise<void> =
         mimeType: "font/woff2",
       },
     })} as const satisfies Record<string, FontType>`,
+  )
+  await writeFile(
+    join(root, "src", "app", "assets", "documentList.ts"),
+    `export const documentList = ${JSON.stringify({
+      guides_guide: { path: "guides/guide.txt", mimeType: "text/plain" },
+    })} as const satisfies Record<string, DocumentType>`,
   )
 }
 
@@ -151,7 +159,7 @@ describe("legacy import", () => {
         showAiLabel: false,
       })
       expect(image?.outputs).toHaveLength(2)
-      expect(planned.data.groups.map((group) => group.class)).toEqual(["font", "image", "video"])
+      expect(planned.data.groups.map((group) => group.class)).toEqual(["document", "font", "image", "video"])
       expect(planned.data.conflicts).toEqual([])
     } finally {
       await rm(fixtureRoot, { recursive: true, force: true })
@@ -191,8 +199,8 @@ describe("legacy import", () => {
         root: fixtureRoot,
         atomicity: "best_effort",
       })
-      expect(imported).toMatchObject({ success: true, data: { status: "queued", importedCount: 2 } })
-      expect(connection.db.select().from(assetTable).all()).toHaveLength(2)
+      expect(imported).toMatchObject({ success: true, data: { status: "queued", importedCount: 3 } })
+      expect(connection.db.select().from(assetTable).all()).toHaveLength(3)
     } finally {
       databaseClose(connection)
       await rm(fixtureRoot, { recursive: true, force: true })
@@ -216,15 +224,15 @@ describe("legacy import", () => {
         root: fixtureRoot,
         atomicity: "all_or_nothing",
       })
-      expect(first).toMatchObject({ success: true, data: { status: "queued", importedCount: 3, conflicts: [] } })
+      expect(first).toMatchObject({ success: true, data: { status: "queued", importedCount: 4, conflicts: [] } })
       const repeated = await executor.legacyImportRequestCreate("project-1", "actor-1", {
         root: fixtureRoot,
         atomicity: "all_or_nothing",
       })
       expect(repeated).toEqual(first)
-      expect(connection.db.select().from(assetTable).all()).toHaveLength(3)
-      expect(connection.db.select().from(sourceRevisionTable).all()).toHaveLength(3)
-      expect(connection.db.select().from(outputDefinitionTable).all()).toHaveLength(4)
+      expect(connection.db.select().from(assetTable).all()).toHaveLength(4)
+      expect(connection.db.select().from(sourceRevisionTable).all()).toHaveLength(4)
+      expect(connection.db.select().from(outputDefinitionTable).all()).toHaveLength(5)
       expect(connection.db.select().from(catalogTable).all()).toHaveLength(0)
       expect(connection.db.select().from(legacyImportTable).all()).toHaveLength(1)
       const backup = rcloneBackupAdapterFake({ completedAt: now })
@@ -245,7 +253,7 @@ describe("legacy import", () => {
       })
       for (let index = 0; index < 12; index += 1) await engine.runOnce()
       expect(connection.db.select().from(catalogTable).all()).toHaveLength(1)
-      expect(connection.db.select().from(backupReceiptTable).all()).toHaveLength(3)
+      expect(connection.db.select().from(backupReceiptTable).all()).toHaveLength(4)
       const completed = await executor.legacyImportStatusRead("project-1", first.success ? first.data.id : "missing")
       expect(completed).toMatchObject({ success: true, data: { status: "succeeded" } })
       expect(await readFile(join(fixtureRoot, "images", "home", "hero.txt"), "utf8")).toBe(before)

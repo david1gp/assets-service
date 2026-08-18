@@ -28,7 +28,7 @@ type WorkflowEngineCreateInput = {
   resourcePoolLimits?: Partial<Record<WorkflowResource, number>>
 }
 
-type WorkflowResource = "image" | "video" | "font" | "rclone" | "cleanup"
+type WorkflowResource = "image" | "video" | "font" | "document" | "rclone" | "cleanup"
 
 const sleep = async (milliseconds: number, signal: AbortSignal): Promise<void> => {
   if (signal.aborted) return
@@ -170,6 +170,7 @@ export const workflowEngineCreate = (input: WorkflowEngineCreateInput) => {
     if (kind === "process_image_output") return "image"
     if (kind === "copy_video_output") return "video"
     if (kind === "process_font_output") return "font"
+    if (kind === "process_document_output") return "document"
     if (kind === "backup_original") return "rclone"
     if (kind === "delete_asset") return "rclone"
     if (kind === "cleanup_local_files") return "cleanup"

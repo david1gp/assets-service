@@ -4,14 +4,15 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
 export const catalogListsCheck = async (
-  files: { imageListPath: string; videoListPath: string; fontListPath: string },
-  rendered: { imageList: string; videoList: string; fontList: string },
+  files: { imageListPath: string; videoListPath: string; fontListPath: string; documentListPath: string },
+  rendered: { imageList: string; videoList: string; fontList: string; documentList: string },
 ): Promise<Result<boolean>> => {
   const op = "catalogListsCheck"
   for (const [filePath, expected] of [
     [files.imageListPath, rendered.imageList],
     [files.videoListPath, rendered.videoList],
     [files.fontListPath, rendered.fontList],
+    [files.documentListPath, rendered.documentList],
   ] as const) {
     let actual: string
     try {

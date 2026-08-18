@@ -1,5 +1,7 @@
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
+import { documentExtensionMediaTypes } from "../../document/documentExtensionMediaTypes.js"
+import type { DocumentMediaType } from "../../document/documentMediaTypeSchema.js"
 import { uploadMediaTypeCheck } from "../../upload/uploadMediaTypeCheck.js"
 import type { UploadSupportedMediaType } from "../../upload/uploadSupportedMediaTypes.js"
 import { uiUploadExtensionMediaTypes } from "./uiUploadExtensionMediaTypes.js"
@@ -11,7 +13,24 @@ import { uiUploadExtensionMediaTypes } from "./uiUploadExtensionMediaTypes.js"
  */
 export const uiUploadMediaTypeRead = (file: File): Result<UploadSupportedMediaType> => {
   const declared = file.type.trim()
-  if (declared.length > 0) return uploadMediaTypeCheck(declared)
+  if (declared.length > 0) {
+    const checked = uploadMediaTypeCheck(declared)
+    if (!checked.success) return checked
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? ""
+    const documentMediaType = documentExtensionMediaTypes[extension]
+    if (
+      Object.values(documentExtensionMediaTypes).includes(checked.data as DocumentMediaType) &&
+      documentMediaType !== checked.data
+    )
+      return resultErrorCreate(
+        "uiUploadMediaTypeRead",
+        "The document media type does not match its filename extension",
+        {
+          filename: file.name,
+        },
+      )
+    return checked
+  }
   const segments = file.name.split(".")
   const extension = segments.length > 1 ? (segments.pop()?.toLowerCase() ?? "") : ""
   const guessed = uiUploadExtensionMediaTypes[extension]
@@ -20,7 +39,7 @@ export const uiUploadMediaTypeRead = (file: File): Result<UploadSupportedMediaTy
     "uiUploadMediaTypeRead",
     extension.length === 0
       ? "This file has no extension, so its type is unknown. Rename it or pick a supported file."
-      : `Files ending in .${extension} are not supported. Pick a JPEG, PNG, WebP, AVIF, GIF, MP4, WebM, or font file.`,
+      : `Files ending in .${extension} are not supported. Pick a JPEG, PNG, WebP, AVIF, GIF, MP4, WebM, document, or font file.`,
     { filename: file.name },
   )
 }

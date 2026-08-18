@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { uploadMediaTypeCheck } from "../src/upload/uploadMediaTypeCheck.js"
 import { uploadSupportedMediaTypes } from "../src/upload/uploadSupportedMediaTypes.js"
+import { documentExtensionMediaTypes } from "../src/document/documentExtensionMediaTypes.js"
 import { storageMediaTypeDetect } from "../src/storage/storageMediaTypeDetect.js"
 import { uiUploadAcceptAttributeRead } from "../src/ui/upload/uiUploadAcceptAttributeRead.js"
 import { uiUploadMediaTypeRead } from "../src/ui/upload/uiUploadMediaTypeRead.js"
@@ -45,8 +46,14 @@ describe("uploadMediaTypeCheck", () => {
       "font/woff2",
       "font/otf",
       "font/ttf",
+      "application/pdf",
+      "application/json",
     ])
-    for (const mediaType of uploadSupportedMediaTypes) expect(detectable.has(mediaType)).toBe(true)
+    const documentMediaTypes = new Set<string>(Object.values(documentExtensionMediaTypes))
+    for (const mediaType of uploadSupportedMediaTypes) {
+      if (documentMediaTypes.has(mediaType)) continue
+      expect(detectable.has(mediaType)).toBe(true)
+    }
   })
 })
 
@@ -58,11 +65,27 @@ describe("storageMediaTypeDetect", () => {
     if (detected.success) return
     expect(detected.errorMessage).toContain("could not be detected")
   })
+
+  test("detects the supported document signatures", () => {
+    expect(storageMediaTypeDetect(new TextEncoder().encode("%PDF-1.7"))).toEqual({
+      success: true,
+      data: "application/pdf",
+    })
+    expect(storageMediaTypeDetect(new TextEncoder().encode('{"ok":true}'))).toEqual({
+      success: true,
+      data: "application/json",
+    })
+  })
 })
 
 describe("uiUploadMediaTypeRead", () => {
   test("passes a supported declared type through", () => {
     expect(uiUploadMediaTypeRead(fileCreate("hero.png", "image/png"))).toEqual({ success: true, data: "image/png" })
+    for (const [extension, mediaType] of Object.entries(documentExtensionMediaTypes))
+      expect(uiUploadMediaTypeRead(fileCreate(`guide.${extension}`, mediaType))).toEqual({
+        success: true,
+        data: mediaType,
+      })
   })
 
   test("rejects a declared SVG type before an intent is requested", () => {
@@ -83,6 +106,23 @@ describe("uiUploadMediaTypeRead", () => {
     expect(uiUploadMediaTypeRead(fileCreate("Inter.woff2", ""))).toEqual({ success: true, data: "font/woff2" })
   })
 
+  test("falls back to document extensions for a file without a type", () => {
+    for (const [extension, mediaType] of Object.entries(documentExtensionMediaTypes))
+      expect(uiUploadMediaTypeRead(fileCreate(`guide.${extension}`, ""))).toEqual({ success: true, data: mediaType })
+  })
+
+  test("rejects a document whose declared type disagrees with its extension", () => {
+    const documentCases = Object.entries(documentExtensionMediaTypes)
+    for (const [index, [extension]] of documentCases.entries()) {
+      const wrongMediaType = documentCases[(index + 1) % documentCases.length]?.[1]
+      if (wrongMediaType === undefined) continue
+      const result = uiUploadMediaTypeRead(fileCreate(`guide.${extension}`, wrongMediaType))
+      expect(result.success).toBe(false)
+      if (result.success) continue
+      expect(result.errorMessage).toContain("does not match")
+    }
+  })
+
   test("explains a file that has no extension at all", () => {
     const result = uiUploadMediaTypeRead(fileCreate("hero", ""))
     expect(result.success).toBe(false)
@@ -96,6 +136,8 @@ describe("uiUploadAcceptAttributeRead", () => {
     const accept = uiUploadAcceptAttributeRead()
     expect(accept).toContain("image/png")
     expect(accept).toContain(".woff2")
+    expect(accept).toContain("application/pdf")
+    expect(accept).toContain(".json")
     expect(accept).not.toContain("svg")
   })
 })

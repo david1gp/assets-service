@@ -6,6 +6,7 @@ import { projectSchema } from "../project/projectSchema.js"
 import { projectSettingsSchema } from "../project/projectSettingsSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { assetClassSchema } from "../schemas/assetClassSchema.js"
+import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -32,6 +33,7 @@ import { assetListResponseSchema } from "./assetListResponseSchema.js"
 import { catalogResponseSchema } from "./catalogResponseSchema.js"
 import { deletionRequestResponseSchema } from "./deletionRequestResponseSchema.js"
 import { deletionStatusResponseSchema } from "./deletionStatusResponseSchema.js"
+import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
 import { generatedListsResponseSchema } from "./generatedListsResponseSchema.js"
 import { legacyImportRequestSchema } from "./legacyImportRequestSchema.js"
 import { legacyImportResponseSchema } from "./legacyImportResponseSchema.js"
@@ -581,6 +583,26 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
   const deletionStatusOptionalRead = async (projectId: string, assetId: string) =>
     assetsApiResultOptionalRead(await deletionStatusRead(projectId, assetId))
 
+  const sourceRevisionDeletionEligibilityRead = async (
+    projectId: string,
+    environment: string,
+    sourceRevisionId: string,
+  ) => {
+    const validEnvironment = schemaParse(
+      environmentNameSchema,
+      environment,
+      "assetsApiClientSourceRevisionDeletionEligibilityRead",
+      "The target environment was invalid",
+    )
+    if (!validEnvironment.success) return validEnvironment
+    return requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/source-revisions/${encodeURIComponent(sourceRevisionId)}/deletion-eligibility`,
+      query: { environment: validEnvironment.data as "development" | "production" },
+      responseSchema: sourceRevisionDeletionEligibilityResponseSchema,
+      operation: "assetsApiClientSourceRevisionDeletionEligibilityRead",
+    })
+  }
+
   const workflowStatusRead = (projectId: string, workflowId: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/status`,
@@ -876,6 +898,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     assetDeleteRequest,
     deletionStatusRead,
     deletionStatusOptionalRead,
+    sourceRevisionDeletionEligibilityRead,
     workflowStatusRead,
     workflowListRead,
     workflowRead,

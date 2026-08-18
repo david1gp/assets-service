@@ -10,7 +10,7 @@ export const assetTable = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projectTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    class: text("class", { enum: ["image", "video", "font"] }).notNull(),
+    class: text("class", { enum: ["image", "video", "font", "document"] }).notNull(),
     folder1: text("folder_1"),
     folder2: text("folder_2"),
     folder3: text("folder_3"),
@@ -32,7 +32,7 @@ export const assetTable = sqliteTable(
     ),
     index("assets_project_class_index").on(table.projectId, table.class),
     index("assets_current_source_revision_index").on(table.currentSourceRevisionId),
-    check("assets_class_check", sql`${table.class} IN ('image', 'video', 'font')`),
+    check("assets_class_check", sql`${table.class} IN ('image', 'video', 'font', 'document')`),
     check(
       "assets_contiguous_folders_check",
       sql`(${table.folder2} IS NULL OR ${table.folder1} IS NOT NULL) AND (${table.folder3} IS NULL OR ${table.folder2} IS NOT NULL)`,

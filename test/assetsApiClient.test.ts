@@ -77,3 +77,55 @@ test("direct uploads use the signed intent without the service bearer", async ()
   expect(requests[0]?.url).toBe("https://upload.example.test/staging/object")
   expect(requests[0]?.headers.get("authorization")).toBeNull()
 })
+
+test("assets API client reads exact source revision deletion eligibility", async () => {
+  const requests: Request[] = []
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken: "service-token",
+    fetcher: async (input, init) => {
+      requests.push(new Request(String(input), init))
+      return envelopeResponseCreate({
+        sourceRevisionId: "source-1",
+        eligible: true,
+        checks: {
+          sourceIdentity: true,
+          verifiedBackup: true,
+          successfulWorkflow: true,
+          lineageMatchingCurrentOutputs: true,
+          currentCatalogInclusion: true,
+        },
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const eligibility = await clientResult.data.sourceRevisionDeletionEligibilityRead(
+    "project/1",
+    "development",
+    "source-1",
+  )
+  expect(eligibility).toMatchObject({ success: true, data: { sourceRevisionId: "source-1", eligible: true } })
+  expect(requests[0]?.url).toBe(
+    "https://assets.example.test/api/v1/projects/project%2F1/source-revisions/source-1/deletion-eligibility?environment=development",
+  )
+  expect(requests[0]?.headers.get("authorization")).toBe("Bearer service-token")
+})
+
+test("assets API client rejects an invalid eligibility environment before fetching", async () => {
+  let fetchCount = 0
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () => {
+      fetchCount += 1
+      return envelopeResponseCreate({})
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const eligibility = await clientResult.data.sourceRevisionDeletionEligibilityRead("project-1", "staging", "source-1")
+  expect(eligibility.success).toBe(false)
+  expect(fetchCount).toBe(0)
+})

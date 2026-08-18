@@ -19,6 +19,7 @@ export const jobTable = sqliteTable(
         "process_image_output",
         "copy_video_output",
         "process_font_output",
+        "process_document_output",
         "publish_asset",
         "notify_customer_upload",
         "cleanup_local_files",
@@ -46,7 +47,7 @@ export const jobTable = sqliteTable(
     index("jobs_workflow_index").on(table.workflowId),
     check(
       "jobs_kind_check",
-      sql`${table.kind} IN ('verify_original', 'backup_original', 'plan_outputs', 'process_image_output', 'copy_video_output', 'process_font_output', 'publish_asset', 'notify_customer_upload', 'cleanup_local_files', 'delete_asset')`,
+      sql`${table.kind} IN ('verify_original', 'backup_original', 'plan_outputs', 'process_image_output', 'copy_video_output', 'process_font_output', 'process_document_output', 'publish_asset', 'notify_customer_upload', 'cleanup_local_files', 'delete_asset')`,
     ),
     check(
       "jobs_status_check",

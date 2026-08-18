@@ -7,6 +7,7 @@ export const jobKindSchema = v.picklist([
   "process_image_output",
   "copy_video_output",
   "process_font_output",
+  "process_document_output",
   "publish_asset",
   "notify_customer_upload",
   "cleanup_local_files",

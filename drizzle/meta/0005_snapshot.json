@@ -1,0 +1,3273 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "5805edc3-eb13-4cea-b491-6ee57e01206f",
+  "prevId": "5777401a-d372-4238-ac79-d73b563fb1cb",
+  "tables": {
+    "asset_metadata": {
+      "name": "asset_metadata",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_revision_id": {
+          "name": "source_revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "asset_metadata_asset_unique": {
+          "name": "asset_metadata_asset_unique",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": true
+        },
+        "asset_metadata_source_revision_index": {
+          "name": "asset_metadata_source_revision_index",
+          "columns": [
+            "source_revision_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "asset_metadata_asset_id_assets_id_fk": {
+          "name": "asset_metadata_asset_id_assets_id_fk",
+          "tableFrom": "asset_metadata",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "asset_metadata_source_revision_id_source_revisions_id_fk": {
+          "name": "asset_metadata_source_revision_id_source_revisions_id_fk",
+          "tableFrom": "asset_metadata",
+          "tableTo": "source_revisions",
+          "columnsFrom": [
+            "source_revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "assets": {
+      "name": "assets",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "class": {
+          "name": "class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "folder_1": {
+          "name": "folder_1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_2": {
+          "name": "folder_2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_3": {
+          "name": "folder_3",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "basename": {
+          "name": "basename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "current_source_revision_id": {
+          "name": "current_source_revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "integration_note": {
+          "name": "integration_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "assets_project_path_unique": {
+          "name": "assets_project_path_unique",
+          "columns": [
+            "project_id",
+            "class",
+            "coalesce(\"folder_1\", '')",
+            "coalesce(\"folder_2\", '')",
+            "coalesce(\"folder_3\", '')",
+            "basename"
+          ],
+          "isUnique": true
+        },
+        "assets_project_class_index": {
+          "name": "assets_project_class_index",
+          "columns": [
+            "project_id",
+            "class"
+          ],
+          "isUnique": false
+        },
+        "assets_current_source_revision_index": {
+          "name": "assets_current_source_revision_index",
+          "columns": [
+            "current_source_revision_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "assets_project_id_projects_id_fk": {
+          "name": "assets_project_id_projects_id_fk",
+          "tableFrom": "assets",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "assets_class_check": {
+          "name": "assets_class_check",
+          "value": "\"assets\".\"class\" IN ('image', 'video', 'font', 'document')"
+        },
+        "assets_contiguous_folders_check": {
+          "name": "assets_contiguous_folders_check",
+          "value": "(\"assets\".\"folder_2\" IS NULL OR \"assets\".\"folder_1\" IS NOT NULL) AND (\"assets\".\"folder_3\" IS NULL OR \"assets\".\"folder_2\" IS NOT NULL)"
+        }
+      }
+    },
+    "audit_events": {
+      "name": "audit_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resource_type": {
+          "name": "resource_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "details": {
+          "name": "details",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "audit_events_organization_created_index": {
+          "name": "audit_events_organization_created_index",
+          "columns": [
+            "organization_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "audit_events_project_created_index": {
+          "name": "audit_events_project_created_index",
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "audit_events_resource_index": {
+          "name": "audit_events_resource_index",
+          "columns": [
+            "resource_type",
+            "resource_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "audit_events_organization_id_organizations_id_fk": {
+          "name": "audit_events_organization_id_organizations_id_fk",
+          "tableFrom": "audit_events",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "audit_events_project_id_projects_id_fk": {
+          "name": "audit_events_project_id_projects_id_fk",
+          "tableFrom": "audit_events",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_events_action_length_check": {
+          "name": "audit_events_action_length_check",
+          "value": "length(\"audit_events\".\"action\") BETWEEN 1 AND 128"
+        },
+        "audit_events_resource_type_length_check": {
+          "name": "audit_events_resource_type_length_check",
+          "value": "length(\"audit_events\".\"resource_type\") BETWEEN 1 AND 128"
+        }
+      }
+    },
+    "backup_receipts": {
+      "name": "backup_receipts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_revision_id": {
+          "name": "source_revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "remote_path": {
+          "name": "remote_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "check_result": {
+          "name": "check_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "backup_receipts_verified_source_unique": {
+          "name": "backup_receipts_verified_source_unique",
+          "columns": [
+            "source_revision_id"
+          ],
+          "isUnique": true,
+          "where": "\"backup_receipts\".\"check_result\" = 'verified'"
+        },
+        "backup_receipts_project_index": {
+          "name": "backup_receipts_project_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        },
+        "backup_receipts_source_revision_index": {
+          "name": "backup_receipts_source_revision_index",
+          "columns": [
+            "source_revision_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "backup_receipts_project_id_projects_id_fk": {
+          "name": "backup_receipts_project_id_projects_id_fk",
+          "tableFrom": "backup_receipts",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "backup_receipts_source_revision_id_source_revisions_id_fk": {
+          "name": "backup_receipts_source_revision_id_source_revisions_id_fk",
+          "tableFrom": "backup_receipts",
+          "tableTo": "source_revisions",
+          "columnsFrom": [
+            "source_revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "backup_receipts_job_id_jobs_id_fk": {
+          "name": "backup_receipts_job_id_jobs_id_fk",
+          "tableFrom": "backup_receipts",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "backup_receipts_check_result_check": {
+          "name": "backup_receipts_check_result_check",
+          "value": "\"backup_receipts\".\"check_result\" IN ('verified', 'failed')"
+        },
+        "backup_receipts_byte_size_check": {
+          "name": "backup_receipts_byte_size_check",
+          "value": "\"backup_receipts\".\"byte_size\" >= 0"
+        }
+      }
+    },
+    "blobs": {
+      "name": "blobs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_revision_id": {
+          "name": "source_revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_version_id": {
+          "name": "output_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "storage": {
+          "name": "storage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "blobs_storage_object_key_unique": {
+          "name": "blobs_storage_object_key_unique",
+          "columns": [
+            "storage",
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "blobs_project_index": {
+          "name": "blobs_project_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        },
+        "blobs_asset_index": {
+          "name": "blobs_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        },
+        "blobs_source_revision_index": {
+          "name": "blobs_source_revision_index",
+          "columns": [
+            "source_revision_id"
+          ],
+          "isUnique": false
+        },
+        "blobs_output_version_index": {
+          "name": "blobs_output_version_index",
+          "columns": [
+            "output_version_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "blobs_project_id_projects_id_fk": {
+          "name": "blobs_project_id_projects_id_fk",
+          "tableFrom": "blobs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "blobs_asset_id_assets_id_fk": {
+          "name": "blobs_asset_id_assets_id_fk",
+          "tableFrom": "blobs",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "blobs_source_revision_id_source_revisions_id_fk": {
+          "name": "blobs_source_revision_id_source_revisions_id_fk",
+          "tableFrom": "blobs",
+          "tableTo": "source_revisions",
+          "columnsFrom": [
+            "source_revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "blobs_output_version_id_output_versions_id_fk": {
+          "name": "blobs_output_version_id_output_versions_id_fk",
+          "tableFrom": "blobs",
+          "tableTo": "output_versions",
+          "columnsFrom": [
+            "output_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "blobs_storage_check": {
+          "name": "blobs_storage_check",
+          "value": "\"blobs\".\"storage\" IN ('private', 'public')"
+        },
+        "blobs_kind_check": {
+          "name": "blobs_kind_check",
+          "value": "\"blobs\".\"kind\" IN ('staging', 'source', 'output', 'manifest')"
+        },
+        "blobs_byte_size_check": {
+          "name": "blobs_byte_size_check",
+          "value": "\"blobs\".\"byte_size\" >= 0"
+        }
+      }
+    },
+    "catalog_generations": {
+      "name": "catalog_generations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "digest": {
+          "name": "digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "manifest_object_key": {
+          "name": "manifest_object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "renderer_version": {
+          "name": "renderer_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "catalog_generations_project_environment_digest_unique": {
+          "name": "catalog_generations_project_environment_digest_unique",
+          "columns": [
+            "project_id",
+            "environment",
+            "digest"
+          ],
+          "isUnique": true
+        },
+        "catalog_generations_project_environment_index": {
+          "name": "catalog_generations_project_environment_index",
+          "columns": [
+            "project_id",
+            "environment",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "catalog_generations_project_id_projects_id_fk": {
+          "name": "catalog_generations_project_id_projects_id_fk",
+          "tableFrom": "catalog_generations",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "catalog_generations_environment_check": {
+          "name": "catalog_generations_environment_check",
+          "value": "\"catalog_generations\".\"environment\" IN ('development', 'production')"
+        }
+      }
+    },
+    "catalog_outputs": {
+      "name": "catalog_outputs",
+      "columns": {
+        "generation_id": {
+          "name": "generation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "output_version_id": {
+          "name": "output_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "class": {
+          "name": "class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "property": {
+          "name": "property",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "catalog_outputs_generation_index": {
+          "name": "catalog_outputs_generation_index",
+          "columns": [
+            "generation_id"
+          ],
+          "isUnique": false
+        },
+        "catalog_outputs_asset_index": {
+          "name": "catalog_outputs_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "catalog_outputs_generation_id_catalog_generations_id_fk": {
+          "name": "catalog_outputs_generation_id_catalog_generations_id_fk",
+          "tableFrom": "catalog_outputs",
+          "tableTo": "catalog_generations",
+          "columnsFrom": [
+            "generation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "catalog_outputs_asset_id_assets_id_fk": {
+          "name": "catalog_outputs_asset_id_assets_id_fk",
+          "tableFrom": "catalog_outputs",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "catalog_outputs_output_version_id_output_versions_id_fk": {
+          "name": "catalog_outputs_output_version_id_output_versions_id_fk",
+          "tableFrom": "catalog_outputs",
+          "tableTo": "output_versions",
+          "columnsFrom": [
+            "output_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "catalog_outputs_generation_version_pk": {
+          "columns": [
+            "generation_id",
+            "output_version_id"
+          ],
+          "name": "catalog_outputs_generation_version_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "catalog_outputs_class_check": {
+          "name": "catalog_outputs_class_check",
+          "value": "\"catalog_outputs\".\"class\" IN ('image', 'video', 'font', 'document')"
+        }
+      }
+    },
+    "catalogs": {
+      "name": "catalogs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "schema": {
+          "name": "schema",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "digest": {
+          "name": "digest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "renderer_version": {
+          "name": "renderer_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generated_at": {
+          "name": "generated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "catalogs_project_environment_unique": {
+          "name": "catalogs_project_environment_unique",
+          "columns": [
+            "project_id",
+            "environment"
+          ],
+          "isUnique": true
+        },
+        "catalogs_generation_unique": {
+          "name": "catalogs_generation_unique",
+          "columns": [
+            "generation_id"
+          ],
+          "isUnique": true
+        },
+        "catalogs_project_index": {
+          "name": "catalogs_project_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "catalogs_project_id_projects_id_fk": {
+          "name": "catalogs_project_id_projects_id_fk",
+          "tableFrom": "catalogs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "catalogs_generation_id_catalog_generations_id_fk": {
+          "name": "catalogs_generation_id_catalog_generations_id_fk",
+          "tableFrom": "catalogs",
+          "tableTo": "catalog_generations",
+          "columnsFrom": [
+            "generation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "catalogs_environment_check": {
+          "name": "catalogs_environment_check",
+          "value": "\"catalogs\".\"environment\" IN ('development', 'production')"
+        }
+      }
+    },
+    "deletion_states": {
+      "name": "deletion_states",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_steps": {
+          "name": "completed_steps",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "pending_remote_objects": {
+          "name": "pending_remote_objects",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "deletion_states_asset_unique": {
+          "name": "deletion_states_asset_unique",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": true
+        },
+        "deletion_states_status_index": {
+          "name": "deletion_states_status_index",
+          "columns": [
+            "status",
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "deletion_states_status_check": {
+          "name": "deletion_states_status_check",
+          "value": "\"deletion_states\".\"status\" IN ('requested', 'in_progress', 'succeeded', 'retryable', 'failed')"
+        }
+      }
+    },
+    "environments": {
+      "name": "environments",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "r2_bucket": {
+          "name": "r2_bucket",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "r2_prefix": {
+          "name": "r2_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "public_base_url": {
+          "name": "public_base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "environments_project_name_unique": {
+          "name": "environments_project_name_unique",
+          "columns": [
+            "project_id",
+            "name"
+          ],
+          "isUnique": true
+        },
+        "environments_project_index": {
+          "name": "environments_project_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "environments_project_id_projects_id_fk": {
+          "name": "environments_project_id_projects_id_fk",
+          "tableFrom": "environments",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "environments_name_check": {
+          "name": "environments_name_check",
+          "value": "\"environments\".\"name\" IN ('development', 'production')"
+        }
+      }
+    },
+    "job_dependencies": {
+      "name": "job_dependencies",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "depends_on_job_id": {
+          "name": "depends_on_job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "job_dependencies_pair_unique": {
+          "name": "job_dependencies_pair_unique",
+          "columns": [
+            "job_id",
+            "depends_on_job_id"
+          ],
+          "isUnique": true
+        },
+        "job_dependencies_dependency_index": {
+          "name": "job_dependencies_dependency_index",
+          "columns": [
+            "depends_on_job_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "job_dependencies_job_id_jobs_id_fk": {
+          "name": "job_dependencies_job_id_jobs_id_fk",
+          "tableFrom": "job_dependencies",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "job_dependencies_depends_on_job_id_jobs_id_fk": {
+          "name": "job_dependencies_depends_on_job_id_jobs_id_fk",
+          "tableFrom": "job_dependencies",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "depends_on_job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "job_dependencies_not_self_check": {
+          "name": "job_dependencies_not_self_check",
+          "value": "\"job_dependencies\".\"job_id\" <> \"job_dependencies\".\"depends_on_job_id\""
+        }
+      }
+    },
+    "jobs": {
+      "name": "jobs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "retry_limit": {
+          "name": "retry_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "heartbeat_at": {
+          "name": "heartbeat_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_schema_version": {
+          "name": "payload_schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "jobs_idempotency_key_unique": {
+          "name": "jobs_idempotency_key_unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "isUnique": true
+        },
+        "jobs_claim_index": {
+          "name": "jobs_claim_index",
+          "columns": [
+            "status",
+            "available_at",
+            "priority"
+          ],
+          "isUnique": false
+        },
+        "jobs_workflow_index": {
+          "name": "jobs_workflow_index",
+          "columns": [
+            "workflow_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "jobs_workflow_id_workflows_id_fk": {
+          "name": "jobs_workflow_id_workflows_id_fk",
+          "tableFrom": "jobs",
+          "tableTo": "workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "jobs_kind_check": {
+          "name": "jobs_kind_check",
+          "value": "\"jobs\".\"kind\" IN ('verify_original', 'backup_original', 'plan_outputs', 'process_image_output', 'copy_video_output', 'process_font_output', 'publish_asset', 'notify_customer_upload', 'cleanup_local_files', 'delete_asset')"
+        },
+        "jobs_status_check": {
+          "name": "jobs_status_check",
+          "value": "\"jobs\".\"status\" IN ('queued', 'running', 'succeeded', 'retryable', 'dead', 'cancelled')"
+        },
+        "jobs_attempts_check": {
+          "name": "jobs_attempts_check",
+          "value": "\"jobs\".\"attempts\" >= 0 AND \"jobs\".\"retry_limit\" >= 0"
+        },
+        "jobs_payload_schema_version_check": {
+          "name": "jobs_payload_schema_version_check",
+          "value": "\"jobs\".\"payload_schema_version\" > 0"
+        }
+      }
+    },
+    "legacy_imports": {
+      "name": "legacy_imports",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "atomicity": {
+          "name": "atomicity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "imported_count": {
+          "name": "imported_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conflicts": {
+          "name": "conflicts",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "legacy_imports_project_created_index": {
+          "name": "legacy_imports_project_created_index",
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "legacy_imports_project_id_projects_id_fk": {
+          "name": "legacy_imports_project_id_projects_id_fk",
+          "tableFrom": "legacy_imports",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "legacy_imports_imported_count_check": {
+          "name": "legacy_imports_imported_count_check",
+          "value": "\"legacy_imports\".\"imported_count\" >= 0"
+        },
+        "legacy_imports_status_check": {
+          "name": "legacy_imports_status_check",
+          "value": "\"legacy_imports\".\"status\" IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')"
+        },
+        "legacy_imports_atomicity_check": {
+          "name": "legacy_imports_atomicity_check",
+          "value": "\"legacy_imports\".\"atomicity\" IN ('all_or_nothing', 'best_effort')"
+        }
+      }
+    },
+    "manifests": {
+      "name": "manifests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "catalog_generation_id": {
+          "name": "catalog_generation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "schema": {
+          "name": "schema",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "manifests_object_key_unique": {
+          "name": "manifests_object_key_unique",
+          "columns": [
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "manifests_sha256_unique": {
+          "name": "manifests_sha256_unique",
+          "columns": [
+            "sha256"
+          ],
+          "isUnique": true
+        },
+        "manifests_project_index": {
+          "name": "manifests_project_index",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": false
+        },
+        "manifests_asset_index": {
+          "name": "manifests_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        },
+        "manifests_catalog_generation_index": {
+          "name": "manifests_catalog_generation_index",
+          "columns": [
+            "catalog_generation_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "manifests_project_id_projects_id_fk": {
+          "name": "manifests_project_id_projects_id_fk",
+          "tableFrom": "manifests",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "manifests_asset_id_assets_id_fk": {
+          "name": "manifests_asset_id_assets_id_fk",
+          "tableFrom": "manifests",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "manifests_catalog_generation_id_catalog_generations_id_fk": {
+          "name": "manifests_catalog_generation_id_catalog_generations_id_fk",
+          "tableFrom": "manifests",
+          "tableTo": "catalog_generations",
+          "columnsFrom": [
+            "catalog_generation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "manifests_kind_check": {
+          "name": "manifests_kind_check",
+          "value": "\"manifests\".\"kind\" IN ('asset', 'catalog', 'deletion')"
+        },
+        "manifests_byte_size_check": {
+          "name": "manifests_byte_size_check",
+          "value": "\"manifests\".\"byte_size\" >= 0"
+        }
+      }
+    },
+    "organizations": {
+      "name": "organizations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "organizations_slug_unique": {
+          "name": "organizations_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "outbox_events": {
+      "name": "outbox_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "outbox_events_event_id_unique": {
+          "name": "outbox_events_event_id_unique",
+          "columns": [
+            "event_id"
+          ],
+          "isUnique": true
+        },
+        "outbox_events_delivery_index": {
+          "name": "outbox_events_delivery_index",
+          "columns": [
+            "status",
+            "available_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "outbox_events_kind_check": {
+          "name": "outbox_events_kind_check",
+          "value": "\"outbox_events\".\"kind\" IN ('customer_asset_uploaded', 'audit_event')"
+        },
+        "outbox_events_status_check": {
+          "name": "outbox_events_status_check",
+          "value": "\"outbox_events\".\"status\" IN ('pending', 'processing', 'sent', 'dead', 'delivered', 'failed')"
+        },
+        "outbox_events_attempts_check": {
+          "name": "outbox_events_attempts_check",
+          "value": "\"outbox_events\".\"attempts\" >= 0"
+        }
+      }
+    },
+    "output_definitions": {
+      "name": "output_definitions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "format": {
+          "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "quality": {
+          "name": "quality",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "show_ai_label": {
+          "name": "show_ai_label",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "output_definitions_asset_key_unique": {
+          "name": "output_definitions_asset_key_unique",
+          "columns": [
+            "asset_id",
+            "key"
+          ],
+          "isUnique": true
+        },
+        "output_definitions_asset_index": {
+          "name": "output_definitions_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "output_definitions_asset_id_assets_id_fk": {
+          "name": "output_definitions_asset_id_assets_id_fk",
+          "tableFrom": "output_definitions",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "output_definitions_kind_check": {
+          "name": "output_definitions_kind_check",
+          "value": "\"output_definitions\".\"kind\" IN ('image', 'video', 'font', 'document')"
+        },
+        "output_definitions_dimensions_check": {
+          "name": "output_definitions_dimensions_check",
+          "value": "(\"output_definitions\".\"kind\" = 'image' AND \"output_definitions\".\"width\" > 0 AND \"output_definitions\".\"height\" > 0 AND \"output_definitions\".\"format\" IN ('jpg', 'png', 'webp', 'avif') AND (\"output_definitions\".\"quality\" IS NULL OR (\"output_definitions\".\"quality\" BETWEEN 1 AND 100))) OR (\"output_definitions\".\"kind\" = 'video' AND \"output_definitions\".\"width\" IS NULL AND \"output_definitions\".\"height\" IS NULL AND \"output_definitions\".\"format\" IS NULL AND \"output_definitions\".\"quality\" IS NULL) OR (\"output_definitions\".\"kind\" = 'font' AND \"output_definitions\".\"width\" IS NULL AND \"output_definitions\".\"height\" IS NULL AND \"output_definitions\".\"format\" IS NOT NULL AND \"output_definitions\".\"quality\" IS NULL) OR (\"output_definitions\".\"kind\" = 'document' AND \"output_definitions\".\"key\" = 'default' AND \"output_definitions\".\"width\" IS NULL AND \"output_definitions\".\"height\" IS NULL AND \"output_definitions\".\"format\" IS NULL AND \"output_definitions\".\"quality\" IS NULL AND \"output_definitions\".\"show_ai_label\" IS NULL)"
+        }
+      }
+    },
+    "output_versions": {
+      "name": "output_versions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "output_definition_id": {
+          "name": "output_definition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "extension": {
+          "name": "extension",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "toolchain_version": {
+          "name": "toolchain_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "current": {
+          "name": "current",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "output_versions_definition_version_unique": {
+          "name": "output_versions_definition_version_unique",
+          "columns": [
+            "output_definition_id",
+            "version"
+          ],
+          "isUnique": true
+        },
+        "output_versions_current_unique": {
+          "name": "output_versions_current_unique",
+          "columns": [
+            "output_definition_id"
+          ],
+          "isUnique": true,
+          "where": "\"output_versions\".\"current\" = 1"
+        },
+        "output_versions_object_key_unique": {
+          "name": "output_versions_object_key_unique",
+          "columns": [
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "output_versions_asset_index": {
+          "name": "output_versions_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "output_versions_output_definition_id_output_definitions_id_fk": {
+          "name": "output_versions_output_definition_id_output_definitions_id_fk",
+          "tableFrom": "output_versions",
+          "tableTo": "output_definitions",
+          "columnsFrom": [
+            "output_definition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "output_versions_asset_id_assets_id_fk": {
+          "name": "output_versions_asset_id_assets_id_fk",
+          "tableFrom": "output_versions",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "output_versions_version_check": {
+          "name": "output_versions_version_check",
+          "value": "\"output_versions\".\"version\" > 0"
+        },
+        "output_versions_byte_size_check": {
+          "name": "output_versions_byte_size_check",
+          "value": "\"output_versions\".\"byte_size\" >= 0"
+        },
+        "output_versions_dimensions_check": {
+          "name": "output_versions_dimensions_check",
+          "value": "(\"output_versions\".\"width\" IS NULL AND \"output_versions\".\"height\" IS NULL) OR (\"output_versions\".\"width\" > 0 AND \"output_versions\".\"height\" > 0)"
+        },
+        "output_versions_document_media_type_check": {
+          "name": "output_versions_document_media_type_check",
+          "value": "\"output_versions\".\"media_type\" NOT IN ('application/pdf', 'application/json') OR (\"output_versions\".\"media_type\" = 'application/pdf' AND \"output_versions\".\"extension\" = 'pdf') OR (\"output_versions\".\"media_type\" = 'application/json' AND \"output_versions\".\"extension\" = 'json')"
+        }
+      }
+    },
+    "project_bindings": {
+      "name": "project_bindings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zitadel_project_id": {
+          "name": "zitadel_project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "service_project_id": {
+          "name": "service_project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_bindings_project_unique": {
+          "name": "project_bindings_project_unique",
+          "columns": [
+            "project_id"
+          ],
+          "isUnique": true
+        },
+        "project_bindings_zitadel_project_unique": {
+          "name": "project_bindings_zitadel_project_unique",
+          "columns": [
+            "zitadel_project_id"
+          ],
+          "isUnique": true
+        },
+        "project_bindings_service_project_unique": {
+          "name": "project_bindings_service_project_unique",
+          "columns": [
+            "service_project_id"
+          ],
+          "isUnique": true
+        },
+        "project_bindings_organization_index": {
+          "name": "project_bindings_organization_index",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_bindings_project_id_projects_id_fk": {
+          "name": "project_bindings_project_id_projects_id_fk",
+          "tableFrom": "project_bindings",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "project_bindings_organization_id_organizations_id_fk": {
+          "name": "project_bindings_organization_id_organizations_id_fk",
+          "tableFrom": "project_bindings",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_grants": {
+      "name": "project_grants",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_grants_subject_role_unique": {
+          "name": "project_grants_subject_role_unique",
+          "columns": [
+            "project_id",
+            "subject_id",
+            "role"
+          ],
+          "isUnique": true
+        },
+        "project_grants_organization_index": {
+          "name": "project_grants_organization_index",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        },
+        "project_grants_subject_index": {
+          "name": "project_grants_subject_index",
+          "columns": [
+            "subject_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_grants_project_id_projects_id_fk": {
+          "name": "project_grants_project_id_projects_id_fk",
+          "tableFrom": "project_grants",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "project_grants_organization_id_organizations_id_fk": {
+          "name": "project_grants_organization_id_organizations_id_fk",
+          "tableFrom": "project_grants",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "project_grants_role_check": {
+          "name": "project_grants_role_check",
+          "value": "\"project_grants\".\"role\" IN ('assets.uploader', 'assets.admin')"
+        }
+      }
+    },
+    "projects": {
+      "name": "projects",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "default_environment": {
+          "name": "default_environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "projects_organization_slug_unique": {
+          "name": "projects_organization_slug_unique",
+          "columns": [
+            "organization_id",
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "projects_organization_index": {
+          "name": "projects_organization_index",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "projects_organization_id_organizations_id_fk": {
+          "name": "projects_organization_id_organizations_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "projects_default_environment_check": {
+          "name": "projects_default_environment_check",
+          "value": "\"projects\".\"default_environment\" IN ('development', 'production')"
+        }
+      }
+    },
+    "reconciliation_runs": {
+      "name": "reconciliation_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_item_ids": {
+          "name": "completed_item_ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deleted_object_keys": {
+          "name": "deleted_object_keys",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "skipped_items": {
+          "name": "skipped_items",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "reconciliation_runs_plan_unique": {
+          "name": "reconciliation_runs_plan_unique",
+          "columns": [
+            "plan_id"
+          ],
+          "isUnique": true
+        },
+        "reconciliation_runs_status_index": {
+          "name": "reconciliation_runs_status_index",
+          "columns": [
+            "status",
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "reconciliation_runs_status_check": {
+          "name": "reconciliation_runs_status_check",
+          "value": "\"reconciliation_runs\".\"status\" IN ('running', 'succeeded')"
+        },
+        "reconciliation_runs_completed_item_ids_check": {
+          "name": "reconciliation_runs_completed_item_ids_check",
+          "value": "json_valid(\"reconciliation_runs\".\"completed_item_ids\")"
+        },
+        "reconciliation_runs_deleted_object_keys_check": {
+          "name": "reconciliation_runs_deleted_object_keys_check",
+          "value": "json_valid(\"reconciliation_runs\".\"deleted_object_keys\")"
+        },
+        "reconciliation_runs_skipped_items_check": {
+          "name": "reconciliation_runs_skipped_items_check",
+          "value": "json_valid(\"reconciliation_runs\".\"skipped_items\")"
+        }
+      }
+    },
+    "source_revisions": {
+      "name": "source_revisions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "class": {
+          "name": "class",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "original_filename": {
+          "name": "original_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "source_revisions_asset_revision_unique": {
+          "name": "source_revisions_asset_revision_unique",
+          "columns": [
+            "asset_id",
+            "revision"
+          ],
+          "isUnique": true
+        },
+        "source_revisions_object_key_unique": {
+          "name": "source_revisions_object_key_unique",
+          "columns": [
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "source_revisions_asset_index": {
+          "name": "source_revisions_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "source_revisions_asset_id_assets_id_fk": {
+          "name": "source_revisions_asset_id_assets_id_fk",
+          "tableFrom": "source_revisions",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "source_revisions_revision_check": {
+          "name": "source_revisions_revision_check",
+          "value": "\"source_revisions\".\"revision\" > 0"
+        },
+        "source_revisions_class_check": {
+          "name": "source_revisions_class_check",
+          "value": "\"source_revisions\".\"class\" IN ('image', 'video', 'font', 'document')"
+        },
+        "source_revisions_document_media_type_check": {
+          "name": "source_revisions_document_media_type_check",
+          "value": "\"source_revisions\".\"class\" <> 'document' OR \"source_revisions\".\"media_type\" IN ('application/pdf', 'application/json')"
+        },
+        "source_revisions_byte_size_check": {
+          "name": "source_revisions_byte_size_check",
+          "value": "\"source_revisions\".\"byte_size\" >= 0"
+        }
+      }
+    },
+    "uploads": {
+      "name": "uploads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "environment_id": {
+          "name": "environment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_revision_id": {
+          "name": "source_revision_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "uploader_id": {
+          "name": "uploader_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notification_eligible": {
+          "name": "notification_eligible",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "original_filename": {
+          "name": "original_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "folder_1": {
+          "name": "folder_1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_2": {
+          "name": "folder_2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_3": {
+          "name": "folder_3",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "integration_note": {
+          "name": "integration_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "staging_object_key": {
+          "name": "staging_object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uploads_project_status_index": {
+          "name": "uploads_project_status_index",
+          "columns": [
+            "project_id",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "uploads_asset_index": {
+          "name": "uploads_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        },
+        "uploads_source_revision_index": {
+          "name": "uploads_source_revision_index",
+          "columns": [
+            "source_revision_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "uploads_project_id_projects_id_fk": {
+          "name": "uploads_project_id_projects_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "uploads_environment_id_environments_id_fk": {
+          "name": "uploads_environment_id_environments_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "environments",
+          "columnsFrom": [
+            "environment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "uploads_asset_id_assets_id_fk": {
+          "name": "uploads_asset_id_assets_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        },
+        "uploads_source_revision_id_source_revisions_id_fk": {
+          "name": "uploads_source_revision_id_source_revisions_id_fk",
+          "tableFrom": "uploads",
+          "tableTo": "source_revisions",
+          "columnsFrom": [
+            "source_revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "uploads_contiguous_folders_check": {
+          "name": "uploads_contiguous_folders_check",
+          "value": "(\"uploads\".\"folder_2\" IS NULL OR \"uploads\".\"folder_1\" IS NOT NULL) AND (\"uploads\".\"folder_3\" IS NULL OR \"uploads\".\"folder_2\" IS NOT NULL)"
+        },
+        "uploads_status_check": {
+          "name": "uploads_status_check",
+          "value": "\"uploads\".\"status\" IN ('pending', 'verified', 'accepted', 'failed', 'cancelled')"
+        },
+        "uploads_byte_size_check": {
+          "name": "uploads_byte_size_check",
+          "value": "\"uploads\".\"byte_size\" >= 0"
+        }
+      }
+    },
+    "workflows": {
+      "name": "workflows",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "workflows_project_status_index": {
+          "name": "workflows_project_status_index",
+          "columns": [
+            "project_id",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "workflows_asset_index": {
+          "name": "workflows_asset_index",
+          "columns": [
+            "asset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "workflows_project_id_projects_id_fk": {
+          "name": "workflows_project_id_projects_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "workflows_asset_id_assets_id_fk": {
+          "name": "workflows_asset_id_assets_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "assets",
+          "columnsFrom": [
+            "asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "workflows_kind_check": {
+          "name": "workflows_kind_check",
+          "value": "\"workflows\".\"kind\" IN ('asset_processing', 'catalog_generation', 'deletion', 'cleanup')"
+        },
+        "workflows_status_check": {
+          "name": "workflows_status_check",
+          "value": "\"workflows\".\"status\" IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "assets_project_path_unique": {
+        "columns": {
+          "coalesce(\"folder_1\", '')": {
+            "isExpression": true
+          },
+          "coalesce(\"folder_2\", '')": {
+            "isExpression": true
+          },
+          "coalesce(\"folder_3\", '')": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

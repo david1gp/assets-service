@@ -36,7 +36,7 @@ describe("fixture server", () => {
     const response = await get(`/api/v1/projects/${server.seed.serviceProjectId}/assets`)
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: { assets: { class: string }[] } }
-    expect(body.data.assets.map((asset) => asset.class).sort()).toEqual(["font", "image", "video"])
+    expect(body.data.assets.map((asset) => asset.class).sort()).toEqual(["document", "font", "image", "video"])
   })
 
   test("rejects an unauthenticated request", async () => {

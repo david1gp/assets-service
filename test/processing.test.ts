@@ -3,6 +3,7 @@ import sharp from "sharp"
 import * as v from "valibot"
 
 import { imageProcess } from "../src/processing/imageProcess.js"
+import { documentProcess } from "../src/processing/documentProcess.js"
 import { fontProcess } from "../src/processing/fontProcess.js"
 import { processingProvenanceSchema } from "../src/processing/processingProvenanceSchema.js"
 import { videoProcess } from "../src/processing/videoProcess.js"
@@ -128,4 +129,28 @@ test("font processing preserves already-woff2 source bytes and typed metadata", 
   expect(result.data.outputFormat).toBe("woff2")
   expect(result.data.metadata.family).toBe("Generated")
   expect(result.data.provenance.toolchain).toEqual([{ name: "fixture-probe", version: "1" }])
+})
+
+test("document processing preserves source bytes and records the mapped extension and media type", () => {
+  const cases = [
+    ["guide.pdf", "application/pdf"],
+    ["guide.json", "application/json"],
+    ["guide.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    ["guide.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    ["guide.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+    ["guide.csv", "text/csv"],
+    ["guide.txt", "text/plain"],
+  ] as const
+  for (const [sourceName, mediaType] of cases) {
+    const sourceBytes = new Uint8Array([0, 255, 10, 13, 0, 42])
+    const result = documentProcess({ sourceBytes, sourceName, mediaType })
+    expect(result.success).toBe(true)
+    if (!result.success) continue
+
+    expect(Buffer.from(result.data.bytes).equals(Buffer.from(sourceBytes))).toBe(true)
+    expect(result.data.bytes).not.toBe(sourceBytes)
+    expect(result.data.metadata).toMatchObject({ kind: "document", mediaType })
+    expect(result.data.metadata.extension === sourceName.slice(sourceName.lastIndexOf(".") + 1)).toBe(true)
+    expect(v.safeParse(processingProvenanceSchema, result.data.provenance).success).toBe(true)
+  }
 })

@@ -39,6 +39,8 @@ import type { MediaMetadata } from "../metadata/mediaMetadataSchema.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
 import { outputRemoteObjectKeyCreate } from "../output/outputRemoteObjectKeyCreate.js"
 import { outputVersionRepositoryAllocate } from "../output/outputVersionRepositoryAllocate.js"
+import { documentMediaTypeSchema } from "../document/documentMediaTypeSchema.js"
+import { documentProcess } from "../processing/documentProcess.js"
 import { fontProcess } from "../processing/fontProcess.js"
 import type { FontProcessingAdapter } from "../processing/fontProcessingAdapter.js"
 import { imageProcess } from "../processing/imageProcess.js"
@@ -89,7 +91,12 @@ type PublishedOutput = {
   metadata: MediaMetadata
 }
 
-const processKinds = new Set<Job["kind"]>(["process_image_output", "copy_video_output", "process_font_output"])
+const processKinds = new Set<Job["kind"]>([
+  "process_image_output",
+  "copy_video_output",
+  "process_font_output",
+  "process_document_output",
+])
 
 export const assetWorkflowHandlersRegister = (
   registry: HandlerRegistry,
@@ -102,6 +109,7 @@ export const assetWorkflowHandlersRegister = (
     ["process_image_output", (job, context) => processOutputHandle(job, context, input)],
     ["copy_video_output", (job, context) => processOutputHandle(job, context, input)],
     ["process_font_output", (job, context) => processOutputHandle(job, context, input)],
+    ["process_document_output", (job, context) => processOutputHandle(job, context, input)],
     ["publish_asset", (job, context) => publishAssetHandle(job, context, input)],
     ["notify_customer_upload", (job, context) => notifyCustomerUploadHandle(job, context, input)],
     ["cleanup_local_files", (job, context) => cleanupLocalFilesHandle(job, context, input)],
@@ -266,7 +274,9 @@ async function planOutputsHandle(
             ? "process_image_output"
             : definition.kind === "video"
               ? "copy_video_output"
-              : "process_font_output"
+              : definition.kind === "font"
+                ? "process_font_output"
+                : "process_document_output"
         const expectedId = `${job.workflowId}-output-${definition.id}`
         const existing = outputJobsByDefinition.get(definition.id)
         const outputJob = existing ?? transaction.select().from(jobTable).where(eq(jobTable.id, expectedId)).get()
@@ -538,6 +548,7 @@ async function processOutputHandle(
     id: `version-${job.id}`,
     outputDefinitionId: definition.id,
     assetId: context.data.asset.id,
+    sourceRevisionId: context.data.source.id,
     byteSize: processed.data.bytes.byteLength,
     sha256: await bytesSha256(processed.data.bytes),
     mediaType,
@@ -838,6 +849,21 @@ async function outputProcess(
       provenance: processed.data.provenance,
     })
   }
+  if (definition.kind === "document") {
+    const mediaType = v.safeParse(documentMediaTypeSchema, source.mediaType)
+    if (!mediaType.success) return resultErrorCreate("processOutputHandle", "Document source media type is invalid")
+    const processed = documentProcess({
+      sourceBytes: processBytes,
+      sourceName: source.originalFilename,
+      mediaType: mediaType.output,
+    })
+    if (!processed.success) return processed
+    return processResultCreate({
+      bytes: Uint8Array.from(processed.data.bytes),
+      metadata: processed.data.metadata,
+      provenance: processed.data.provenance,
+    })
+  }
   const outputFormat: "woff2" | undefined = definition.format === "woff2" ? "woff2" : undefined
   const request = {
     sourceBytes: processBytes,
@@ -859,12 +885,14 @@ function outputExtensionRead(
 ): string | undefined {
   if (definition.kind === "image") return definition.format ?? undefined
   if (definition.kind === "font") return definition.format ?? undefined
+  if (definition.kind === "document") return metadata.kind === "document" ? metadata.extension : undefined
   return sourceExtensionRead(metadata)
 }
 
 function sourceExtensionRead(metadata: MediaMetadata): string {
   if (metadata.kind === "image") return metadata.format
   if (metadata.kind === "font") return metadata.format
+  if (metadata.kind === "document") return metadata.extension
   if (metadata.container === "matroska") return "mkv"
   return metadata.container
 }
@@ -875,6 +903,7 @@ function outputMediaTypeRead(
 ): string | undefined {
   if (definition.kind === "image") return definition.format === "jpg" ? "image/jpeg" : `image/${definition.format}`
   if (definition.kind === "font") return `font/${definition.format}`
+  if (definition.kind === "document") return metadata.kind === "document" ? metadata.mediaType : undefined
   if (metadata.kind !== "video") return undefined
   if (metadata.container === "matroska" || metadata.container === "webm") return "video/webm"
   return "video/mp4"

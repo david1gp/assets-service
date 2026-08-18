@@ -4,12 +4,13 @@ import * as v from "valibot"
 
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
+import { documentExtensionMediaTypes } from "../document/documentExtensionMediaTypes.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { legacyTransformParse } from "./legacyTransformParse.js"
 
-type LegacyImportClass = "image" | "video" | "font"
+type LegacyImportClass = "image" | "video" | "font" | "document"
 type LegacyAiProvenance = "generated" | "enhanced" | null
 
 type LegacyImportConflict = {
@@ -53,7 +54,17 @@ type LegacyFontOutput = {
   mediaType: string
 }
 
-type LegacyImportOutput = LegacyImageOutput | LegacyVideoOutput | LegacyFontOutput
+type LegacyDocumentOutput = {
+  kind: "document"
+  key: "default"
+  extension: string
+  byteSize: number
+  sha256: string
+  bytes: Uint8Array
+  mediaType: string
+}
+
+type LegacyImportOutput = LegacyImageOutput | LegacyVideoOutput | LegacyFontOutput | LegacyDocumentOutput
 
 type LegacyImportGroup = {
   key: string
@@ -102,6 +113,11 @@ type LegacyImportGroup = {
     unicodeRanges: string[]
     format: string
   }
+  documentMetadata?: {
+    kind: "document"
+    extension: string
+    mediaType: string
+  }
   outputs: LegacyImportOutput[]
   conflict: boolean
 }
@@ -126,11 +142,13 @@ const sourceDirectories: Record<LegacyImportClass, string> = {
   image: "images",
   video: "videos",
   font: "fonts",
+  document: "documents",
 }
 
 const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".tiff", ".svg"])
 const videoExtensions = new Set([".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"])
 const fontExtensions = new Set([".woff2"])
+const documentExtensions = new Set(Object.keys(documentExtensionMediaTypes).map((extension) => `.${extension}`))
 const sidecarExtensions = new Set([".md", ".txt"])
 
 export const legacyImportPlanCreate = async (
@@ -174,6 +192,7 @@ export const legacyImportPlanCreate = async (
         ...(candidate.imageMetadata === undefined ? {} : { imageMetadata: candidate.imageMetadata }),
         ...(candidate.videoMetadata === undefined ? {} : { videoMetadata: candidate.videoMetadata }),
         ...(candidate.fontMetadata === undefined ? {} : { fontMetadata: candidate.fontMetadata }),
+        ...(candidate.documentMetadata === undefined ? {} : { documentMetadata: candidate.documentMetadata }),
         outputs: [candidate.output],
         conflict: false,
       })
@@ -239,6 +258,8 @@ export const legacyImportPlanCreate = async (
       current.videoMetadata = candidate.videoMetadata
     if (current.fontMetadata === undefined && candidate.fontMetadata !== undefined)
       current.fontMetadata = candidate.fontMetadata
+    if (current.documentMetadata === undefined && candidate.documentMetadata !== undefined)
+      current.documentMetadata = candidate.documentMetadata
   }
 
   const plannedGroups = [...groups.values()]
@@ -281,11 +302,12 @@ async function generatedListsRead(
   files: readonly FileEntry[],
   conflicts: LegacyImportConflict[],
 ): Promise<GeneratedLists> {
-  const lists: GeneratedLists = { image: [], video: [], font: [] }
+  const lists: GeneratedLists = { image: [], video: [], font: [], document: [] }
   const names: Record<string, LegacyImportClass> = {
     "imageList.ts": "image",
     "videoList.ts": "video",
     "fontList.ts": "font",
+    "documentList.ts": "document",
   }
   for (const file of files) {
     const className = names[basename(file.relativePath)]
@@ -348,7 +370,8 @@ async function candidateRead(
   options: { showAiLabel?: boolean },
 ): Promise<Result<LegacyCandidate | null>> {
   const extension = extname(file.relativePath).toLowerCase()
-  if (sidecarExtensions.has(extension)) return { success: true, data: null }
+  if (sidecarExtensions.has(extension) && !file.relativePath.startsWith("documents/"))
+    return { success: true, data: null }
   const parsedPath = legacyPathParse(file.relativePath)
   if (!parsedPath.success) return parsedPath
   if (parsedPath.data === null) return { success: true, data: null }
@@ -357,7 +380,9 @@ async function candidateRead(
       ? imageExtensions.has(extension)
       : parsedPath.data.class === "video"
         ? videoExtensions.has(extension)
-        : fontExtensions.has(extension)
+        : parsedPath.data.class === "font"
+          ? fontExtensions.has(extension)
+          : documentExtensions.has(extension)
   if (!supported) return { success: true, data: null }
 
   let bytes: Uint8Array
@@ -373,6 +398,8 @@ async function candidateRead(
     sidecars.get(sidecarKey) ??
     (typeof listEntry?.value.alt === "string" ? normalizeSidecar(listEntry.value.alt) : null)
   const mediaType = mediaTypeRead(parsedPath.data.class, extension, listEntry?.value.mimeType)
+  if (parsedPath.data.class === "document" && documentExtensionMediaTypes[extension.slice(1)] !== mediaType)
+    return resultErrorCreate("legacyImportCandidateRead", "Document media type does not match its filename extension")
 
   if (parsedPath.data.class === "image") {
     if (parsedPath.data.transform === null) {
@@ -464,10 +491,38 @@ async function candidateRead(
   }
 
   const font = fontMetadataRead(parsedPath.data.basename, listEntry?.value)
+  if (parsedPath.data.class === "font")
+    return {
+      success: true,
+      data: {
+        class: "font",
+        relativePath: file.relativePath,
+        folders: parsedPath.data.folders,
+        filename: parsedPath.data.filename,
+        basename: parsedPath.data.basename,
+        bytes,
+        sha256,
+        mediaType,
+        alt: null,
+        aiProvenance: null,
+        fontMetadata: font,
+        output: {
+          kind: "font",
+          key: "default",
+          format: "woff2",
+          byteSize: bytes.byteLength,
+          sha256,
+          bytes,
+          mediaType,
+        },
+      },
+    }
+
+  const documentExtension = extension.slice(1)
   return {
     success: true,
     data: {
-      class: "font",
+      class: "document",
       relativePath: file.relativePath,
       folders: parsedPath.data.folders,
       filename: parsedPath.data.filename,
@@ -477,8 +532,16 @@ async function candidateRead(
       mediaType,
       alt: null,
       aiProvenance: null,
-      fontMetadata: font,
-      output: { kind: "font", key: "default", format: "woff2", byteSize: bytes.byteLength, sha256, bytes, mediaType },
+      documentMetadata: { kind: "document", extension: documentExtension, mediaType },
+      output: {
+        kind: "document",
+        key: "default",
+        extension: documentExtension,
+        byteSize: bytes.byteLength,
+        sha256,
+        bytes,
+        mediaType,
+      },
     },
   }
 }
@@ -497,6 +560,7 @@ type LegacyCandidate = {
   imageMetadata?: LegacyImportGroup["imageMetadata"]
   videoMetadata?: LegacyImportGroup["videoMetadata"]
   fontMetadata?: LegacyImportGroup["fontMetadata"]
+  documentMetadata?: LegacyImportGroup["documentMetadata"]
   output: LegacyImportOutput
 }
 
@@ -519,7 +583,15 @@ type LegacyTransform = {
 function legacyPathParse(path: string, allowImageWithoutTransform = false): Result<LegacyPath | null> {
   const segments = path.split("/")
   const className =
-    segments[0] === "images" ? "image" : segments[0] === "videos" ? "video" : segments[0] === "fonts" ? "font" : null
+    segments[0] === "images"
+      ? "image"
+      : segments[0] === "videos"
+        ? "video"
+        : segments[0] === "fonts"
+          ? "font"
+          : segments[0] === "documents"
+            ? "document"
+            : null
   if (className === null || segments.length < 2) return { success: true, data: null }
   const filename = segments.at(-1)
   if (filename === undefined) return resultErrorCreate("legacyImportPathParse", "The source filename is missing")
@@ -709,7 +781,8 @@ function mediaTypeRead(className: LegacyImportClass, extension: string, listMedi
     if (extension === ".avi") return "video/x-msvideo"
     return "video/x-matroska"
   }
-  return "font/woff2"
+  if (className === "font") return "font/woff2"
+  return documentExtensionMediaTypes[extension.slice(1)] ?? "application/octet-stream"
 }
 
 function normalizeListPath(value: string): string {

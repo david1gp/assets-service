@@ -1,4 +1,5 @@
 import type { UploadSupportedMediaType } from "../../upload/uploadSupportedMediaTypes.js"
+import { documentExtensionMediaTypes } from "../../document/documentExtensionMediaTypes.js"
 
 /**
  * Fallback media types by file extension, for browsers that leave `File.type`
@@ -18,4 +19,5 @@ export const uiUploadExtensionMediaTypes: Readonly<Record<string, UploadSupporte
   otf: "font/otf",
   woff: "font/woff",
   woff2: "font/woff2",
+  ...documentExtensionMediaTypes,
 }

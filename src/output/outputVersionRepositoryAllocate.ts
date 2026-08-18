@@ -10,8 +10,9 @@ import { outputVersionDecisionCreate } from "./outputVersionDecisionCreate.js"
 
 type OutputVersionAllocationInput = Omit<
   typeof outputVersionTable.$inferInsert,
-  "version" | "objectKey" | "current"
+  "version" | "objectKey" | "current" | "sourceRevisionId"
 > & {
+  sourceRevisionId: string
   objectKeyCreate: (version: number) => string
   current?: boolean
   forceNewVersion?: boolean
@@ -36,7 +37,11 @@ export const outputVersionRepositoryAllocate = (
       .all()
     const existingById = transaction.select().from(outputVersionTable).where(eq(outputVersionTable.id, input.id)).get()
     if (existingById !== undefined) {
-      if (existingById.outputDefinitionId !== input.outputDefinitionId || existingById.sha256 !== input.sha256)
+      if (
+        existingById.outputDefinitionId !== input.outputDefinitionId ||
+        existingById.sha256 !== input.sha256 ||
+        existingById.sourceRevisionId !== input.sourceRevisionId
+      )
         return resultErrorCreate(op, "The output version idempotency record did not match")
       return { success: true, data: { outcome: "reused", record: existingById } }
     }
@@ -45,6 +50,7 @@ export const outputVersionRepositoryAllocate = (
       input.byteSize,
       input.sha256,
       input.forceNewVersion ?? false,
+      input.sourceRevisionId,
     )
 
     if (decision.kind === "collision") {

@@ -385,11 +385,13 @@ describe("durable workflow execution", () => {
   })
 
   test("keeps media and cleanup resource limits independent", () => {
-    const pool = workflowResourcePoolCreate({ image: 1, video: 1, font: 1, rclone: 1, cleanup: 1 })
+    const pool = workflowResourcePoolCreate({ image: 1, video: 1, font: 1, document: 1, rclone: 1, cleanup: 1 })
     expect(pool.acquire("image")).toBe(true)
     expect(pool.acquire("image")).toBe(false)
     expect(pool.acquire("video")).toBe(true)
     expect(pool.acquire("font")).toBe(true)
+    expect(pool.acquire("document")).toBe(true)
+    expect(pool.acquire("document")).toBe(false)
     expect(pool.acquire("rclone")).toBe(true)
     expect(pool.acquire("cleanup")).toBe(true)
     pool.release("image")

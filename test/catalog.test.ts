@@ -32,6 +32,16 @@ const imageEntry = {
   },
 }
 
+const documentEntry = {
+  class: "document" as const,
+  folders: ["guides"],
+  basename: "guide",
+  key: "default" as const,
+  path: "documents/guides/guide_default_v1.txt",
+  mediaType: "text/plain" as const,
+  metadata: { kind: "document" as const, extension: "txt" as const, mediaType: "text/plain" as const },
+}
+
 test("canonical JSON sorts object keys without changing array order", () => {
   expect(canonicalJsonStringify({ z: 1, a: { y: true, b: 2 }, list: ["b", "a"] })).toBe(
     '{"a":{"b":2,"y":true},"list":["b","a"],"z":1}',
@@ -84,6 +94,23 @@ test("catalog renderer rejects generated property collisions", () => {
   if (!result.success) expect(result.errorMessage).toContain("generated property collision")
 })
 
+test("catalog renderer canonicalizes and renders documents in documentList", () => {
+  const result = catalogListsRender([
+    {
+      ...documentEntry,
+      folders: ["guide\u0301"],
+      basename: "manual\u0301",
+      path: "documents/guidé/manuaĺ_default_v1.txt",
+    },
+  ])
+
+  expect(result.success).toBe(true)
+  if (!result.success) return
+  expect(result.data.documentList).toContain("export const documentList")
+  expect(result.data.documentList).toContain("guidé_manuaĺ_default")
+  expect(result.data.documentList).not.toContain("guide\\u0301")
+})
+
 test("catalog renderer escapes TypeScript string values", () => {
   const result = catalogListsRender([
     {
@@ -110,6 +137,7 @@ test("catalog list writes are atomic and check exact bytes", async () => {
     imageListPath: join(directory, "imageList.ts"),
     videoListPath: join(directory, "videoList.ts"),
     fontListPath: join(directory, "fontList.ts"),
+    documentListPath: join(directory, "documentList.ts"),
   }
 
   try {

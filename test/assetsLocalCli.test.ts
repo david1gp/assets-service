@@ -73,6 +73,40 @@ test("local import writes content-hashed outputs and deterministic lists", async
   }
 })
 
+test("local fallback imports byte-preserving documents and writes documentList", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-service-local-documents-"))
+  try {
+    await mkdir(join(root, "documents", "guides"), { recursive: true })
+    const source = new Uint8Array([0, 1, 2, 0xff, 0x0a])
+    await writeFile(join(root, "documents", "guides", "guide.txt"), source)
+
+    const imported = await cliRun(root, ["import", root])
+    expect(imported.exitCode).toBe(0)
+    const asset = (
+      imported.value.data?.assets as
+        | Array<{
+            class: string
+            sourcePath: string
+            outputs: Array<{ key: string; path: string; mediaType: string }>
+          }>
+        | undefined
+    )?.[0]
+    expect(asset).toMatchObject({ class: "document", sourcePath: "documents/guides/guide.txt" })
+    expect(asset?.outputs[0]).toMatchObject({ key: "default", mediaType: "text/plain" })
+    expect(
+      Buffer.from(await readFile(join(root, "public", asset?.outputs[0]?.path ?? ""))).equals(Buffer.from(source)),
+    ).toBe(true)
+
+    const listed = await cliRun(root, ["lists"])
+    expect(listed.exitCode).toBe(0)
+    expect(await readFile(join(root, "src", "app", "assets", "documentList.ts"), "utf8")).toContain(
+      "guides_guide_default",
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("local references include zero counts and ignore dynamic accesses", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-service-references-"))
   try {

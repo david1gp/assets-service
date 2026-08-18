@@ -12,6 +12,8 @@ import { canonicalJsonStringify } from "../catalog/canonicalJsonStringify.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsRender } from "../catalog/catalogListsRender.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
+import { documentExtensionMediaTypes } from "../document/documentExtensionMediaTypes.js"
+import { documentMediaTypeSchema } from "../document/documentMediaTypeSchema.js"
 import { legacyTransformParse } from "../import/legacyTransformParse.js"
 import type { ImageMetadata } from "../metadata/imageMetadataSchema.js"
 import type { MediaMetadata } from "../metadata/mediaMetadataSchema.js"
@@ -19,6 +21,7 @@ import { type OutputFormat, outputFormatSchema } from "../output/outputFormatSch
 import { outputLocalObjectKeyCreate } from "../output/outputLocalObjectKeyCreate.js"
 import { fontOutputFormatSchema } from "../processing/fontOutputFormatSchema.js"
 import { fontProcess } from "../processing/fontProcess.js"
+import { documentProcess } from "../processing/documentProcess.js"
 import { imageProcess } from "../processing/imageProcess.js"
 import { videoProcess } from "../processing/videoProcess.js"
 import { staticReferenceCountsCreate } from "../reference-analysis/staticReferenceCountsCreate.js"
@@ -42,6 +45,7 @@ type LocalOutputDefinition =
     }
   | { kind: "video"; key: string }
   | { kind: "font"; key: string; format: "woff2" }
+  | { kind: "document"; key: "default" }
 
 type LocalServiceOptions = {
   root: string
@@ -53,7 +57,7 @@ type LocalServiceOptions = {
 }
 
 type LocalAssetCandidate = {
-  class: "image" | "video" | "font"
+  class: "image" | "video" | "font" | "document"
   folders: Folders
   filename: string
   basename: string
@@ -93,7 +97,7 @@ type LocalTransform = {
 }
 
 type ParsedSource = {
-  class: "image" | "video" | "font"
+  class: "image" | "video" | "font" | "document"
   folders: Folders
   filename: string
   basename: string
@@ -104,6 +108,7 @@ type ParsedSource = {
 const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".tiff", ".svg"])
 const videoExtensions = new Set([".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"])
 const fontExtensions = new Set([".ttf", ".otf", ".woff", ".woff2"])
+const documentExtensions = new Set(Object.keys(documentExtensionMediaTypes).map((extension) => `.${extension}`))
 const sidecarExtensions = new Set([".md", ".txt"])
 
 export const assetsLocalServiceCreate = (options: LocalServiceOptions) => {
@@ -368,6 +373,8 @@ export const assetsLocalServiceCreate = (options: LocalServiceOptions) => {
       return resultErrorCreate("assetsLocalOutputsRemove", `The asset ${reference} was not found`)
     if (asset.class === "image" && asset.outputs.length <= 1)
       return resultErrorCreate("assetsLocalOutputsRemove", "An image must retain one output")
+    if (asset.class === "document" && asset.outputs.length <= 1)
+      return resultErrorCreate("assetsLocalOutputsRemove", "A document must retain one output")
     const output = asset.outputs.find((candidate) => candidate.key === outputKey)
     if (output === undefined)
       return resultErrorCreate("assetsLocalOutputsRemove", `The output ${outputKey} was not found`)
@@ -576,6 +583,7 @@ export const assetsLocalServiceCreate = (options: LocalServiceOptions) => {
         "src/app/assets/imageList.ts",
         "src/app/assets/videoList.ts",
         "src/app/assets/fontList.ts",
+        "src/app/assets/documentList.ts",
         ...generatedListPaths,
       ],
     })
@@ -734,7 +742,12 @@ export const assetsLocalServiceCreate = (options: LocalServiceOptions) => {
   }
 }
 
-type ListFiles = { imageListPath: string; videoListPath: string; fontListPath: string }
+type ListFiles = {
+  imageListPath: string
+  videoListPath: string
+  fontListPath: string
+  documentListPath: string
+}
 
 async function localScanCreate(root: string, showAiLabel?: boolean): Promise<Result<LocalScan>> {
   const files = await sourceFilesRead(root)
@@ -744,7 +757,7 @@ async function localScanCreate(root: string, showAiLabel?: boolean): Promise<Res
     const extension = extname(file.relativePath).toLowerCase()
     if (!sidecarExtensions.has(extension)) continue
     const parsed = sourcePathParse(file.relativePath, true)
-    if (!parsed.success || parsed.data === null) continue
+    if (!parsed.success || parsed.data === null || parsed.data.class !== "image") continue
     const key = assetGroupIdentityKey(parsed.data)
     const current = sidecars.get(key) ?? {}
     try {
@@ -758,7 +771,7 @@ async function localScanCreate(root: string, showAiLabel?: boolean): Promise<Res
   const conflicts: LocalConflict[] = []
   for (const file of files.data) {
     const extension = extname(file.relativePath).toLowerCase()
-    if (sidecarExtensions.has(extension)) continue
+    if (sidecarExtensions.has(extension) && !file.relativePath.startsWith("documents/")) continue
     const parsed = sourcePathParse(file.relativePath)
     if (!parsed.success) {
       conflicts.push(conflictCreate(file.relativePath, "invalid_path", parsed.errorMessage))
@@ -770,7 +783,9 @@ async function localScanCreate(root: string, showAiLabel?: boolean): Promise<Res
         ? imageExtensions.has(extension)
         : parsed.data.class === "video"
           ? videoExtensions.has(extension)
-          : fontExtensions.has(extension)
+          : parsed.data.class === "font"
+            ? fontExtensions.has(extension)
+            : documentExtensions.has(extension)
     if (!supported) continue
     let bytes: Uint8Array
     try {
@@ -854,7 +869,7 @@ async function localScanCreate(root: string, showAiLabel?: boolean): Promise<Res
 async function sourceFilesRead(root: string): Promise<Result<Array<{ absolutePath: string; relativePath: string }>>> {
   const files: Array<{ absolutePath: string; relativePath: string }> = []
   try {
-    for (const directory of ["images", "videos", "fonts"]) {
+    for (const directory of ["images", "videos", "documents", "fonts"]) {
       const path = join(root, directory)
       if (await fileExists(path)) await sourceFilesCollect(root, path, files)
     }
@@ -886,7 +901,15 @@ async function sourceFilesCollect(
 function sourcePathParse(path: string, allowSidecar = false): Result<ParsedSource | null> {
   const segments = path.split("/")
   const className =
-    segments[0] === "images" ? "image" : segments[0] === "videos" ? "video" : segments[0] === "fonts" ? "font" : null
+    segments[0] === "images"
+      ? "image"
+      : segments[0] === "videos"
+        ? "video"
+        : segments[0] === "fonts"
+          ? "font"
+          : segments[0] === "documents"
+            ? "document"
+            : null
   if (className === null || segments.length < 2) return { success: true, data: null }
   const filename = segments.at(-1)
   if (filename === undefined) return resultErrorCreate("assetsLocalSourcePathParse", "The source filename is missing")
@@ -957,7 +980,8 @@ function outputDefinitionCreate(
     }
   }
   if (parsed.class === "video") return { kind: "video", key: "default" }
-  return { kind: "font", key: "default", format: "woff2" }
+  if (parsed.class === "font") return { kind: "font", key: "default", format: "woff2" }
+  return { kind: "document", key: "default" }
 }
 
 function localAssetDraftCreate(
@@ -1003,13 +1027,23 @@ function localOutputPlaceholderCreate(
     path: "pending",
     sha256: "0".repeat(64),
     byteSize: 0,
-    mediaType: asset.class === "image" ? "image/webp" : asset.class === "video" ? "video/mp4" : "font/woff2",
+    mediaType:
+      asset.class === "image"
+        ? "image/webp"
+        : asset.class === "video"
+          ? "video/mp4"
+          : asset.class === "font"
+            ? "font/woff2"
+            : "text/plain",
     metadata: fallbackMetadataCreate({ class: asset.class, basename: "asset" }),
   }
   return base as LocalOutput
 }
 
-function fallbackMetadataCreate(input: { class: "image" | "video" | "font"; basename: string }): MediaMetadata {
+function fallbackMetadataCreate(input: {
+  class: "image" | "video" | "font" | "document"
+  basename: string
+}): MediaMetadata {
   if (input.class === "image")
     return {
       kind: "image",
@@ -1037,17 +1071,19 @@ function fallbackMetadataCreate(input: { class: "image" | "video" | "font"; base
       streams: 1,
       bitrate: null,
     }
-  return {
-    kind: "font",
-    family: input.basename,
-    style: "normal",
-    weight: 400,
-    width: 5,
-    variableAxes: [],
-    glyphCount: 0,
-    unicodeRanges: [],
-    format: "woff2",
-  }
+  if (input.class === "font")
+    return {
+      kind: "font",
+      family: input.basename,
+      style: "normal",
+      weight: 400,
+      width: 5,
+      variableAxes: [],
+      glyphCount: 0,
+      unicodeRanges: [],
+      format: "woff2",
+    }
+  return { kind: "document", extension: "txt", mediaType: "text/plain" }
 }
 
 async function outputProcess(
@@ -1103,6 +1139,27 @@ async function outputProcess(
       },
     }
   }
+  if (definition.kind === "document") {
+    const mediaType = v.safeParse(documentMediaTypeSchema, asset.sourceMediaType)
+    if (!mediaType.success)
+      return resultErrorCreate("assetsLocalDocumentProcess", "The document media type was invalid")
+    const result = documentProcess({
+      sourceBytes: sourceBytes as Uint8Array<ArrayBuffer>,
+      sourceName: asset.filename,
+      mediaType: mediaType.output,
+    })
+    if (!result.success) return result
+    return {
+      success: true,
+      data: {
+        bytes: result.data.bytes,
+        sha256: contentSha256Create(result.data.bytes),
+        mediaType: result.data.metadata.mediaType,
+        metadata: result.data.metadata,
+        extension: result.data.metadata.extension,
+      },
+    }
+  }
   const result = fontProcess({
     sourceBytes: sourceBytes as Uint8Array<ArrayBuffer>,
     sourceName: asset.filename,
@@ -1131,7 +1188,7 @@ function localOutputDefinitionParse(value: unknown): Result<LocalOutputDefinitio
   const record = value as Record<string, unknown>
   const key = typeof record.key === "string" && record.key.length > 0 ? record.key : undefined
   const kind = record.kind
-  if (key === undefined || (kind !== "image" && kind !== "video" && kind !== "font"))
+  if (key === undefined || (kind !== "image" && kind !== "video" && kind !== "font" && kind !== "document"))
     return resultErrorCreate("assetsLocalOutputDefinition", "The output definition was invalid")
   if (kind === "image") {
     const width = record.width
@@ -1161,6 +1218,11 @@ function localOutputDefinitionParse(value: unknown): Result<LocalOutputDefinitio
     }
   }
   if (kind === "video") return { success: true, data: { kind, key } }
+  if (kind === "document") {
+    if (key !== "default")
+      return resultErrorCreate("assetsLocalOutputDefinition", "The document output definition was invalid")
+    return { success: true, data: { kind, key: "default" } }
+  }
   const format = v.safeParse(fontOutputFormatSchema, record.format ?? "woff2")
   if (!format.success) return resultErrorCreate("assetsLocalOutputDefinition", "The font output definition was invalid")
   return { success: true, data: { kind, key, format: format.output } }
@@ -1258,7 +1320,7 @@ function imageMediaTypeRead(format: OutputFormat): "image/jpeg" | "image/png" | 
   return format === "jpg" ? "image/jpeg" : `image/${format}`
 }
 
-function mediaTypeRead(className: "image" | "video" | "font", extension: string): string {
+function mediaTypeRead(className: "image" | "video" | "font" | "document", extension: string): string {
   if (className === "image")
     return extension === ".jpg" || extension === ".jpeg"
       ? "image/jpeg"
@@ -1275,6 +1337,7 @@ function mediaTypeRead(className: "image" | "video" | "font", extension: string)
                 : "image/webp"
   if (className === "video")
     return extension === ".mov" ? "video/quicktime" : extension === ".webm" ? "video/webm" : "video/mp4"
+  if (className === "document") return documentExtensionMediaTypes[extension.slice(1)] ?? "text/plain"
   return extension === ".ttf"
     ? "font/ttf"
     : extension === ".otf"

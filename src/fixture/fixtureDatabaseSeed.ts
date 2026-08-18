@@ -40,8 +40,9 @@ const hash = (seed: string) => seed.repeat(64).slice(0, 64)
 
 /**
  * Writes a small but complete project into an empty database: one image, one
- * video, and one font asset with outputs, source revisions, metadata, jobs,
- * backup receipts, a catalog generation, a legacy import, and audit events.
+ * video, one font, and one document asset with outputs, source revisions,
+ * metadata, jobs, backup receipts, a catalog generation, a legacy import, and
+ * audit events.
  */
 export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
   const seed: FixtureSeed = {
@@ -50,7 +51,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
     serviceProjectId: "contentoren",
     zitadelProjectId: "zitadel-fixture",
     subjectId: "fixture-admin",
-    assetIds: ["asset-hero", "asset-intro", "asset-inter"],
+    assetIds: ["asset-hero", "asset-intro", "asset-inter", "asset-guide"],
     failedWorkflowId: "workflow-publish-failed",
     deadJobId: "job-publish-failed",
     retryableJobId: "job-publish-retryable",
@@ -137,6 +138,15 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         mediaType: "font/ttf",
         note: "Body copy typeface",
       },
+      {
+        id: "asset-guide",
+        class: "document" as const,
+        folder1: "guides",
+        filename: "guide.txt",
+        basename: "guide",
+        mediaType: "text/plain",
+        note: "Plain-text guide",
+      },
     ]
 
     for (const [index, asset] of assets.entries()) {
@@ -199,6 +209,18 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
       })
       .run()
 
+    transaction
+      .insert(assetMetadataTable)
+      .values({
+        id: "metadata-guide",
+        assetId: "asset-guide",
+        sourceRevisionId: "source-asset-guide",
+        metadata: { kind: "document", extension: "txt", mediaType: "text/plain" },
+        createdAt: at(1),
+        updatedAt: at(11),
+      })
+      .run()
+
     const definitions = [
       { id: "output-hero-large", assetId: "asset-hero", key: "1600x900_webp", width: 1600, height: 900 },
       { id: "output-hero-small", assetId: "asset-hero", key: "800x450_webp", width: 800, height: 450 },
@@ -226,6 +248,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
           id: `version-${definition.id}`,
           outputDefinitionId: definition.id,
           assetId: definition.assetId,
+          sourceRevisionId: `source-${definition.assetId}`,
           version: 1,
           byteSize: definition.width * 40,
           sha256: hash(definition.key.slice(0, 1)),
@@ -263,6 +286,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         id: "version-output-intro",
         outputDefinitionId: "output-intro",
         assetId: "asset-intro",
+        sourceRevisionId: "source-asset-intro",
         version: 1,
         byteSize: 480_000,
         sha256: hash("4"),
@@ -272,6 +296,43 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         toolchainVersion: "fixture-1",
         width: 1920,
         height: 1080,
+        current: true,
+        createdAt: at(3),
+      })
+      .run()
+
+    transaction
+      .insert(outputDefinitionTable)
+      .values({
+        id: "output-guide",
+        assetId: "asset-guide",
+        kind: "document",
+        key: "default",
+        width: null,
+        height: null,
+        format: null,
+        quality: null,
+        showAiLabel: null,
+        createdAt: at(2),
+        updatedAt: at(2),
+      })
+      .run()
+    transaction
+      .insert(outputVersionTable)
+      .values({
+        id: "version-output-guide",
+        outputDefinitionId: "output-guide",
+        assetId: "asset-guide",
+        sourceRevisionId: "source-asset-guide",
+        version: 1,
+        byteSize: 32,
+        sha256: hash("6"),
+        mediaType: "text/plain",
+        extension: "txt",
+        objectKey: `${seed.serviceProjectId}/documents/guides/guide_default_v1.txt`,
+        toolchainVersion: "fixture-1",
+        width: null,
+        height: null,
         current: true,
         createdAt: at(3),
       })
@@ -299,6 +360,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         id: "version-output-inter",
         outputDefinitionId: "output-inter",
         assetId: "asset-inter",
+        sourceRevisionId: "source-asset-inter",
         version: 1,
         byteSize: 96_000,
         sha256: hash("5"),
@@ -568,6 +630,19 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
       })
       .run()
     transaction
+      .insert(catalogOutputTable)
+      .values({
+        generationId: "generation-1",
+        assetId: "asset-guide",
+        outputVersionId: "version-output-guide",
+        class: "document",
+        key: "default",
+        property: "guides_guide_default",
+        path: "documents/guides/guide_default_v1.txt",
+        metadata: { kind: "document", extension: "txt", mediaType: "text/plain" },
+      })
+      .run()
+    transaction
       .insert(catalogTable)
       .values({
         id: "catalog-development",
@@ -592,7 +667,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         environment: "development",
         atomicity: "all_or_nothing",
         status: "succeeded",
-        importedCount: 3,
+        importedCount: 4,
         conflicts: [],
         createdAt: at(8),
         updatedAt: at(9),

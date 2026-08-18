@@ -6,6 +6,7 @@ import { assetBasenameCreate } from "../asset/assetBasenameCreate.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersDatabaseColumnsCreate } from "../asset/foldersDatabaseColumnsCreate.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
+import { documentExtensionMediaTypes } from "../document/documentExtensionMediaTypes.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
@@ -138,6 +139,8 @@ export const uploadIngestionComplete = async (
 
   const assetClass = assetClassFromMediaType(verification.data.mediaType)
   if (assetClass === undefined) return resultErrorCreate(op, "Uploaded media type is not a supported asset class")
+  if (assetClass === "document" && documentMediaTypeRead(filename.output) !== verification.data.mediaType)
+    return resultErrorCreate(op, "Document media type does not match its filename extension")
 
   const sourceRevisionId = `source-${upload.id}`
   const sourceObjectKey = `sources/${sourceRevisionId}/${filename.output}`
@@ -300,6 +303,8 @@ export const uploadIngestionComplete = async (
       const workflowId = `workflow-upload-${upload.id}`
       const existingWorkflow = transaction.select().from(workflowTable).where(eq(workflowTable.id, workflowId)).get()
       if (existingWorkflow !== undefined) {
+        if (existingWorkflow.sourceRevisionId !== sourceRevisionId)
+          return resultErrorCreate(op, "The upload workflow source revision did not match")
         const retryLimit = input.retryLimit ?? 3
         if (!Number.isInteger(retryLimit) || retryLimit < 0) return resultErrorCreate(op, "Retry limit is invalid")
         const jobs = workflowJobsEnsure(transaction, {
@@ -320,6 +325,7 @@ export const uploadIngestionComplete = async (
         id: workflowId,
         projectId: currentUpload.projectId,
         assetId,
+        sourceRevisionId,
         kind: "asset_processing",
         status: "queued",
         createdAt: now,
@@ -423,7 +429,9 @@ function workflowJobsEnsure(
           ? "process_image_output"
           : definition.kind === "video"
             ? "copy_video_output"
-            : "process_font_output",
+            : definition.kind === "font"
+              ? "process_font_output"
+              : "process_document_output",
       payload: { ...context, outputDefinitionId: definition.id },
       now: input.now,
       retryLimit: input.retryLimit,
@@ -512,11 +520,19 @@ function dependencyCreate(id: string, jobId: string, dependsOnJobId: string, cre
   return { id, jobId, dependsOnJobId, createdAt }
 }
 
-function assetClassFromMediaType(mediaType: string): "image" | "video" | "font" | undefined {
+function assetClassFromMediaType(mediaType: string): "image" | "video" | "font" | "document" | undefined {
   if (mediaType.startsWith("image/")) return "image"
   if (mediaType.startsWith("video/")) return "video"
   if (mediaType.startsWith("font/")) return "font"
+  if (Object.values(documentExtensionMediaTypes).includes(mediaType as (typeof documentExtensionMediaTypes)[string]))
+    return "document"
   return undefined
+}
+
+function documentMediaTypeRead(filename: string): string | undefined {
+  const lastDot = filename.lastIndexOf(".")
+  const extension = lastDot < 0 ? "" : filename.slice(lastDot + 1).toLowerCase()
+  return documentExtensionMediaTypes[extension]
 }
 
 async function storageObjectCopyEnsure(

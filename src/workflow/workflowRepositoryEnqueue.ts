@@ -42,7 +42,8 @@ export const workflowRepositoryEnqueue = (
         if (
           existingWorkflow.projectId !== input.workflow.projectId ||
           existingWorkflow.kind !== input.workflow.kind ||
-          existingWorkflow.assetId !== (input.workflow.assetId ?? null)
+          existingWorkflow.assetId !== (input.workflow.assetId ?? null) ||
+          existingWorkflow.sourceRevisionId !== (input.workflow.sourceRevisionId ?? null)
         ) {
           return resultErrorCreate(op, `Workflow identity already belongs to another workflow: ${input.workflow.id}`)
         }

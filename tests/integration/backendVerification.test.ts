@@ -19,6 +19,7 @@ describe("backend verification fixtures", () => {
 
     expect(planned.data.conflicts).toEqual([])
     expect(planned.data.groups.map((group) => `${group.class}:${group.folders.join("/")}:${group.basename}`)).toEqual([
+      "document:guides:guide",
       "font:ui:Inter-Regular",
       "image:home:hero",
       "video:home:intro",
@@ -188,5 +189,6 @@ describe("backend verification fixtures", () => {
     expect(await readFile(join(fixtureRoot, "src/app/assets/imageList.ts"), "utf8")).toContain("home_hero")
     expect(await readFile(join(fixtureRoot, "src/app/assets/videoList.ts"), "utf8")).toContain("home_intro")
     expect(await readFile(join(fixtureRoot, "src/app/assets/fontList.ts"), "utf8")).toContain("ui_inter_regular")
+    expect(await readFile(join(fixtureRoot, "src/app/assets/documentList.ts"), "utf8")).toContain("guides_guide")
   })
 })

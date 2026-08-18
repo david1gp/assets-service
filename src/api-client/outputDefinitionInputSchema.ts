@@ -25,10 +25,16 @@ const fontOutputDefinitionInputSchema = v.strictObject({
   format: fontOutputFormatSchema,
 })
 
+const documentOutputDefinitionInputSchema = v.strictObject({
+  kind: v.literal("document"),
+  key: v.literal("default"),
+})
+
 export const outputDefinitionInputSchema = v.variant("kind", [
   imageOutputDefinitionInputSchema,
   videoOutputDefinitionInputSchema,
   fontOutputDefinitionInputSchema,
+  documentOutputDefinitionInputSchema,
 ])
 
 export type OutputDefinitionInput = v.InferOutput<typeof outputDefinitionInputSchema>

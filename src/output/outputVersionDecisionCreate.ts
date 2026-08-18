@@ -5,6 +5,7 @@ type ExistingOutputVersion = {
   version: number
   byteSize: number
   sha256: Sha256
+  sourceRevisionId?: string | null
 }
 
 export const outputVersionDecisionCreate = (
@@ -12,12 +13,16 @@ export const outputVersionDecisionCreate = (
   byteSize: number,
   sha256: Sha256,
   forceNewVersion = false,
+  sourceRevisionId?: string,
 ): OutputVersionDecision => {
   if (forceNewVersion) {
     const highestVersion = existingVersions.reduce((highest, version) => Math.max(highest, version.version), 0)
     return { kind: "allocate", version: highestVersion + 1 }
   }
-  const matchingChecksums = existingVersions.filter((version) => version.sha256 === sha256)
+  const matchingChecksums = existingVersions.filter(
+    (version) =>
+      version.sha256 === sha256 && (sourceRevisionId === undefined || version.sourceRevisionId === sourceRevisionId),
+  )
   const mismatchedChecksum = matchingChecksums
     .filter((version) => version.byteSize !== byteSize)
     .toSorted((left, right) => left.version - right.version)[0]

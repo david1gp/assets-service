@@ -14,6 +14,7 @@ const typesByClass = {
   image: "CatalogImage",
   video: "CatalogVideo",
   font: "CatalogFont",
+  document: "CatalogDocument",
 } as const
 
 const stringLiteralCreate = (value: string): string =>
@@ -51,7 +52,7 @@ const listContentCreate = (
 export const catalogListsRender = (
   entries: readonly unknown[],
   options: { importPath?: string; schema?: string; rendererVersion?: string } = {},
-): Result<{ imageList: string; videoList: string; fontList: string; digest: string }> => {
+): Result<{ imageList: string; videoList: string; fontList: string; documentList: string; digest: string }> => {
   const op = "catalogListsRender"
   const canonical = catalogEntriesCanonicalize(entries)
   if (!canonical.success) return resultErrorCreate(op, canonical.errorMessage, canonical.rawData)
@@ -67,6 +68,7 @@ export const catalogListsRender = (
       imageList: listContentCreate("image", canonical.data, digest, importPath, schema, rendererVersion),
       videoList: listContentCreate("video", canonical.data, digest, importPath, schema, rendererVersion),
       fontList: listContentCreate("font", canonical.data, digest, importPath, schema, rendererVersion),
+      documentList: listContentCreate("document", canonical.data, digest, importPath, schema, rendererVersion),
       digest,
     },
   }

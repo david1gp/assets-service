@@ -56,6 +56,7 @@ export const assetProcessingWorkflowEnqueue = (
     id: input.workflowId,
     projectId: input.projectId,
     assetId: input.assetId,
+    sourceRevisionId: source.id,
     kind: "asset_processing",
     status: "queued",
     createdAt: now,
@@ -106,7 +107,9 @@ export const assetProcessingWorkflowEnqueue = (
           ? "process_image_output"
           : definition.kind === "video"
             ? "copy_video_output"
-            : "process_font_output",
+            : definition.kind === "font"
+              ? "process_font_output"
+              : "process_document_output",
       payload: { ...context, outputDefinitionId: definition.id },
       now,
       retryLimit,

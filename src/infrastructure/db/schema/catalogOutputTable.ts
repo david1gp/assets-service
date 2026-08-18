@@ -18,7 +18,7 @@ export const catalogOutputTable = sqliteTable(
     outputVersionId: text("output_version_id")
       .notNull()
       .references(() => outputVersionTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    class: text("class", { enum: ["image", "video", "font"] }).notNull(),
+    class: text("class", { enum: ["image", "video", "font", "document"] }).notNull(),
     key: text("key").notNull(),
     property: text("property").notNull(),
     path: text("path").notNull(),
@@ -28,6 +28,6 @@ export const catalogOutputTable = sqliteTable(
     primaryKey({ columns: [table.generationId, table.outputVersionId], name: "catalog_outputs_generation_version_pk" }),
     index("catalog_outputs_generation_index").on(table.generationId),
     index("catalog_outputs_asset_index").on(table.assetId),
-    check("catalog_outputs_class_check", sql`${table.class} IN ('image', 'video', 'font')`),
+    check("catalog_outputs_class_check", sql`${table.class} IN ('image', 'video', 'font', 'document')`),
   ],
 )

@@ -560,6 +560,24 @@ function outputDefinitionRecordCreate(
       },
     }
   }
+  if (parsed.output.kind === "document") {
+    return {
+      success: true,
+      data: {
+        id,
+        assetId,
+        kind: "document",
+        key: "default",
+        width: null,
+        height: null,
+        format: null,
+        quality: null,
+        showAiLabel: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    }
+  }
   return {
     success: true,
     data: {
@@ -600,6 +618,7 @@ function definitionToInput(
     }
   }
   if (definition.kind === "video") return { kind: "video", key: definition.key }
+  if (definition.kind === "document") return { kind: "document", key: "default" }
   return { kind: "font", key: definition.key, format: definition.format as "woff2" }
 }
 

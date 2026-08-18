@@ -73,6 +73,20 @@ describe("output version allocation", () => {
       })
       expect(seeded.success).toBe(true)
       expect(
+        databaseRecordInsert(opened.data.db, sourceRevisionTable, {
+          id: "source-versions-new",
+          assetId: "asset-versions",
+          revision: 2,
+          class: "image",
+          originalFilename: "hero.jpg",
+          mediaType: "image/jpeg",
+          byteSize: 6,
+          sha256: "b".repeat(64),
+          objectKey: "sources/asset-versions/v2/hero.jpg",
+          createdAt: "2026-08-17T00:00:00.000Z",
+        }).success,
+      ).toBe(true)
+      expect(
         databaseRecordInsert(opened.data.db, outputDefinitionTable, {
           id: "output-versions",
           assetId: "asset-versions",
@@ -92,6 +106,7 @@ describe("output version allocation", () => {
         id: "version-1",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
+        sourceRevisionId: "source-versions",
         byteSize: 5,
         sha256: "a".repeat(64),
         mediaType: "image/webp",
@@ -108,6 +123,7 @@ describe("output version allocation", () => {
         id: "version-unused",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
+        sourceRevisionId: "source-versions",
         byteSize: 5,
         sha256: "a".repeat(64),
         mediaType: "image/webp",
@@ -127,6 +143,7 @@ describe("output version allocation", () => {
         id: "version-2",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
+        sourceRevisionId: "source-versions",
         byteSize: 6,
         sha256: "b".repeat(64),
         mediaType: "image/webp",
@@ -151,6 +168,7 @@ describe("output version allocation", () => {
         id: "version-move",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
+        sourceRevisionId: "source-versions",
         byteSize: 6,
         sha256: "b".repeat(64),
         mediaType: "image/webp",
@@ -163,11 +181,31 @@ describe("output version allocation", () => {
         objectKeyCreate: (version) => `images/landing/hero_default_v${version}.webp`,
       })
       expect(moved).toMatchObject({ success: true, data: { outcome: "allocated", record: { version: 3 } } })
+      const sameBytesFromNewSource = outputVersionRepositoryAllocate(opened.data.db, {
+        id: "version-new-source",
+        outputDefinitionId: "output-versions",
+        assetId: "asset-versions",
+        sourceRevisionId: "source-versions-new",
+        byteSize: 6,
+        sha256: "b".repeat(64),
+        mediaType: "image/webp",
+        extension: "webp",
+        toolchainVersion: "test",
+        width: 100,
+        height: 50,
+        createdAt: "2026-08-17T00:00:00.000Z",
+        objectKeyCreate: (version) => `images/home/hero_default_v${version}.webp`,
+      })
+      expect(sameBytesFromNewSource).toMatchObject({
+        success: true,
+        data: { outcome: "allocated", record: { version: 4, sourceRevisionId: "source-versions-new" } },
+      })
       expect(
         outputVersionRepositoryAllocate(opened.data.db, {
           id: "version-move",
           outputDefinitionId: "output-versions",
           assetId: "asset-versions",
+          sourceRevisionId: "source-versions",
           byteSize: 6,
           sha256: "b".repeat(64),
           mediaType: "image/webp",

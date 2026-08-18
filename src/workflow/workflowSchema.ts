@@ -8,6 +8,7 @@ export const workflowSchema = v.strictObject({
   id: idSchema,
   projectId: idSchema,
   assetId: v.optional(idSchema),
+  sourceRevisionId: v.optional(v.nullable(idSchema)),
   kind: v.picklist(["asset_processing", "catalog_generation", "deletion", "cleanup"]),
   status: workflowStatusSchema,
   createdAt: isoDateSchema,

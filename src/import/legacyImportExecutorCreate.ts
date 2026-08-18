@@ -1,12 +1,19 @@
+import { relative, resolve } from "node:path"
 import { and, asc, eq } from "drizzle-orm"
 import * as v from "valibot"
-import { resolve, relative } from "node:path"
-
+import type { LegacyImportRequest } from "../api-client/legacyImportRequestSchema.js"
+import { legacyImportRequestSchema } from "../api-client/legacyImportRequestSchema.js"
 import { assetBasenameCreate } from "../asset/assetBasenameCreate.js"
 import { foldersDatabaseColumnsCreate } from "../asset/foldersDatabaseColumnsCreate.js"
 import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
-import { assetTable } from "../infrastructure/db/schema/assetTable.js"
+import { canonicalJsonDigest } from "../catalog/canonicalJsonDigest.js"
+import { catalogEntryPropertyCreate } from "../catalog/catalogEntryPropertyCreate.js"
+import { catalogListsRender } from "../catalog/catalogListsRender.js"
+import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
+import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
+import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
+import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { blobTable } from "../infrastructure/db/schema/blobTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
@@ -21,31 +28,24 @@ import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTab
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
-import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
-import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
-import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
-import { catalogEntryPropertyCreate } from "../catalog/catalogEntryPropertyCreate.js"
-import { catalogListsRender } from "../catalog/catalogListsRender.js"
-import { canonicalJsonDigest } from "../catalog/canonicalJsonDigest.js"
-import type { LegacyImportRequest } from "../api-client/legacyImportRequestSchema.js"
-import { legacyImportRequestSchema } from "../api-client/legacyImportRequestSchema.js"
-import { legacyImportConflictSchema, type LegacyImportConflict } from "./legacyImportConflictSchema.js"
-import type { LegacyImportExecutor } from "./legacyImportExecutor.js"
-import { legacyImportPlanCreate } from "./legacyImportPlanCreate.js"
-import { legacyImportStatusSchema, type LegacyImportStatus } from "./legacyImportStatusSchema.js"
-import { mediaMetadataSchema, type MediaMetadata } from "../metadata/mediaMetadataSchema.js"
+import { documentMetadataSchema } from "../metadata/documentMetadataSchema.js"
+import { type MediaMetadata, mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
+import { outputRemoteObjectKeyCreate } from "../output/outputRemoteObjectKeyCreate.js"
 import type { Environment } from "../project/environmentSchema.js"
 import { environmentSchema } from "../project/environmentSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
-import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import type { StorageObjectLocation } from "../storage/storageObjectLocation.js"
-import { outputRemoteObjectKeyCreate } from "../output/outputRemoteObjectKeyCreate.js"
-import { workflowJobCreate } from "../workflow/workflowJobCreate.js"
+import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import type { JobPayload } from "../workflow/jobPayloadSchema.js"
 import type { Job } from "../workflow/jobSchema.js"
+import { workflowJobCreate } from "../workflow/workflowJobCreate.js"
+import { type LegacyImportConflict, legacyImportConflictSchema } from "./legacyImportConflictSchema.js"
+import type { LegacyImportExecutor } from "./legacyImportExecutor.js"
+import { legacyImportPlanCreate } from "./legacyImportPlanCreate.js"
+import { type LegacyImportStatus, legacyImportStatusSchema } from "./legacyImportStatusSchema.js"
 
 type LegacyImportPlan = Extract<Awaited<ReturnType<typeof legacyImportPlanCreate>>, { success: true }>["data"]
 type LegacyImportGroup = LegacyImportPlan["groups"][number]
@@ -564,11 +564,14 @@ function groupRecordsCreate(
       }
       const workflowId = `workflow-import-${canonicalJsonDigest({ importId, assetId: prepared.assetId }).slice(0, 32)}`
       const workflow = transaction.select().from(workflowTable).where(eq(workflowTable.id, workflowId)).get()
+      if (workflow !== undefined && workflow.sourceRevisionId !== prepared.sourceId)
+        return resultErrorCreate("legacyImportRecordsCreate", "The import workflow source revision did not match")
       if (workflow === undefined) {
         const insertedWorkflow = databaseRecordInsert(transaction, workflowTable, {
           id: workflowId,
           projectId: prepared.projectId,
           assetId: prepared.assetId,
+          sourceRevisionId: prepared.sourceId,
           kind: "asset_processing",
           status: "queued",
           createdAt: now,
@@ -613,7 +616,9 @@ function groupRecordsCreate(
             ? "process_image_output"
             : definition.kind === "video"
               ? "copy_video_output"
-              : "process_font_output"
+              : definition.kind === "font"
+                ? "process_font_output"
+                : "process_document_output"
         outputJobs.push(
           importJobCreate(
             `${workflowId}-output-${definition.id}`,
@@ -730,7 +735,12 @@ function catalogRecordsCreate(
         .where(and(eq(outputVersionTable.outputDefinitionId, definition.id), eq(outputVersionTable.current, true)))
         .get()
       if (version === undefined) continue
-      const outputMetadata = catalogMetadataRead(asset.class, definition, version, metadata)
+      const outputMetadata = catalogMetadataRead(
+        asset.class as "image" | "video" | "font" | "document",
+        definition,
+        version,
+        metadata,
+      )
       if (!outputMetadata.success) return outputMetadata
       const path = outputPathRead(version.objectKey)
       if (!path.success) return path
@@ -819,7 +829,7 @@ function catalogRecordsCreate(
         generationId,
         assetId: asset.id,
         outputVersionId,
-        class: entry.class as "image" | "video" | "font",
+        class: entry.class as "image" | "video" | "font" | "document",
         key: String(entry.key),
         property: catalogEntryPropertyCreate(entry as never),
         path: String(entry.path),
@@ -885,6 +895,20 @@ function outputDefinitionRecordCreate(prepared: PreparedGroup, output: PreparedO
       createdAt: now,
       updatedAt: now,
     }
+  if (output.output.kind === "document")
+    return {
+      id: output.definitionId,
+      assetId: prepared.assetId,
+      kind: "document" as const,
+      key: "default",
+      width: null,
+      height: null,
+      format: null,
+      quality: null,
+      showAiLabel: null,
+      createdAt: now,
+      updatedAt: now,
+    }
   return {
     id: output.definitionId,
     assetId: prepared.assetId,
@@ -909,6 +933,7 @@ function outputVersionRecordCreate(prepared: PreparedGroup, output: PreparedOutp
     id: output.versionId,
     outputDefinitionId: output.definitionId,
     assetId: prepared.assetId,
+    sourceRevisionId: prepared.sourceId,
     version: 1,
     byteSize: output.output.byteSize,
     sha256: output.output.sha256,
@@ -939,10 +964,28 @@ function outputDefinitionInputRead(output: LegacyImportOutput): Record<string, u
 function outputExtensionRead(output: LegacyImportOutput): string {
   if (output.kind === "image") return output.format
   if (output.kind === "font") return output.format
+  if (output.kind === "document") return output.extension
   return output.mediaType === "video/quicktime" ? "mov" : output.mediaType === "video/webm" ? "webm" : "mp4"
 }
 
 function mediaMetadataRead(group: LegacyImportGroup): Result<MediaMetadata> {
+  if (group.class === "document") {
+    const parsedDocument = v.safeParse(
+      documentMetadataSchema,
+      group.documentMetadata ?? {
+        kind: "document",
+        extension: group.filename.slice(group.filename.lastIndexOf(".") + 1).toLowerCase(),
+        mediaType: group.sourceMediaType,
+      },
+    )
+    if (!parsedDocument.success)
+      return resultErrorCreate(
+        "legacyImportMetadataCreate",
+        "The imported document metadata was invalid",
+        parsedDocument.issues,
+      )
+    return { success: true, data: parsedDocument.output }
+  }
   const value =
     group.class === "image"
       ? {
@@ -995,7 +1038,7 @@ function mediaMetadataRead(group: LegacyImportGroup): Result<MediaMetadata> {
 }
 
 function catalogMetadataRead(
-  className: "image" | "video" | "font",
+  className: "image" | "video" | "font" | "document",
   definition: typeof outputDefinitionTable.$inferSelect,
   version: typeof outputVersionTable.$inferSelect,
   sourceMetadata: MediaMetadata | null,
@@ -1044,6 +1087,17 @@ function catalogMetadataRead(
             bitrate: null,
           }
     return { success: true, data: source }
+  }
+  if (className === "document") {
+    const parsed = v.safeParse(
+      documentMetadataSchema,
+      sourceMetadata?.kind === "document"
+        ? sourceMetadata
+        : { kind: "document", extension: version.extension, mediaType: version.mediaType },
+    )
+    return parsed.success
+      ? { success: true, data: parsed.output }
+      : resultErrorCreate("legacyImportCatalogMetadata", "The document metadata was invalid", parsed.issues)
   }
   const source =
     sourceMetadata?.kind === "font"

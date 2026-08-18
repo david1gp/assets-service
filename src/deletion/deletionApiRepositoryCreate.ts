@@ -14,8 +14,10 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import { workflowJobCreate } from "../workflow/workflowJobCreate.js"
 import type { DeletionApiRepository } from "./deletionApiRepository.js"
 import { deletionStateSchema } from "./deletionStateSchema.js"
+import { sourceRevisionDeletionEligibilityRepositoryCreate } from "./sourceRevisionDeletionEligibilityRepositoryCreate.js"
 
 export const deletionApiRepositoryCreate = (db: AssetDatabase): DeletionApiRepository => {
+  const sourceRevisionDeletionEligibilityRepository = sourceRevisionDeletionEligibilityRepositoryCreate(db)
   const deletionRequestEnqueue = (projectId: string, assetId: string, actorId = "system") =>
     databaseTransactionRun(db, (transaction) => {
       const op = "deletionApiRepositoryRequestEnqueue"
@@ -139,5 +141,10 @@ export const deletionApiRepositoryCreate = (db: AssetDatabase): DeletionApiRepos
     return { success: true, data: parsed.output }
   }
 
-  return { deletionRequestEnqueue, deletionStateRead }
+  return {
+    deletionRequestEnqueue,
+    deletionStateRead,
+    sourceRevisionDeletionEligibilityRead:
+      sourceRevisionDeletionEligibilityRepository.sourceRevisionDeletionEligibilityRead,
+  }
 }

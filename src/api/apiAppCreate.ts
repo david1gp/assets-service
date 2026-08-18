@@ -42,6 +42,7 @@ import { apiResponseCreate } from "./apiResponseCreate.js"
 import { apiSuccessEnvelopeCreate } from "./apiSuccessEnvelopeCreate.js"
 import { apiUploadStatusRoutesRegister } from "./apiUploadStatusRoutesRegister.js"
 import { apiWorkflowRoutesRegister } from "./apiWorkflowRoutesRegister.js"
+import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
 
 type ApiContext = { Variables: Record<string, unknown> }
 type ApiApplication = Hono<ApiContext>
@@ -214,6 +215,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/backups$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/backups\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/source-revisions\/[^/]+\/backup-status$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/source-revisions\/[^/]+\/deletion-eligibility$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/backups$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/backup-status$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+$/, methods: ["GET"] },
@@ -941,6 +943,11 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     uploaderMiddleware,
   })
   apiDeletionStatusRoutesRegister(app, {
+    repository: options.deletionApiRepository,
+    authenticationMiddleware,
+    uploaderMiddleware,
+  })
+  apiSourceRevisionDeletionEligibilityRoutesRegister(app, {
     repository: options.deletionApiRepository,
     authenticationMiddleware,
     uploaderMiddleware,

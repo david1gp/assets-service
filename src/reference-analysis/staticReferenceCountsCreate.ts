@@ -5,7 +5,7 @@ import ts from "typescript"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
-type AssetClass = "image" | "video" | "font"
+type AssetClass = "image" | "video" | "font" | "document"
 
 type StaticReferenceCountsInput = {
   root: string
@@ -29,7 +29,7 @@ export const staticReferenceCountsCreate = async (
   const keys = new Map<string, AssetReference[]>()
 
   for (const asset of assets) {
-    const classes = asset.class === undefined ? (["image", "video", "font"] as const) : [asset.class]
+    const classes = asset.class === undefined ? (["image", "video", "font", "document"] as const) : [asset.class]
     for (const className of classes) {
       const classProperties = properties.get(className) ?? new Map<string, string>()
       classProperties.set(asset.key, asset.key)
@@ -46,6 +46,7 @@ export const staticReferenceCountsCreate = async (
       "src/app/assets/imageList.ts",
       "src/app/assets/videoList.ts",
       "src/app/assets/fontList.ts",
+      "src/app/assets/documentList.ts",
       ...(input.generatedListPaths ?? []),
     ].map((filePath) => pathNormalize(resolve(input.root, filePath))),
   )
@@ -199,6 +200,7 @@ function listClassRead(value: string): AssetClass | undefined {
   if (value === "imageList") return "image"
   if (value === "videoList") return "video"
   if (value === "fontList") return "font"
+  if (value === "documentList") return "document"
   return undefined
 }
 

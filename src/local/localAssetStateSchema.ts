@@ -3,6 +3,7 @@ import * as v from "valibot"
 import { assetBasenameSchema } from "../asset/assetBasenameSchema.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
+import { documentMetadataSchema } from "../metadata/documentMetadataSchema.js"
 import { imageMetadataSchema } from "../metadata/imageMetadataSchema.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
 import { videoMetadataSchema } from "../metadata/videoMetadataSchema.js"
@@ -51,11 +52,26 @@ const localFontOutputSchema = v.strictObject({
   metadata: fontMetadataSchema,
 })
 
-const localOutputSchema = v.variant("kind", [localImageOutputSchema, localVideoOutputSchema, localFontOutputSchema])
+const localDocumentOutputSchema = v.strictObject({
+  kind: v.literal("document"),
+  key: v.literal("default"),
+  path: v.pipe(v.string(), v.minLength(1)),
+  sha256: sha256Schema,
+  byteSize: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  mediaType: mediaTypeSchema,
+  metadata: documentMetadataSchema,
+})
+
+const localOutputSchema = v.variant("kind", [
+  localImageOutputSchema,
+  localVideoOutputSchema,
+  localFontOutputSchema,
+  localDocumentOutputSchema,
+])
 
 const localAssetSchema = v.strictObject({
   id: idSchema,
-  class: v.picklist(["image", "video", "font"]),
+  class: v.picklist(["image", "video", "font", "document"]),
   folders: foldersSchema,
   filename: assetFilenameSchema,
   basename: assetBasenameSchema,
