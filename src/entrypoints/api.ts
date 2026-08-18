@@ -33,4 +33,7 @@ export const apiMain = () => {
   return 0
 }
 
-if (import.meta.main) process.exit(apiMain())
+if (import.meta.main) {
+  const code = apiMain()
+  if (code !== 0) process.exit(code)
+}
