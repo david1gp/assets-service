@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import * as v from "valibot"
 
 import type { RcloneBackupAdapter } from "../../backup/rcloneBackupAdapter.js"
@@ -151,20 +154,34 @@ async function remoteVerify(
     )
   const remoteSize = remoteSizeRead(size.data.stdout)
   if (!remoteSize.success) return remoteSize
-  const check = await commandRunner({
-    executable,
-    args: ["check", request.localSourcePath, remotePath, "--download"],
-    timeoutMs,
-    signal,
-  })
-  if (!check.success) return check
-  if (check.data.exitCode !== 0)
-    return rcloneErrorCreate(
-      "rcloneBackupAdapterProductionRemoteVerify",
-      "verification_failed",
-      "rclone checksum check failed",
-    )
-  return remoteSize
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "assets-rclone-check-"))
+  const downloadedPath = join(temporaryDirectory, request.originalFilename)
+  try {
+    const download = await commandRunner({
+      executable,
+      args: ["copyto", remotePath, downloadedPath],
+      timeoutMs,
+      signal,
+    })
+    if (!download.success) return download
+    if (download.data.exitCode !== 0)
+      return rcloneErrorCreate(
+        "rcloneBackupAdapterProductionRemoteVerify",
+        "verification_failed",
+        "rclone could not download the remote backup for verification",
+      )
+    const downloaded = await sourceFileRead({ ...request, localSourcePath: downloadedPath }, signal)
+    if (!downloaded.success) return downloaded
+    if (downloaded.data.byteSize !== request.expectedByteSize || downloaded.data.sha256 !== request.expectedSha256)
+      return rcloneErrorCreate(
+        "rcloneBackupAdapterProductionRemoteVerify",
+        "verification_failed",
+        "rclone checksum check failed",
+      )
+    return remoteSize
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true })
+  }
 }
 
 function commandFailure(

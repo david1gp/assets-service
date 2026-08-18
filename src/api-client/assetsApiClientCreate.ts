@@ -425,7 +425,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     try {
       response = await fetcher(parsed.data.url, {
         method: parsed.data.method,
-        headers: parsed.data.headers,
+        headers: { "content-type": parsed.data.mediaType },
         body: bytes as unknown as ArrayBuffer,
       })
     } catch {
@@ -433,10 +433,16 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
         code: "service_unavailable",
       })
     }
-    if (!response.ok)
-      return resultFailure("assetsApiClientUploadObjectPut", "The direct upload was rejected", {
-        status: response.status,
-      })
+    if (!response.ok) {
+      const body = await response.text().catch(() => "")
+      return resultFailure(
+        "assetsApiClientUploadObjectPut",
+        `The direct upload was rejected (${response.status}): ${body.slice(0, 500)}`,
+        {
+          status: response.status,
+        },
+      )
+    }
     return { success: true, data: true }
   }
 

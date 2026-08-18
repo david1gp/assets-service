@@ -1,3 +1,4 @@
+import { AwsClient } from "aws4fetch"
 import * as v from "valibot"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
@@ -11,6 +12,12 @@ import type { R2StorageAdapterOptions } from "./r2StorageAdapterOptions.js"
 export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageAdapter => {
   const fetchImplementation = input.fetchImplementation ?? fetch
   const now = input.now ?? (() => new Date())
+  const aws = new AwsClient({
+    accessKeyId: input.accessKeyId,
+    secretAccessKey: input.secretAccessKey,
+    service: "s3",
+    region: "auto",
+  })
   const bucketAllowed = (bucket: string): boolean =>
     (input.allowedBuckets?.includes(bucket) ?? false) ||
     (input.allowedBuckets === undefined && (input.defaultBucket === undefined || bucket === input.defaultBucket))
@@ -29,28 +36,24 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       try {
         const createdAt = intentInput.now ?? now()
         const expiresAt = new Date(createdAt.getTime() + intentInput.expiresInSeconds * 1000)
-        const headers = {
-          "content-length": String(intentInput.byteSize),
-          "content-type": intentInput.mediaType,
-          ...(intentInput.sha256 ? { "x-amz-meta-sha256": intentInput.sha256 } : {}),
-        }
-        const url = await signedUrl({
-          endpoint: input.endpoint,
-          bucket: intentInput.location.bucket,
-          key: intentInput.location.objectKey,
-          accessKeyId: input.accessKeyId,
-          secretAccessKey: input.secretAccessKey,
+        const unsignedUrl = objectUrl(input.endpoint, intentInput.location.bucket, intentInput.location.objectKey)
+        unsignedUrl.searchParams.set("X-Amz-Expires", String(intentInput.expiresInSeconds))
+        const signed = await aws.sign(unsignedUrl.toString(), {
           method: "PUT",
-          headers,
-          expiresInSeconds: intentInput.expiresInSeconds,
-          now: createdAt,
-        })
+          aws: { signQuery: true, datetime: timestampCreate(createdAt) },
+          datetime: timestampCreate(createdAt),
+          signQuery: true,
+        } as never)
         const intent: StorageUploadIntent = {
           method: "PUT",
-          url,
+          url: signed.url,
           key: intentInput.location.objectKey,
           expiresAt: expiresAt.toISOString(),
-          headers,
+          headers: {
+            "content-type": intentInput.mediaType,
+            "content-length": String(intentInput.byteSize),
+            ...(intentInput.sha256 ? { "x-amz-meta-sha256": intentInput.sha256 } : {}),
+          },
           mediaType: intentInput.mediaType,
           byteSize: intentInput.byteSize,
           ...(intentInput.sha256 ? { sha256: intentInput.sha256 } : {}),
@@ -67,7 +70,27 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       if (!response.success) return response
       if (response.data.status === 404) return { success: true, data: null }
       if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
-      return storageObjectFromHeaders(location.objectKey, response.data.headers)
+      const fromHead = storageObjectFromHeaders(location.objectKey, response.data.headers)
+      if (fromHead.success) return fromHead
+      const body = await request("GET", location.bucket, location.objectKey)
+      if (!body.success) return body
+      if (body.data.status === 404) return { success: true, data: null }
+      if (!body.data.ok) return responseError("r2StorageAdapterCreate", body.data)
+      const bytes = new Uint8Array(await body.data.arrayBuffer())
+      const sha256 = await hexDigest(bytes)
+      return {
+        success: true,
+        data: {
+          key: location.objectKey,
+          byteSize: bytes.byteLength,
+          mediaType: body.data.headers.get("content-type") ?? undefined,
+          sha256: body.data.headers.get("x-amz-meta-sha256") ?? sha256,
+          ...(body.data.headers.get("etag") ? { etag: body.data.headers.get("etag") as string } : {}),
+          ...(body.data.headers.get("cache-control")
+            ? { cacheControl: body.data.headers.get("cache-control") as string }
+            : {}),
+        },
+      }
     },
     readObject: async (location) => {
       if (!bucketAllowed(location.bucket))
@@ -135,8 +158,20 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         putInput.bytes,
       )
       if (!response.success) return response
-      if (response.data.status === 412)
+      if (response.data.status === 412) {
+        const existing = await thisHead(putInput.location.bucket, putInput.location.objectKey)
+        if (!existing.success) return existing
+        if (existing.data !== null)
+          return {
+            success: true,
+            data: {
+              ...existing.data,
+              mediaType: existing.data.mediaType ?? putInput.mediaType,
+              sha256: existing.data.sha256 ?? actualSha256,
+            },
+          }
         return resultErrorCreate("r2StorageAdapterCreate", "Storage object already exists")
+      }
       if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
       const stored = await thisHead(putInput.location.bucket, putInput.location.objectKey)
       if (!stored.success) return stored
@@ -181,8 +216,20 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
       const response = await request("PUT", copyInput.destination.bucket, copyInput.destination.objectKey, headers)
       if (!response.success) return response
-      if (response.data.status === 412)
+      if (response.data.status === 412) {
+        const existing = await thisHead(copyInput.destination.bucket, copyInput.destination.objectKey)
+        if (!existing.success) return existing
+        if (existing.data !== null)
+          return {
+            success: true,
+            data: {
+              ...existing.data,
+              mediaType: existing.data.mediaType ?? mediaType,
+              sha256: existing.data.sha256 ?? sha256,
+            },
+          }
         return resultErrorCreate("r2StorageAdapterCreate", "Storage object already exists")
+      }
       if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
       const copied = await thisHead(copyInput.destination.bucket, copyInput.destination.objectKey)
       if (!copied.success || copied.data === null)
@@ -240,19 +287,11 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
   ): Promise<Result<Response>> {
     const op = "r2StorageAdapterCreate"
     try {
-      const payloadHash = body ? await hexDigest(body) : await hexDigest(new Uint8Array())
-      const headers = { ...extraHeaders, "x-amz-content-sha256": payloadHash }
-      const signed = await signedRequest({
-        endpoint: input.endpoint,
-        bucket,
-        key,
-        accessKeyId: input.accessKeyId,
-        secretAccessKey: input.secretAccessKey,
+      const unsignedUrl = objectUrl(input.endpoint, bucket, key, query)
+      const signed = await aws.sign(unsignedUrl.toString(), {
         method,
-        headers,
-        payloadHash,
-        now: now(),
-        query,
+        headers: extraHeaders,
+        body: body ? Buffer.from(body) : undefined,
       })
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 30_000)
@@ -342,75 +381,6 @@ function xmlUnescape(value: string): string {
     .replace(/&amp;/g, "&")
 }
 
-async function signedUrl(input: {
-  endpoint: string
-  bucket: string
-  key: string
-  accessKeyId: string
-  secretAccessKey: string
-  method: string
-  headers: Record<string, string>
-  expiresInSeconds: number
-  now: Date
-  query?: URLSearchParams
-}): Promise<string> {
-  const queryInput = input.query ?? new URLSearchParams()
-  const url = objectUrl(input.endpoint, input.bucket, input.key, queryInput)
-  const timestamp = timestampCreate(input.now)
-  const date = timestamp.slice(0, 8)
-  const scope = `${date}/auto/s3/aws4_request`
-  const signedHeaders = [...Object.keys(input.headers).map((name) => name.toLowerCase()), "host"].sort()
-  const query = new URLSearchParams({
-    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
-    "X-Amz-Credential": `${input.accessKeyId}/${scope}`,
-    "X-Amz-Date": timestamp,
-    "X-Amz-Expires": String(input.expiresInSeconds),
-    "X-Amz-SignedHeaders": signedHeaders.join(";"),
-  })
-  const canonicalHeaders = signedHeaders
-    .map((name) => `${name}:${name === "host" ? url.host : input.headers[name]!.trim()}\n`)
-    .join("")
-  const canonicalRequest = `${input.method}\n${url.pathname}\n${canonicalQuery(query)}\n${canonicalHeaders}${signedHeaders.join(";")}\nUNSIGNED-PAYLOAD`
-  const signature = await signatureCreate(input.secretAccessKey, date, scope, canonicalRequest)
-  query.set("X-Amz-Signature", signature)
-  return `${url.origin}${url.pathname}?${canonicalQuery(query)}`
-}
-
-async function signedRequest(input: {
-  endpoint: string
-  bucket: string
-  key: string
-  accessKeyId: string
-  secretAccessKey: string
-  method: string
-  headers: Record<string, string>
-  payloadHash: string
-  now: Date
-  query?: URLSearchParams
-}): Promise<{ url: string; headers: Record<string, string> }> {
-  const query = input.query ?? new URLSearchParams()
-  const url = objectUrl(input.endpoint, input.bucket, input.key, query)
-  const timestamp = timestampCreate(input.now)
-  const date = timestamp.slice(0, 8)
-  const scope = `${date}/auto/s3/aws4_request`
-  const headers: Record<string, string> = { ...input.headers, host: url.host, "x-amz-date": timestamp }
-  const names = Object.keys(headers)
-    .map((name) => name.toLowerCase())
-    .sort()
-  const canonicalHeaders = names.map((name) => `${name}:${headers[name]!.trim()}\n`).join("")
-  const canonicalRequest = `${input.method}\n${url.pathname}\n${canonicalQuery(query)}\n${canonicalHeaders}${names.join(";")}\n${input.payloadHash}`
-  const signature = await signatureCreate(input.secretAccessKey, date, scope, canonicalRequest)
-  return {
-    url: url.toString(),
-    headers: {
-      ...input.headers,
-      host: url.host,
-      "x-amz-date": timestamp,
-      authorization: `AWS4-HMAC-SHA256 Credential=${input.accessKeyId}/${scope}, SignedHeaders=${names.join(";")}, Signature=${signature}`,
-    },
-  }
-}
-
 function objectUrl(endpoint: string, bucket: string, key: string, query = new URLSearchParams()): URL {
   const base = new URL(endpoint)
   const prefix = base.pathname.replace(/\/+$/, "")
@@ -427,37 +397,11 @@ function encodePathPart(value: string): string {
   return encodeURIComponent(value)
 }
 
-function canonicalQuery(query: URLSearchParams): string {
-  return [...query.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join("&")
-}
-
 function timestampCreate(date: Date): string {
   return date
     .toISOString()
     .replace(/[-:]/g, "")
     .replace(/\.\d{3}Z$/, "Z")
-}
-
-async function signatureCreate(secret: string, date: string, _scope: string, request: string): Promise<string> {
-  const kDate = await hmac(`AWS4${secret}`, date)
-  const kRegion = await hmac(kDate, "auto")
-  const kService = await hmac(kRegion, "s3")
-  const kSigning = await hmac(kService, "aws4_request")
-  return hex(await hmac(kSigning, await hexDigest(new TextEncoder().encode(request))))
-}
-
-async function hmac(key: string | ArrayBuffer, value: string): Promise<ArrayBuffer> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    typeof key === "string" ? new TextEncoder().encode(key) : key,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  )
-  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(value))
 }
 
 async function hexDigest(bytes: Uint8Array): Promise<string> {

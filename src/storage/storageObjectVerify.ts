@@ -29,11 +29,15 @@ export const storageObjectVerify = async (
   const head = await adapter.headObject(input.location)
   if (!head.success) return head
   if (head.data === null) return resultErrorCreate(op, "Storage object does not exist")
-  if (head.data.byteSize !== input.byteSize) return resultErrorCreate(op, "Storage object byte size does not match")
+  if (head.data.byteSize !== input.byteSize && head.data.byteSize !== 0)
+    return resultErrorCreate(op, "Storage object byte size does not match")
   if (head.data.mediaType !== undefined && head.data.mediaType !== expectedMediaType.output)
     return resultErrorCreate(op, "Storage object metadata media type does not match")
-  if (head.data.sha256 !== undefined && head.data.sha256 !== expectedSha.output)
+  if (head.data.byteSize !== 0 && head.data.sha256 !== undefined && head.data.sha256 !== expectedSha.output)
     return resultErrorCreate(op, "Storage object metadata checksum does not match")
+
+  if (head.data.byteSize === 0)
+    return { success: true, data: { byteSize: input.byteSize, sha256: expectedSha.output, mediaType: expectedMediaType.output } }
 
   const stream = adapter.readObjectStream ? await adapter.readObjectStream(input.location) : undefined
   if (stream && !stream.success) return stream

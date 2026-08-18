@@ -96,6 +96,7 @@
     "@mdi/js": "^7.4.47",
     "@solid-primitives/keyed": "^1.5.3",
     "@solidjs/router": "^1.0.0",
+    "aws4fetch": "^1.0.20",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "fontkit": "^2.0.4",

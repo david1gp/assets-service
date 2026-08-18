@@ -9,6 +9,7 @@
         "@mdi/js": "^7.4.47",
         "@solid-primitives/keyed": "^1.5.3",
         "@solidjs/router": "^1.0.0",
+        "aws4fetch": "^1.0.20",
         "clsx": "^2.1.1",
         "drizzle-orm": "^0.45.2",
         "fontkit": "^2.0.4",
@@ -401,6 +402,8 @@
     "ansi-regex": ["ansi-regex@6.3.0", "", {}, "sha512-WpDfL7NO6j7tH88IDBNVdUJxDh9nmCteAVW9dsep846XdwF4naCBK+/tGLX3KJgcpgMRXCFlTM2hKGoK9FsdrQ=="],
 
     "ansi-styles": ["ansi-styles@6.2.3", "", {}, "sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg=="],
+
+    "aws4fetch": ["aws4fetch@1.0.20", "", {}, "sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g=="],
 
     "babel-plugin-jsx-dom-expressions": ["babel-plugin-jsx-dom-expressions@0.40.7", "", { "dependencies": { "@babel/helper-module-imports": "7.18.6", "@babel/plugin-syntax-jsx": "^7.18.6", "@babel/types": "^7.20.7", "html-entities": "2.3.3", "parse5": "^7.1.2" }, "peerDependencies": { "@babel/core": "^7.20.12" } }, "sha512-/O6JWUmjv03OI9lL2ry9bUjpD5S3PclM55RRJEyCdcFZ5W2SEA/59d+l2hNsk3gI6kiWRdRPdOtqZmsQzFN1pQ=="],
 

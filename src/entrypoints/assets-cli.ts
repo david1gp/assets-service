@@ -555,6 +555,9 @@ const projectAndEnvironmentRead = async (
       return resultFailure("assetsCliProjectRead", "Set --project or ASSETS_PROJECT before running this command")
     projectId = projects.data[0]?.id
     if (projectId === undefined) return resultFailure("assetsCliProjectRead", "The service returned no project")
+  } else {
+    const project = await client.projectRead(projectId)
+    if (project.success) projectId = project.data.id
   }
   const selectedEnvironment = optionRead(parsed, "environment") ?? config.environment
   if (selectedEnvironment !== undefined) {
@@ -759,13 +762,19 @@ const uploadAllCommandRun = async (
   if (!local.success) return { result: local }
   const remote = await remoteAssetHistoryManifestLoad({ client, projectId })
   if (!remote.success) return { result: remote }
-  const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
+  const classified = assetDiffClassify({
+    local: local.data.entries.filter((entry) => !entry.file.sourcePath.toLowerCase().endsWith(".md")),
+    remote: remote.data.entries,
+  })
   if (!classified.success) return { result: classified }
 
   const wait = flagRead(parsed, "wait") || flagRead(parsed, "delete")
   const deleteLocal = flagRead(parsed, "delete")
   const dryRun = flagRead(parsed, "dry-run")
-  const localEntries = classified.data.entries.filter((entry) => entry.local !== undefined)
+  const localEntries = classified.data.entries.filter((entry) => {
+    if (entry.local === undefined) return false
+    return !entry.sourcePath.toLowerCase().endsWith(".md")
+  })
   const preflightFailures = localEntries.filter(
     (entry) => entry.status === "unsupported" || entry.status === "conflict",
   )
@@ -1158,7 +1167,8 @@ const commandRun = async (
       projectId,
     })
     if (!remote.success) return { result: remote }
-    const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
+    const localEntries = local.data.entries.filter((entry) => !entry.file.sourcePath.toLowerCase().endsWith(".md"))
+    const classified = assetDiffClassify({ local: localEntries, remote: remote.data.entries })
     if (!classified.success) return { result: classified }
     const diff = await diffDeletionEligibilityApply(
       client,

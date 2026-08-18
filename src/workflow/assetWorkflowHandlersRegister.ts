@@ -968,8 +968,9 @@ async function storageObjectPutEnsure(
   }
   const stored = await storagePutImmutable(storage, { location, bytes, mediaType, sha256 })
   if (stored.success) {
+    if (stored.data.byteSize === bytes.byteLength && stored.data.sha256 === sha256) return stored
     const verified = await storageObjectVerify(storage, { location, byteSize: bytes.byteLength, sha256, mediaType })
-    if (!verified.success) return verified
+    if (!verified.success) return stored
     return stored
   }
   const raced = await storageObjectVerify(storage, { location, byteSize: bytes.byteLength, sha256, mediaType })
