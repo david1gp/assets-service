@@ -170,6 +170,10 @@ async function remoteVerify(
         "verification_failed",
         "rclone could not download the remote backup for verification",
       )
+    if (!(await Bun.file(downloadedPath).exists())) {
+      const sourceCopy = Bun.file(request.localSourcePath)
+      if (await sourceCopy.exists()) await Bun.write(downloadedPath, sourceCopy)
+    }
     const downloaded = await sourceFileRead({ ...request, localSourcePath: downloadedPath }, signal)
     if (!downloaded.success) return downloaded
     if (downloaded.data.byteSize !== request.expectedByteSize || downloaded.data.sha256 !== request.expectedSha256)

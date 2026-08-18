@@ -555,9 +555,6 @@ const projectAndEnvironmentRead = async (
       return resultFailure("assetsCliProjectRead", "Set --project or ASSETS_PROJECT before running this command")
     projectId = projects.data[0]?.id
     if (projectId === undefined) return resultFailure("assetsCliProjectRead", "The service returned no project")
-  } else {
-    const project = await client.projectRead(projectId)
-    if (project.success) projectId = project.data.id
   }
   const selectedEnvironment = optionRead(parsed, "environment") ?? config.environment
   if (selectedEnvironment !== undefined) {

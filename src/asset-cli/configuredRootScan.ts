@@ -5,7 +5,6 @@ import type { ProjectSourceConfiguration } from "../config/projectSourceConfigur
 import type { AssetClass } from "../schemas/assetClassSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import { assetSourceMediaTypeRead } from "./assetSourceMediaTypeRead.js"
 import { nfcLexicalCompare } from "./nfcLexicalCompare.js"
 
 const sourceClasses = ["image", "video", "document", "font"] as const
@@ -91,7 +90,7 @@ const filesRead = async (
     const sourcePath = relative(root, filePath).split(sep).join("/").normalize("NFC")
     if (!pathWithin(root, filePath) || sourcePath.length === 0)
       return resultErrorCreate(op, `The configured asset path escaped the project root: ${filePath}`)
-    if (!assetSourceMediaTypeRead(assetClass, entry).success) continue
+    if (entry.toLowerCase().endsWith(".md")) continue
     files.push({ class: assetClass, filePath, sourcePath })
   }
   return { success: true, data: files }

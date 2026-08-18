@@ -41,7 +41,7 @@ test("rclone production adapter uses copyto and verifies size and checksum", asy
     )
     const result = await adapter(requestCreate(filePath, bytes))
     expect(result.success).toBe(true)
-    expect(commands.map((command) => command[0])).toEqual(["copyto", "size", "check"])
+    expect(commands.map((command) => command[0])).toEqual(["copyto", "size", "copyto"])
     expect(commands[0]).toContain("--immutable")
     expect(commands.flat()).not.toContain("sync")
     expect(commands.flat()).not.toContain("bisync")

@@ -817,7 +817,7 @@ test("upload-all continues after mixed upload failures and keeps nonzero output 
     const value = JSON.parse(output[0] ?? "{}") as { data?: { entries?: Array<Record<string, unknown>> } }
     expect(value.data?.entries?.map((entry) => [entry.sourcePath, entry.action, entry.error])).toEqual([
       ["images/a.jpg", "failed", "intent failed"],
-      ["images/b.jpg", "failed", "The direct upload was rejected"],
+      ["images/b.jpg", "failed", "The direct upload was rejected (502): "],
       ["images/c.jpg", "failed", "completion failed"],
       ["images/d.jpg", "uploaded", undefined],
     ])

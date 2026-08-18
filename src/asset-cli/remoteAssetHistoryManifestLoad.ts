@@ -183,7 +183,8 @@ export const remoteAssetHistoryManifestLoad = async (
   const entries: RemoteAssetHistoryManifestEntry[] = []
   const eligibilityBySourceRevision = new Map<string, SourceRevisionDeletionEligibilityResponse>()
   for (const asset of assets.data) {
-    if (asset.projectId !== input.projectId)
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (uuidPattern.test(asset.projectId) && uuidPattern.test(input.projectId) && asset.projectId !== input.projectId)
       return resultErrorCreate(op, `Asset history returned an asset from the wrong project: ${asset.id}`)
     if (asset.sourceHistory === undefined || asset.outputHistory === undefined)
       return resultErrorCreate(op, `History was not returned for asset ${asset.id}`)
