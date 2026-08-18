@@ -138,6 +138,63 @@ describe("Zitadel authentication contracts", () => {
     expect(standardRole).toMatchObject({ success: true, data: { grants: [{ roles: ["assets.admin"] }] } })
   })
 
+  test("validates a Zitadel personal access token through the user and grant endpoints", async () => {
+    const pat = "eyJhbGciOiJBMjU2R0NNS1ciLCJlbmMiOiJBMjU2R0NNIn0.ciphertext.tag.iv.extra"
+    const requested: string[] = []
+    const result = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${pat}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        serviceAccountClientId: "machine-client-1",
+        projectId: "zitadel-project-1",
+        now: () => nowSeconds * 1000,
+        patFetcher: async (input) => {
+          requested.push(String(input))
+          if (String(input).endsWith("/auth/v1/users/me")) {
+            return new Response(
+              JSON.stringify({
+                user: {
+                  id: "machine-user-1",
+                  state: "USER_STATE_ACTIVE",
+                  details: { resourceOwner: "org-1" },
+                  machine: { name: "Assets Service CLI" },
+                },
+              }),
+            )
+          }
+          return new Response(
+            JSON.stringify({
+              result: [
+                {
+                  projectId: "zitadel-project-1",
+                  orgId: "org-1",
+                  state: "USER_GRANT_STATE_ACTIVE",
+                  roleKeys: ["assets.admin"],
+                },
+              ],
+            }),
+          )
+        },
+      },
+    )
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        method: "service_account",
+        subjectId: "machine-user-1",
+        grants: [{ projectId: "zitadel-project-1", roles: ["assets.admin"] }],
+      },
+    })
+    expect(requested).toEqual([
+      "https://zitadel.example.test/auth/v1/users/me",
+      "https://zitadel.example.test/auth/v1/usergrants/me/_search",
+    ])
+  })
+
   test("caches JWKS responses and refreshes a rotated key on demand", async () => {
     const keys = await keyPairCreate()
     const jwk = await jwkCreate(keys.publicKey)
