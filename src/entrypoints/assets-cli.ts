@@ -1,0 +1,906 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
+import * as v from "valibot"
+
+import { apiFailureEnvelopeCreate } from "../api/apiFailureEnvelopeCreate.js"
+import { apiSuccessEnvelopeCreate } from "../api/apiSuccessEnvelopeCreate.js"
+import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
+import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
+import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
+import { assetIdentifierCreate } from "../asset/assetIdentifierCreate.js"
+import { foldersSchema } from "../asset/foldersSchema.js"
+import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
+import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
+import { contentSha256Create } from "../schemas/contentSha256Create.js"
+import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
+import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
+import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
+import type { Result } from "../schemas/resultSchema.js"
+
+type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
+
+export type AssetsCliOptions = {
+  env?: NodeJS.ProcessEnv
+  fetcher?: Fetcher
+  sleep?: (milliseconds: number) => Promise<void>
+  stdout?: (text: string) => void
+  stderr?: (text: string) => void
+  stdinRead?: () => Promise<string>
+}
+
+type CliConfig = {
+  apiUrl?: string
+  project?: string
+  environment?: string
+}
+
+type CliSession = {
+  accessToken: string
+  tokenType?: string
+  expiresAt?: number
+}
+
+type ParsedCommand = {
+  command: string
+  subcommand?: string
+  positionals: string[]
+  options: Record<string, string | true>
+  json: boolean
+}
+
+type CommandOutput = {
+  result: Result<unknown>
+  exitCode?: number
+}
+
+type AssetsApiClient = Extract<ReturnType<typeof assetsApiClientCreate>, { success: true }>["data"]
+
+const configSchema = v.strictObject({
+  apiUrl: v.optional(v.pipe(v.string(), v.url())),
+  project: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(128))),
+  environment: v.optional(environmentNameSchema),
+})
+
+const sessionSchema = v.strictObject({
+  accessToken: v.pipe(v.string(), v.minLength(1)),
+  tokenType: v.optional(v.pipe(v.string(), v.minLength(1))),
+  expiresAt: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
+})
+
+const optionNames = new Set([
+  "alt",
+  "api-url",
+  "atomicity",
+  "class",
+  "config",
+  "dir",
+  "environment",
+  "file",
+  "folder",
+  "font-list",
+  "format",
+  "height",
+  "image-list",
+  "include",
+  "integration-note",
+  "key",
+  "kind",
+  "limit",
+  "note",
+  "output-dir",
+  "path",
+  "poll-interval",
+  "project",
+  "quality",
+  "search",
+  "session",
+  "status",
+  "token",
+  "to",
+  "video-list",
+  "width",
+])
+
+const flagNames = new Set(["check", "help", "json", "no-wait", "show-ai-label", "token-stdin", "wait", "write"])
+
+const commandHelp = {
+  commands: [
+    "auth login",
+    "doctor --environment <development|production>",
+    "import <root>",
+    "upload <file> --path <folder/file> --integration-note <text>",
+    "list",
+    "show <asset-key>",
+    "outputs list|add|remove|set <asset-key>",
+    "metadata set|unset <asset-key>",
+    "move <asset-key> --to <path>",
+    "delete <asset-key>",
+    "lists [--check] [--dir <directory>]",
+  ],
+  options: [
+    "--api-url",
+    "--project",
+    "--environment",
+    "--config",
+    "--session",
+    "--json",
+    "--wait",
+    "--no-wait",
+    "--poll-interval",
+    "--token-stdin",
+    "--atomicity",
+    "--show-ai-label",
+    "--path",
+    "--note",
+    "--integration-note",
+    "--kind",
+    "--class",
+    "--include",
+    "--search",
+    "--folder",
+    "--to",
+    "--file",
+    "--width",
+    "--height",
+    "--format",
+    "--quality",
+    "--key",
+    "--alt",
+    "--dir",
+    "--output-dir",
+    "--image-list",
+    "--video-list",
+    "--font-list",
+    "--check",
+    "--write",
+  ],
+}
+
+const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
+  resultErrorCreate(op, message, rawData)
+
+const pathRead = (env: NodeJS.ProcessEnv, option: string, fallbackDirectory: string, filename: string): string => {
+  const configured = env[option]
+  if (configured && configured.length > 0) return configured
+  const home = env.HOME ?? homedir()
+  const directory = env.XDG_CONFIG_HOME ?? join(home, fallbackDirectory)
+  return join(directory, "assets", filename)
+}
+
+const configPathRead = (env: NodeJS.ProcessEnv): string =>
+  env.ASSETS_CONFIG_FILE ?? env.ASSETS_CONFIG_PATH ?? pathRead(env, "ASSETS_CONFIG", ".config", "config.json")
+
+const sessionPathRead = (env: NodeJS.ProcessEnv): string =>
+  env.ASSETS_SESSION_FILE ?? env.ASSETS_SESSION_PATH ?? pathRead(env, "ASSETS_SESSION", ".local/state", "session.json")
+
+const jsonFileRead = async <T>(filePath: string, schema: v.GenericSchema, op: string): Promise<Result<T | null>> => {
+  let content: string
+  try {
+    content = await readFile(filePath, "utf8")
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+      return { success: true, data: null }
+    return resultFailure(op, `Could not read ${filePath}`)
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(content)
+  } catch {
+    return resultFailure(op, `The JSON file ${filePath} was invalid`)
+  }
+  const parsed = v.safeParse(schema, value)
+  if (!parsed.success)
+    return resultFailure(op, `The JSON file ${filePath} did not match its schema`, v.summarize(parsed.issues))
+  return { success: true, data: parsed.output as T }
+}
+
+const configRead = (env: NodeJS.ProcessEnv): Promise<Result<CliConfig | null>> =>
+  jsonFileRead(configPathRead(env), configSchema, "assetsCliConfigRead")
+
+const sessionRead = (env: NodeJS.ProcessEnv): Promise<Result<CliSession | null>> =>
+  jsonFileRead(sessionPathRead(env), sessionSchema, "assetsCliSessionRead")
+
+const jsonFileWrite = async (filePath: string, value: unknown, op: string): Promise<Result<undefined>> => {
+  try {
+    await mkdir(join(filePath, ".."), { recursive: true, mode: 0o700 })
+    const temporaryPath = `${filePath}.tmp-${process.pid}`
+    await writeFile(temporaryPath, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600 })
+    await rename(temporaryPath, filePath)
+    return { success: true, data: undefined }
+  } catch {
+    return resultFailure(op, `Could not write ${filePath}`)
+  }
+}
+
+const configWrite = (env: NodeJS.ProcessEnv, config: CliConfig): Promise<Result<undefined>> =>
+  jsonFileWrite(configPathRead(env), config, "assetsCliConfigWrite")
+
+const sessionWrite = (env: NodeJS.ProcessEnv, accessToken: string): Promise<Result<undefined>> =>
+  jsonFileWrite(sessionPathRead(env), { accessToken }, "assetsCliSessionWrite")
+
+const stdinRead = async (): Promise<string> => {
+  let content = ""
+  for await (const chunk of process.stdin) content += String(chunk)
+  return content
+}
+
+const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
+  const options: Record<string, string | true> = {}
+  const positionals: string[] = []
+  let json = false
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index]
+    if (argument === undefined) continue
+    if (!argument.startsWith("--")) {
+      positionals.push(argument)
+      continue
+    }
+    const raw = argument.slice(2)
+    const equalsIndex = raw.indexOf("=")
+    const name = equalsIndex === -1 ? raw : raw.slice(0, equalsIndex)
+    const inlineValue = equalsIndex === -1 ? undefined : raw.slice(equalsIndex + 1)
+    if (name === "json") {
+      if (inlineValue !== undefined) return resultFailure("assetsCliParse", "Flag --json does not accept a value")
+      json = true
+      continue
+    }
+    if (!optionNames.has(name) && !flagNames.has(name))
+      return resultFailure("assetsCliParse", `Unknown option --${name}`)
+    if (
+      name === "alt" &&
+      inlineValue === undefined &&
+      (args[index + 1] === undefined || args[index + 1]?.startsWith("--"))
+    ) {
+      options[name] = true
+      continue
+    }
+    if (flagNames.has(name)) {
+      if (inlineValue !== undefined) return resultFailure("assetsCliParse", `Flag --${name} does not accept a value`)
+      options[name] = true
+      continue
+    }
+    const value = inlineValue ?? args[index + 1]
+    if (value === undefined || value.startsWith("--"))
+      return resultFailure("assetsCliParse", `Option --${name} needs a value`)
+    if (inlineValue === undefined) index += 1
+    options[name] = value
+  }
+  const command = positionals.shift()
+  if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
+  const subcommand = ["auth", "outputs", "metadata"].includes(command) ? positionals.shift() : undefined
+  return {
+    success: true,
+    data: { command, ...(subcommand === undefined ? {} : { subcommand }), positionals, options, json },
+  }
+}
+
+const optionRead = (parsed: ParsedCommand, name: string): string | undefined => {
+  const value = parsed.options[name]
+  return typeof value === "string" ? value : undefined
+}
+
+const flagRead = (parsed: ParsedCommand, name: string): boolean => parsed.options[name] === true
+
+const optionAllowed = (parsed: ParsedCommand, allowed: readonly string[]): Result<undefined> => {
+  const allowedSet = new Set(allowed)
+  for (const name of Object.keys(parsed.options)) {
+    if (
+      name === "json" ||
+      name === "help" ||
+      name === "api-url" ||
+      name === "project" ||
+      name === "environment" ||
+      name === "config" ||
+      name === "session"
+    )
+      continue
+    if (!allowedSet.has(name))
+      return resultFailure("assetsCliCommandValidate", `Option --${name} is not valid for this command`)
+  }
+  return { success: true, data: undefined }
+}
+
+const positionalRequire = (parsed: ParsedCommand, count: number): Result<readonly string[]> => {
+  if (parsed.positionals.length !== count)
+    return resultFailure("assetsCliCommandValidate", "The command arguments were invalid")
+  return { success: true, data: parsed.positionals }
+}
+
+const numberRead = (
+  value: string | undefined,
+  name: string,
+  minimum = 1,
+  maximum = Number.MAX_SAFE_INTEGER,
+): Result<number> => {
+  if (value === undefined || !/^\d+$/u.test(value))
+    return resultFailure("assetsCliCommandValidate", `--${name} must be a whole number`)
+  const number = Number(value)
+  if (!Number.isSafeInteger(number) || number < minimum || number > maximum)
+    return resultFailure("assetsCliCommandValidate", `--${name} was outside its allowed range`)
+  return { success: true, data: number }
+}
+
+const targetPathRead = (target: string): Result<{ folders: string[]; filename: string }> => {
+  if (target.length === 0 || target.startsWith("/") || target.includes("\\"))
+    return resultFailure("assetsCliTargetPathRead", "The asset path was invalid")
+  const segments = target.split("/")
+  const filename = segments.pop()
+  if (filename === undefined) return resultFailure("assetsCliTargetPathRead", "The asset filename was missing")
+  const folders = v.safeParse(foldersSchema, segments)
+  const parsedFilename = v.safeParse(assetFilenameSchema, filename)
+  if (!folders.success || !parsedFilename.success)
+    return resultFailure("assetsCliTargetPathRead", "The asset path was invalid")
+  return { success: true, data: { folders: folders.output, filename: parsedFilename.output } }
+}
+
+const mediaTypeRead = (filePath: string): Result<string> => {
+  const extension = filePath.toLocaleLowerCase().split(".").pop() ?? ""
+  const mediaType =
+    extension === "jpg" || extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "png"
+        ? "image/png"
+        : extension === "webp"
+          ? "image/webp"
+          : extension === "avif"
+            ? "image/avif"
+            : extension === "gif"
+              ? "image/gif"
+              : extension === "mp4"
+                ? "video/mp4"
+                : extension === "webm"
+                  ? "video/webm"
+                  : extension === "woff"
+                    ? "font/woff"
+                    : extension === "woff2"
+                      ? "font/woff2"
+                      : extension === "ttf"
+                        ? "font/ttf"
+                        : extension === "otf"
+                          ? "font/otf"
+                          : undefined
+  if (mediaType === undefined) return resultFailure("assetsCliMediaTypeRead", "The file extension is not supported")
+  const parsed = v.safeParse(mediaTypeSchema, mediaType)
+  if (!parsed.success) return resultFailure("assetsCliMediaTypeRead", "The detected media type was invalid")
+  return { success: true, data: parsed.output }
+}
+
+const fileRead = async (filePath: string): Promise<Result<Uint8Array>> => {
+  try {
+    return { success: true, data: await readFile(filePath) }
+  } catch {
+    return resultFailure("assetsCliFileRead", `Could not read ${filePath}`)
+  }
+}
+
+const assetReferenceRead = async (
+  client: AssetsApiClient,
+  projectId: string,
+  reference: string,
+): Promise<Result<string>> => {
+  if (reference.length === 0) return resultFailure("assetsCliAssetReferenceRead", "The asset key was missing")
+  if (!reference.includes("/") && !reference.includes("_")) return { success: true, data: reference }
+  const assets = await client.assetsReadAll(projectId, { include: "outputs,metadata,history" })
+  if (!assets.success) return assets
+  for (const asset of assets.data) {
+    if (asset.sourcePath === reference || asset.id === reference) return { success: true, data: asset.id }
+    for (const output of asset.outputHistory ?? []) {
+      if (assetIdentifierCreate(asset.folders, asset.basename, output.definition.key) === reference)
+        return { success: true, data: asset.id }
+    }
+  }
+  return resultFailure("assetsCliAssetReferenceRead", `The asset ${reference} was not found`)
+}
+
+const projectAndEnvironmentRead = async (
+  client: AssetsApiClient,
+  parsed: ParsedCommand,
+  config: CliConfig,
+): Promise<Result<{ projectId: string; environment?: string }>> => {
+  let projectId = optionRead(parsed, "project") ?? config.project
+  if (projectId === undefined) {
+    const projects = await client.projectsReadAll()
+    if (!projects.success) return projects
+    if (projects.data.length !== 1)
+      return resultFailure("assetsCliProjectRead", "Set --project or ASSETS_PROJECT before running this command")
+    projectId = projects.data[0]?.id
+    if (projectId === undefined) return resultFailure("assetsCliProjectRead", "The service returned no project")
+  }
+  const selectedEnvironment = optionRead(parsed, "environment") ?? config.environment
+  if (selectedEnvironment !== undefined) {
+    const valid = v.safeParse(environmentNameSchema, selectedEnvironment)
+    if (!valid.success) return resultFailure("assetsCliEnvironmentRead", "The environment was invalid")
+    return { success: true, data: { projectId, environment: valid.output } }
+  }
+  const project = await client.projectRead(projectId)
+  if (!project.success) return project
+  return { success: true, data: { projectId, environment: project.data.defaultEnvironment } }
+}
+
+const filesRead = (parsed: ParsedCommand) => {
+  const directory =
+    optionRead(parsed, "dir") ?? optionRead(parsed, "output-dir") ?? join(process.cwd(), "src/app/assets")
+  return {
+    imageListPath: optionRead(parsed, "image-list") ?? join(directory, "imageList.ts"),
+    videoListPath: optionRead(parsed, "video-list") ?? join(directory, "videoList.ts"),
+    fontListPath: optionRead(parsed, "font-list") ?? join(directory, "fontList.ts"),
+  }
+}
+
+const commandRun = async (
+  parsed: ParsedCommand,
+  client: AssetsApiClient,
+  config: CliConfig,
+  env: NodeJS.ProcessEnv,
+  stdin: () => Promise<string>,
+): Promise<CommandOutput> => {
+  if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
+
+  if (parsed.command === "auth" && parsed.subcommand === "login") {
+    if (parsed.positionals.length !== 0)
+      return { result: resultFailure("assetsCliAuthLogin", "The login command takes no positional arguments") }
+    const allowed = optionAllowed(parsed, ["token-stdin", "token"])
+    if (!allowed.success) return { result: allowed }
+    if (optionRead(parsed, "token") !== undefined)
+      return { result: resultFailure("assetsCliAuthLogin", "Tokens are not accepted as command arguments") }
+    if (flagRead(parsed, "token-stdin")) {
+      const token = (await stdin()).trim()
+      if (token.length === 0 || /\s/u.test(token))
+        return { result: resultFailure("assetsCliAuthLogin", "Token input was empty or invalid") }
+      const stored = await sessionWrite(env, token)
+      if (!stored.success) return { result: stored }
+      return { result: { success: true, data: { authenticated: true, sessionFile: sessionPathRead(env) } } }
+    }
+    const loggedIn = await client.authLogin()
+    if (!loggedIn.success) return { result: loggedIn }
+    const storedConfig = await configWrite(env, {
+      ...config,
+      ...(optionRead(parsed, "api-url") ? { apiUrl: optionRead(parsed, "api-url") } : {}),
+    })
+    if (!storedConfig.success) return { result: storedConfig }
+    return {
+      result: { success: true, data: { authorizationUrl: loggedIn.data.authorizationUrl, authenticated: false } },
+    }
+  }
+
+  if (parsed.command === "doctor") {
+    if (parsed.positionals.length !== 0)
+      return { result: resultFailure("assetsCliDoctor", "The doctor command takes no positional arguments") }
+    const allowed = optionAllowed(parsed, [])
+    if (!allowed.success) return { result: allowed }
+    const selected = await projectAndEnvironmentRead(client, parsed, config)
+    if (!selected.success) return { result: selected }
+    const checks: Array<{ name: string; status: "ok" | "failed"; message?: string }> = []
+    const health = await client.healthRead()
+    checks.push(
+      health.success ? { name: "api", status: "ok" } : { name: "api", status: "failed", message: health.errorMessage },
+    )
+    const ready = await client.readyRead()
+    checks.push(
+      ready.success
+        ? { name: "readiness", status: "ok" }
+        : { name: "readiness", status: "failed", message: ready.errorMessage },
+    )
+    const environment = selected.data.environment
+    if (environment === undefined) {
+      checks.push({ name: "environment", status: "failed", message: "An environment was not selected" })
+    } else {
+      const remoteEnvironment = await client.environmentRead(selected.data.projectId, environment)
+      checks.push(
+        remoteEnvironment.success
+          ? { name: "environment", status: "ok" }
+          : { name: "environment", status: "failed", message: remoteEnvironment.errorMessage },
+      )
+    }
+    const ok = checks.every((check) => check.status === "ok")
+    return {
+      result: { success: true, data: { projectId: selected.data.projectId, environment, checks, ok } },
+      exitCode: ok ? 0 : 1,
+    }
+  }
+
+  if (!["import", "upload", "list", "lists", "show", "outputs", "metadata", "move", "delete"].includes(parsed.command))
+    return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
+
+  const selected = await projectAndEnvironmentRead(client, parsed, config)
+  if (!selected.success) return { result: selected }
+  const projectId = selected.data.projectId
+
+  if (parsed.command === "import") {
+    const positional = positionalRequire(parsed, 1)
+    if (!positional.success) return { result: positional }
+    const allowed = optionAllowed(parsed, ["atomicity", "show-ai-label", "wait", "no-wait", "poll-interval"])
+    if (!allowed.success) return { result: allowed }
+    if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+      return { result: resultFailure("assetsCliImport", "--wait and --no-wait cannot be used together") }
+    const atomicity = optionRead(parsed, "atomicity")
+    if (
+      atomicity !== undefined &&
+      atomicity !== "all_or_nothing" &&
+      atomicity !== "best_effort" &&
+      atomicity !== "partial"
+    )
+      return { result: resultFailure("assetsCliImport", "--atomicity must be all_or_nothing or best_effort") }
+    const input = {
+      root: positional.data[0],
+      ...(selected.data.environment === undefined ? {} : { environment: selected.data.environment }),
+      ...(atomicity === undefined ? {} : { atomicity: atomicity === "partial" ? "best_effort" : atomicity }),
+      ...(flagRead(parsed, "show-ai-label") ? { showAiLabel: true } : {}),
+    }
+    const imported = await client.importRequestCreate(projectId, input)
+    if (!imported.success) return { result: imported }
+    if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait")) return { result: imported }
+    const status = await client.importWait(projectId, imported.data.import.id)
+    if (!status.success) return { result: status }
+    return {
+      result: { success: true, data: { import: status.data } },
+      exitCode: status.data.status === "succeeded" ? 0 : 1,
+    }
+  }
+
+  if (parsed.command === "upload") {
+    const positional = positionalRequire(parsed, 1)
+    if (!positional.success) return { result: positional }
+    const allowed = optionAllowed(parsed, ["path", "integration-note", "note", "wait", "no-wait", "poll-interval"])
+    if (!allowed.success) return { result: allowed }
+    if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+      return { result: resultFailure("assetsCliUpload", "--wait and --no-wait cannot be used together") }
+    const filePath = positional.data[0] ?? ""
+    const target = optionRead(parsed, "path")
+    const integrationNote = optionRead(parsed, "integration-note") ?? optionRead(parsed, "note")
+    if (optionRead(parsed, "integration-note") !== undefined && optionRead(parsed, "note") !== undefined)
+      return { result: resultFailure("assetsCliUpload", "Use only one of --integration-note and --note") }
+    if (target === undefined || integrationNote === undefined || integrationNote.length === 0)
+      return { result: resultFailure("assetsCliUpload", "Upload requires --path and --integration-note") }
+    const parsedTarget = targetPathRead(target)
+    if (!parsedTarget.success) return { result: parsedTarget }
+    const bytes = await fileRead(filePath)
+    if (!bytes.success) return { result: bytes }
+    const mediaType = mediaTypeRead(filePath)
+    if (!mediaType.success) return { result: mediaType }
+    const intent = await client.uploadIntentCreate(projectId, {
+      ...(selected.data.environment === undefined ? {} : { environment: selected.data.environment }),
+      originalFilename: parsedTarget.data.filename,
+      folders: parsedTarget.data.folders,
+      integrationNote,
+      byteSize: bytes.data.byteLength,
+      mediaType: mediaType.data,
+      sha256: contentSha256Create(bytes.data),
+    })
+    if (!intent.success) return { result: intent }
+    const uploaded = await client.uploadObjectPut(intent.data.intent, bytes.data)
+    if (!uploaded.success) return { result: uploaded }
+    const completion = await client.uploadCompletionComplete(projectId, intent.data.uploadId, {
+      sha256: contentSha256Create(bytes.data),
+    })
+    if (!completion.success) return { result: completion }
+    const uploadResult = { uploadId: intent.data.uploadId, status: intent.data.status, completion: completion.data }
+    if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait"))
+      return { result: { success: true, data: uploadResult } }
+    const workflow = await client.workflowWait(projectId, completion.data.workflowId)
+    if (!workflow.success) return { result: workflow }
+    return {
+      result: { success: true, data: { ...uploadResult, workflow: workflow.data } },
+      exitCode: workflow.data.status === "succeeded" ? 0 : 1,
+    }
+  }
+
+  if (parsed.command === "list") {
+    if (parsed.positionals.length !== 0)
+      return { result: resultFailure("assetsCliList", "The list command takes no positional arguments") }
+    const allowed = optionAllowed(parsed, ["class", "kind", "include", "search", "folder"])
+    if (!allowed.success) return { result: allowed }
+    const include = optionRead(parsed, "include")
+    if (
+      include !== undefined &&
+      !include
+        .split(",")
+        .map((value) => value.trim())
+        .every((value) => ["outputs", "metadata", "history"].includes(value))
+    )
+      return { result: resultFailure("assetsCliList", "--include must contain outputs, metadata, or history") }
+    if (
+      optionRead(parsed, "class") !== undefined &&
+      optionRead(parsed, "kind") !== undefined &&
+      optionRead(parsed, "class") !== optionRead(parsed, "kind")
+    )
+      return { result: resultFailure("assetsCliList", "--class and --kind must match when both are provided") }
+    const assetClass = optionRead(parsed, "class") ?? optionRead(parsed, "kind")
+    const assets = await client.assetsReadAll(projectId, {
+      ...(assetClass === undefined ? {} : { class: assetClass }),
+      ...(optionRead(parsed, "include") === undefined ? {} : { include: optionRead(parsed, "include") }),
+      ...(optionRead(parsed, "search") === undefined ? {} : { search: optionRead(parsed, "search") }),
+      ...(optionRead(parsed, "folder") === undefined ? {} : { folder: optionRead(parsed, "folder") }),
+    })
+    return { result: assets.success ? { success: true, data: { assets: assets.data } } : assets }
+  }
+
+  if (parsed.command === "lists") {
+    const allowed = optionAllowed(parsed, [
+      "check",
+      "dir",
+      "output-dir",
+      "image-list",
+      "video-list",
+      "font-list",
+      "write",
+    ])
+    if (!allowed.success) return { result: allowed }
+    if (parsed.positionals.length !== 0)
+      return { result: resultFailure("assetsCliLists", "The lists command takes no positional arguments") }
+    if (selected.data.environment === undefined)
+      return { result: resultFailure("assetsCliLists", "Lists requires an environment") }
+    const lists = await client.catalogListsRead(projectId, selected.data.environment)
+    if (!lists.success) return { result: lists }
+    const files = filesRead(parsed)
+    const check = flagRead(parsed, "check")
+    if (check) {
+      const matches = await catalogListsCheck(files, lists.data)
+      if (!matches.success) return { result: matches }
+      return {
+        result: { success: true, data: { digest: lists.data.digest, files, matches: matches.data } },
+        exitCode: matches.data ? 0 : 1,
+      }
+    }
+    if (flagRead(parsed, "write") || !check) {
+      const written = await catalogListsWrite(files, lists.data)
+      if (!written.success) return { result: written }
+      return { result: { success: true, data: { digest: lists.data.digest, files, written: true } } }
+    }
+    return { result: lists }
+  }
+
+  const assetPositional = positionalRequire(
+    parsed,
+    parsed.command === "outputs" && parsed.subcommand === "remove" ? 2 : 1,
+  )
+  if (!assetPositional.success) return { result: assetPositional }
+  const assetReference = await assetReferenceRead(client, projectId, assetPositional.data[0] ?? "")
+  if (!assetReference.success) return { result: assetReference }
+  const assetId = assetReference.data
+
+  if (parsed.command === "show") {
+    const allowed = optionAllowed(parsed, [])
+    if (!allowed.success) return { result: allowed }
+    return { result: await client.assetRead(projectId, assetId) }
+  }
+
+  if (parsed.command === "outputs") {
+    if (parsed.subcommand === "list") {
+      const allowed = optionAllowed(parsed, [])
+      if (!allowed.success) return { result: allowed }
+      return { result: await client.assetOutputsRead(projectId, assetId) }
+    }
+    if (parsed.subcommand === "remove") {
+      const output = positionalRequire(parsed, 2)
+      if (!output.success) return { result: output }
+      const allowed = optionAllowed(parsed, [])
+      if (!allowed.success) return { result: allowed }
+      return { result: await client.assetOutputRemove(projectId, assetId, { key: output.data[1] }) }
+    }
+    if (parsed.subcommand === "add") {
+      const kind = optionRead(parsed, "kind") ?? "image"
+      const allowed = optionAllowed(
+        parsed,
+        kind === "image" ? ["kind", "key", "width", "height", "format", "quality", "show-ai-label"] : ["kind", "key"],
+      )
+      if (!allowed.success) return { result: allowed }
+      const key = optionRead(parsed, "key")
+      if (kind === "image") {
+        const width = numberRead(optionRead(parsed, "width"), "width")
+        const height = numberRead(optionRead(parsed, "height"), "height")
+        const format = optionRead(parsed, "format")
+        if (!width.success || !height.success || format === undefined)
+          return {
+            result: resultFailure("assetsCliOutputsAdd", "Image outputs require --width, --height, and --format"),
+          }
+        const body = {
+          kind: "image" as const,
+          key: key ?? `${width.data}x${height.data}_${format}`,
+          width: width.data,
+          height: height.data,
+          format,
+          ...(optionRead(parsed, "quality") === undefined ? {} : { quality: Number(optionRead(parsed, "quality")) }),
+          ...(flagRead(parsed, "show-ai-label") ? { showAiLabel: true } : {}),
+        }
+        return { result: await client.assetOutputAdd(projectId, assetId, body) }
+      }
+      if (kind === "video" || kind === "font") {
+        const body =
+          kind === "video"
+            ? { kind: "video" as const, key: key ?? "default" }
+            : { kind: "font" as const, key: key ?? "default", format: "woff2" as const }
+        return { result: await client.assetOutputAdd(projectId, assetId, body) }
+      }
+      return { result: resultFailure("assetsCliOutputsAdd", "The output kind was invalid") }
+    }
+    if (parsed.subcommand === "set") {
+      const allowed = optionAllowed(parsed, ["file"])
+      if (!allowed.success) return { result: allowed }
+      const file = optionRead(parsed, "file")
+      if (file === undefined)
+        return { result: resultFailure("assetsCliOutputsSet", "Output replacement requires --file") }
+      const content = await fileRead(file)
+      if (!content.success) return { result: content }
+      let value: unknown
+      try {
+        value = JSON.parse(new TextDecoder().decode(content.data))
+      } catch {
+        return { result: resultFailure("assetsCliOutputsSet", "The output JSON file was invalid") }
+      }
+      const body = Array.isArray(value) ? { outputs: value } : value
+      return { result: await client.assetOutputsSet(projectId, assetId, body) }
+    }
+    return { result: resultFailure("assetsCliOutputs", "Use outputs list, add, remove, or set") }
+  }
+
+  if (parsed.command === "metadata") {
+    if (parsed.subcommand === "set") {
+      const allowed = optionAllowed(parsed, ["alt"])
+      if (!allowed.success) return { result: allowed }
+      const alt = optionRead(parsed, "alt")
+      if (alt === undefined) return { result: resultFailure("assetsCliMetadataSet", "Metadata set requires --alt") }
+      return { result: await client.assetMetadataSet(projectId, assetId, { alt }) }
+    }
+    if (parsed.subcommand === "unset") {
+      const allowed = optionAllowed(parsed, ["alt"])
+      if (!allowed.success) return { result: allowed }
+      if (parsed.options.alt !== true && optionRead(parsed, "alt") !== "alt")
+        return { result: resultFailure("assetsCliMetadataUnset", "Metadata unset requires --alt") }
+      return { result: await client.assetMetadataUnset(projectId, assetId, { field: "alt" }) }
+    }
+    return { result: resultFailure("assetsCliMetadata", "Use metadata set or unset") }
+  }
+
+  if (parsed.command === "move") {
+    const allowed = optionAllowed(parsed, ["to"])
+    if (!allowed.success) return { result: allowed }
+    const to = optionRead(parsed, "to")
+    if (to === undefined) return { result: resultFailure("assetsCliMove", "Move requires --to") }
+    return { result: await client.assetMove(projectId, assetId, { to }) }
+  }
+
+  if (parsed.command === "delete") {
+    const allowed = optionAllowed(parsed, ["wait", "no-wait", "poll-interval"])
+    if (!allowed.success) return { result: allowed }
+    if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+      return { result: resultFailure("assetsCliDelete", "--wait and --no-wait cannot be used together") }
+    const deletion = await client.assetDeleteRequest(projectId, assetId)
+    if (!deletion.success || !flagRead(parsed, "wait") || flagRead(parsed, "no-wait")) return { result: deletion }
+    const status = await client.deletionWait(projectId, assetId)
+    if (!status.success) return { result: status }
+    return { result: status, exitCode: status.data.status === "succeeded" ? 0 : 1 }
+  }
+
+  return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
+}
+
+const structuredFailureRead = (result: Extract<Result<unknown>, { success: false }>) => {
+  const raw = result.rawData
+  const rawObject = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined
+  const nestedError =
+    rawObject?.error && typeof rawObject.error === "object" ? (rawObject.error as Record<string, unknown>) : undefined
+  const knownCodes = new Set([
+    "validation_failed",
+    "not_configured",
+    "unauthorized",
+    "forbidden",
+    "not_found",
+    "method_not_allowed",
+    "service_unavailable",
+    "conflict",
+    "upstream_failure",
+    "job_failed",
+    "internal_error",
+  ])
+  const codeValue = nestedError?.code ?? rawObject?.code
+  const inferredCode =
+    result.op === "assetsCliConfig" || result.op === "assetsCliSessionRead"
+      ? "not_configured"
+      : /Parse|Validate|Target|Media|Command|Environment|Project/u.test(result.op) ||
+          /invalid|requires|must be|missing|outside|did not match/u.test(result.errorMessage)
+        ? "validation_failed"
+        : "internal_error"
+  const code =
+    typeof codeValue === "string" && knownCodes.has(codeValue)
+      ? (codeValue as Parameters<typeof apiFailureEnvelopeCreate>[0]["code"])
+      : inferredCode
+  const requestId = typeof rawObject?.requestId === "string" ? rawObject.requestId : undefined
+  return {
+    error: {
+      code,
+      message: result.errorMessage,
+      ...(nestedError?.details && typeof nestedError.details === "object"
+        ? { details: nestedError.details as Record<string, unknown> }
+        : {}),
+      retryable: code === "service_unavailable" || code === "internal_error" || nestedError?.retryable === true,
+    },
+    ...(requestId === undefined ? {} : { requestId }),
+  }
+}
+
+const humanValueRead = (data: unknown): string => {
+  if (data && typeof data === "object" && "authorizationUrl" in data && typeof data.authorizationUrl === "string")
+    return `Open this URL to sign in:\n${data.authorizationUrl}\n`
+  if (data && typeof data === "object" && "matches" in data && typeof data.matches === "boolean")
+    return data.matches ? "Generated lists match.\n" : "Generated lists do not match.\n"
+  return `${JSON.stringify(data, null, 2)}\n`
+}
+
+const outputWrite = (
+  output: CommandOutput,
+  json: boolean,
+  stdout: (text: string) => void,
+  stderr: (text: string) => void,
+): number => {
+  if (output.result.success) {
+    stdout(
+      json ? jsonEnvelopeStringify(apiSuccessEnvelopeCreate(output.result.data)) : humanValueRead(output.result.data),
+    )
+    return output.exitCode ?? 0
+  }
+  const failure = structuredFailureRead(output.result)
+  if (json) stdout(jsonEnvelopeStringify(apiFailureEnvelopeCreate(failure.error, failure.requestId)))
+  else stderr(`${failure.error.code}: ${failure.error.message}\n`)
+  return output.exitCode ?? 1
+}
+
+export const assetsCliMain = async (args = process.argv.slice(2), options: AssetsCliOptions = {}): Promise<number> => {
+  const sourceEnv = options.env ?? process.env
+  const stdout = options.stdout ?? ((text: string) => process.stdout.write(text))
+  const stderr = options.stderr ?? ((text: string) => process.stderr.write(text))
+  const parsed = parsedCommandRead(args)
+  if (!parsed.success) return outputWrite({ result: parsed }, args.includes("--json"), stdout, stderr)
+  if (flagRead(parsed.data, "help") || parsed.data.command === "help")
+    return outputWrite({ result: { success: true, data: commandHelp } }, parsed.data.json, stdout, stderr)
+
+  const env: NodeJS.ProcessEnv = {
+    ...sourceEnv,
+    ...(optionRead(parsed.data, "config") === undefined
+      ? {}
+      : { ASSETS_CONFIG_FILE: optionRead(parsed.data, "config") }),
+    ...(optionRead(parsed.data, "session") === undefined
+      ? {}
+      : { ASSETS_SESSION_FILE: optionRead(parsed.data, "session") }),
+  }
+
+  const configResult = await configRead(env)
+  if (!configResult.success) return outputWrite({ result: configResult }, parsed.data.json, stdout, stderr)
+  const config: CliConfig = {
+    ...(configResult.data ?? {}),
+    ...(env.ASSETS_PROJECT === undefined && env.ASSETS_PROJECT_ID === undefined
+      ? {}
+      : { project: env.ASSETS_PROJECT ?? env.ASSETS_PROJECT_ID }),
+    ...(env.ASSETS_ENVIRONMENT === undefined ? {} : { environment: env.ASSETS_ENVIRONMENT }),
+  }
+  const apiUrl = optionRead(parsed.data, "api-url") ?? env.ASSETS_API_URL ?? config.apiUrl
+  if (apiUrl === undefined)
+    return outputWrite(
+      { result: resultFailure("assetsCliConfig", "Set ASSETS_API_URL or --api-url") },
+      parsed.data.json,
+      stdout,
+      stderr,
+    )
+  const sessionResult = await sessionRead(env)
+  if (!sessionResult.success) return outputWrite({ result: sessionResult }, parsed.data.json, stdout, stderr)
+  const accessToken = env.ASSETS_TOKEN ?? env.ASSETS_ACCESS_TOKEN ?? sessionResult.data?.accessToken
+  const pollInterval = optionRead(parsed.data, "poll-interval")
+  const parsedPollInterval =
+    pollInterval === undefined ? undefined : numberRead(pollInterval, "poll-interval", 0, 3600000)
+  if (parsedPollInterval !== undefined && !parsedPollInterval.success)
+    return outputWrite({ result: parsedPollInterval }, parsed.data.json, stdout, stderr)
+  const clientResult = assetsApiClientCreate({
+    apiUrl,
+    ...(accessToken === undefined ? {} : { accessToken }),
+    ...(env.ASSETS_SESSION_COOKIE === undefined ? {} : { sessionCookie: env.ASSETS_SESSION_COOKIE }),
+    fetcher: options.fetcher,
+    sleep: options.sleep,
+    pollIntervalMilliseconds: parsedPollInterval?.data,
+  })
+  if (!clientResult.success) return outputWrite({ result: clientResult }, parsed.data.json, stdout, stderr)
+  const command = await commandRun(parsed.data, clientResult.data, config, env, options.stdinRead ?? stdinRead)
+  return outputWrite(command, parsed.data.json, stdout, stderr)
+}
+
+if (import.meta.main) process.exit(await assetsCliMain())
