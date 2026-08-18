@@ -1,0 +1,14 @@
+[Unit]
+Description=assets-service frontend dev server (rsbuild, :3010)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/adaptive/assets-service
+Environment=PATH=%h/.local/bin:%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env bun run rsbuild:dev
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

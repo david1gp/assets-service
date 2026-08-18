@@ -3,10 +3,6 @@ node_modules
 .pnp
 .pnp.js
 
-# Bun package managers
-bun.lock
-bun.lockb
-
 # Output
 out
 dist
@@ -37,6 +33,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Dotenv secrets
 .env
 .env.*
+!.env.example
 
 # Cache
 .eslintcache
@@ -54,12 +51,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Ignore package manager lock files
+# Ignore package manager lock files other than the Bun lockfile, which is committed.
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
-bun.lockb
-bun.lock
 
 # vscode
 .vscode
@@ -96,3 +91,8 @@ AGENTS.md
 # images
 /public-images
 /public-image-versions
+
+# Browser-verification screenshots, which belong in a scratch directory
+/*.png
+/*.jpg
+/*.webp

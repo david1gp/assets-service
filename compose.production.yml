@@ -1,0 +1,50 @@
+services:
+  api:
+    build:
+      context: .
+    image: adaptive-ds/assets-service:${ASSETS_IMAGE_TAG:-local}
+    env_file:
+      - ${ASSETS_ENV_FILE:-.env}
+    environment:
+      ASSETS_DATABASE_PATH: /var/lib/assets-service/assets.sqlite
+      ASSETS_API_PORT: 8787
+    ports:
+      - "127.0.0.1:${ASSETS_PUBLISHED_API_PORT:-8787}:8787"
+    volumes:
+      - assets-service-data:/var/lib/assets-service
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          const response = await fetch('http://127.0.0.1:8787/api/v1/health/live');
+          process.exit(response.ok ? 0 : 1)
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+
+  worker:
+    build:
+      context: .
+    image: adaptive-ds/assets-service:${ASSETS_IMAGE_TAG:-local}
+    env_file:
+      - ${ASSETS_ENV_FILE:-.env}
+    environment:
+      ASSETS_DATABASE_PATH: /var/lib/assets-service/assets.sqlite
+      RCLONE_CONFIG: /run/assets-service/rclone.conf
+    volumes:
+      - assets-service-data:/var/lib/assets-service
+      - ${RCLONE_CONFIG_HOST_PATH:-/etc/assets-service/rclone.conf}:/run/assets-service/rclone.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["run", "worker"]
+    restart: unless-stopped
+    init: true
+
+volumes:
+  assets-service-data:

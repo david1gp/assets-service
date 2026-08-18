@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+data
+dist
+node_modules
+build
+coverage
+public-images
+public-image-versions
+test
+tests
+*.sqlite
+*.sqlite-*

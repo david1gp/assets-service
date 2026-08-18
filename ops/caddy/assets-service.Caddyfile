@@ -1,0 +1,9 @@
+{$ASSETS_API_HOST} {
+  encode zstd gzip
+
+  reverse_proxy 127.0.0.1:{$ASSETS_PUBLISHED_API_PORT} {
+    health_uri /api/v1/health/live
+    health_interval 30s
+    health_timeout 5s
+  }
+}

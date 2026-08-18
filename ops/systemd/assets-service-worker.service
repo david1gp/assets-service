@@ -1,0 +1,20 @@
+[Unit]
+Description=assets-service worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# install.bash replaces this path with the current checkout path.
+WorkingDirectory=%h/adaptive/assets-service
+EnvironmentFile=%h/.config/assets-service/assets-service.env
+Environment=PATH=%h/.local/bin:%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env bun run worker
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
