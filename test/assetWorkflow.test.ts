@@ -9,6 +9,7 @@ import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
+import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
@@ -276,6 +277,26 @@ describe("asset ingestion workflow", () => {
           eventId: "customer-asset-uploaded:upload-asset-workflow",
           kind: "customer_asset_uploaded",
           status: "pending",
+        },
+      ])
+      expect(opened.data.db.select().from(assetMetadataTable).all()).toMatchObject([
+        {
+          id: "metadata-asset-upload-asset-workflow",
+          assetId: "asset-upload-asset-workflow",
+          sourceRevisionId: "source-upload-asset-workflow",
+          metadata: {
+            kind: "image",
+            width: 7,
+            height: 3,
+            format: "png",
+            colorSpace: "srgb",
+            alpha: false,
+            orientationApplied: true,
+            frameCount: 1,
+            animated: false,
+            alt: null,
+            aiProvenance: null,
+          },
         },
       ])
       expect(await Bun.file(join(workspacePath, "leftover.bin")).exists()).toBe(false)

@@ -18,6 +18,7 @@ import { legacyImportProgressReconcile } from "../import/legacyImportProgressRec
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
+import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { backupReceiptTable } from "../infrastructure/db/schema/backupReceiptTable.js"
 import { blobTable } from "../infrastructure/db/schema/blobTable.js"
@@ -621,6 +622,31 @@ async function processOutputHandle(
     now: input.clock?.() ?? new Date(),
   })
   if (!updated.success) return updated
+
+  const existingMetadata = input.db
+    .select()
+    .from(assetMetadataTable)
+    .where(eq(assetMetadataTable.assetId, context.data.asset.id))
+    .get()
+  if (existingMetadata === undefined) {
+    const metadataNow = input.clock?.().toISOString() ?? new Date().toISOString()
+    const insertedMetadata = databaseRecordInsert(input.db, assetMetadataTable, {
+      id: `metadata-${context.data.asset.id}`,
+      assetId: context.data.asset.id,
+      sourceRevisionId: context.data.source.id,
+      metadata: processed.data.metadata,
+      createdAt: metadataNow,
+      updatedAt: metadataNow,
+    })
+    if (!insertedMetadata.success) {
+      const racedMetadata = input.db
+        .select()
+        .from(assetMetadataTable)
+        .where(eq(assetMetadataTable.assetId, context.data.asset.id))
+        .get()
+      if (racedMetadata === undefined) return insertedMetadata
+    }
+  }
   return { success: true, data: null }
 }
 

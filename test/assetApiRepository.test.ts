@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { eq } from "drizzle-orm"
 
 import { assetApiRepositoryCreate } from "../src/asset/assetApiRepositoryCreate.js"
 import { deletionApiRepositoryCreate } from "../src/deletion/deletionApiRepositoryCreate.js"
@@ -9,10 +10,14 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { catalogGenerationTable } from "../src/infrastructure/db/schema/catalogGenerationTable.js"
+import { catalogOutputTable } from "../src/infrastructure/db/schema/catalogOutputTable.js"
+import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDefinitionTable.js"
+import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
@@ -187,6 +192,126 @@ describe("asset API persistence", () => {
       expect(
         deletionApiRepositoryCreate(connection.db).deletionRequestEnqueue("other-project", "asset-1").success,
       ).toBe(false)
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("creates missing asset metadata from the current catalog output when setting alt", () => {
+    const connection = databaseCreate()
+    try {
+      connection.db.delete(assetMetadataTable).where(eq(assetMetadataTable.assetId, "asset-1")).run()
+      const output = databaseRecordInsert(connection.db, outputDefinitionTable, {
+        id: "output-asset-1-default",
+        assetId: "asset-1",
+        kind: "image",
+        key: "default",
+        width: 320,
+        height: 180,
+        format: "webp",
+        quality: null,
+        showAiLabel: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      expect(output.success).toBe(true)
+      const version = databaseRecordInsert(connection.db, outputVersionTable, {
+        id: "version-asset-1-default",
+        outputDefinitionId: "output-asset-1-default",
+        assetId: "asset-1",
+        sourceRevisionId: "source-1",
+        version: 1,
+        byteSize: 100,
+        sha256: "b".repeat(64),
+        mediaType: "image/webp",
+        extension: "webp",
+        objectKey: "outputs/asset-1/default.webp",
+        toolchainVersion: "test",
+        width: 320,
+        height: 180,
+        current: true,
+        createdAt: now,
+      })
+      expect(version.success).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, catalogGenerationTable, {
+          id: "generation-asset-1",
+          projectId: "project-1",
+          environment: "development",
+          digest: "c".repeat(64),
+          manifestObjectKey: "catalogs/development/test.json",
+          rendererVersion: "test",
+          createdAt: now,
+        }).success,
+      ).toBe(true)
+      const catalogMetadata = {
+        kind: "image" as const,
+        width: 320,
+        height: 180,
+        format: "webp" as const,
+        colorSpace: "srgb" as const,
+        alpha: false,
+        orientationApplied: true,
+        frameCount: 1,
+        animated: false,
+        alt: null,
+        aiProvenance: null,
+      }
+      expect(
+        databaseRecordInsert(connection.db, catalogOutputTable, {
+          generationId: "generation-asset-1",
+          assetId: "asset-1",
+          outputVersionId: "version-asset-1-default",
+          class: "image",
+          key: "default",
+          property: "home_hero",
+          path: "images/home/hero.webp",
+          metadata: catalogMetadata,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, catalogTable, {
+          id: "catalog-project-1-development",
+          projectId: "project-1",
+          environment: "development",
+          generationId: "generation-asset-1",
+          schema: "assets.catalog.v1",
+          digest: "c".repeat(64),
+          rendererVersion: "test",
+          generatedAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+
+      const result = assetApiRepositoryCreate(connection.db).assetMetadataSet("project-1", "asset-1", "Catalog alt")
+      expect(result).toMatchObject({
+        success: true,
+        data: { asset: { metadata: { metadata: { ...catalogMetadata, alt: "Catalog alt" } } } },
+      })
+      expect(connection.db.select().from(assetMetadataTable).all()).toMatchObject([
+        {
+          id: "metadata-asset-1",
+          assetId: "asset-1",
+          sourceRevisionId: "source-1",
+          metadata: { ...catalogMetadata, alt: "Catalog alt" },
+        },
+      ])
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("keeps the unavailable metadata error when no row or catalog output exists", () => {
+    const connection = databaseCreate()
+    try {
+      connection.db.delete(assetMetadataTable).where(eq(assetMetadataTable.assetId, "asset-1")).run()
+      const result = assetApiRepositoryCreate(connection.db).assetMetadataSet("project-1", "asset-1", "Missing")
+      expect(result).toMatchObject({
+        success: false,
+        op: "assetApiRepositoryMetadataSet",
+        errorMessage: "Asset metadata is not available",
+      })
+      expect(connection.db.select().from(assetMetadataTable).all()).toHaveLength(0)
     } finally {
       databaseClose(connection)
     }

@@ -1,17 +1,24 @@
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import * as v from "valibot"
 import { outputDefinitionInputSchema } from "../api-client/outputDefinitionInputSchema.js"
 import { outputSetRequestSchema } from "../api-client/outputSetRequestSchema.js"
 import { canonicalJsonDigest } from "../catalog/canonicalJsonDigest.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
+import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
+import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
+import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
+import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
 import { deletionStateTable } from "../infrastructure/db/schema/deletionStateTable.js"
+import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTable.js"
+import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { assetMetadataSchema } from "../metadata/assetMetadataSchema.js"
+import type { MediaMetadata } from "../metadata/mediaMetadataSchema.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
 import { outputDefinitionSchema } from "../output/outputDefinitionSchema.js"
 import { outputKeySchema } from "../output/outputKeySchema.js"
@@ -21,6 +28,7 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { sourceRevisionSchema } from "../upload/sourceRevisionSchema.js"
 import { assetProcessingWorkflowEnqueue } from "../workflow/assetProcessingWorkflowEnqueue.js"
+import { jobPayloadSchema } from "../workflow/jobPayloadSchema.js"
 import {
   type AssetApiMutation,
   type AssetApiRepository,
@@ -453,8 +461,64 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     const detail = assetRead(projectIdentifier, identifier)
     if (!detail.success) return detail
     if (detail.data === null) return { success: true, data: null }
-    if (detail.data.metadata === null)
-      return resultErrorCreate("assetApiRepositoryMetadataSet", "Asset metadata is not available")
+    if (detail.data.metadata === null) {
+      const sourceMetadata = assetMetadataSourceRead(db, projectIdentifier, detail.data)
+      if (!sourceMetadata.success) return sourceMetadata
+      if (sourceMetadata.data === null)
+        return resultErrorCreate("assetApiRepositoryMetadataSet", "Asset metadata is not available")
+      if (sourceMetadata.data.kind !== "image")
+        return resultErrorCreate(
+          "assetApiRepositoryMetadataSet",
+          "The metadata field is not valid for this asset class",
+        )
+
+      const parsedMetadata = v.safeParse(mediaMetadataSchema, { ...sourceMetadata.data, alt })
+      if (!parsedMetadata.success)
+        return resultErrorCreate(
+          "assetApiRepositoryMetadataSet",
+          "The metadata value was invalid",
+          parsedMetadata.issues,
+        )
+      const now = new Date().toISOString()
+      const sourceRevisionId = detail.data.currentSourceRevisionId
+      const created = databaseTransactionRun(db, (transaction) => {
+        const existing = transaction
+          .select()
+          .from(assetMetadataTable)
+          .where(eq(assetMetadataTable.assetId, identifier))
+          .get()
+        if (existing !== undefined) {
+          const existingMetadata = v.safeParse(mediaMetadataSchema, existing.metadata)
+          if (!existingMetadata.success)
+            return resultErrorCreate("assetApiRepositoryMetadataSet", "The stored metadata was invalid")
+          if (existingMetadata.output.kind !== "image")
+            return resultErrorCreate(
+              "assetApiRepositoryMetadataSet",
+              "The metadata field is not valid for this asset class",
+            )
+          if (existingMetadata.output.alt === alt) return { success: true, data: false } as const
+          transaction
+            .update(assetMetadataTable)
+            .set({ metadata: { ...existingMetadata.output, alt }, updatedAt: now })
+            .where(eq(assetMetadataTable.assetId, identifier))
+            .run()
+        } else {
+          const inserted = databaseRecordInsert(transaction, assetMetadataTable, {
+            id: `metadata-${identifier}`,
+            assetId: identifier,
+            sourceRevisionId,
+            metadata: parsedMetadata.output,
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!inserted.success) return inserted
+        }
+        transaction.update(assetTable).set({ updatedAt: now }).where(eq(assetTable.id, identifier)).run()
+        return { success: true, data: true } as const
+      })
+      if (!created.success) return created
+      return assetMutationRead(projectIdentifier, identifier)
+    }
     if (detail.data.metadata.metadata.kind !== "image")
       return resultErrorCreate("assetApiRepositoryMetadataSet", "The metadata field is not valid for this asset class")
     if (detail.data.metadata.metadata.alt === alt) return { success: true, data: { asset: detail.data } }
@@ -493,6 +557,107 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     if (!enqueued.success) return enqueued
     return { success: true, data: { asset: detail.data, workflowId: enqueued.data.workflowId } }
   }
+}
+
+function assetMetadataSourceRead(
+  db: AssetDatabase,
+  projectIdentifier: string,
+  detail: AssetDetail,
+): Result<MediaMetadata | null> {
+  const outputs = db.select().from(catalogOutputTable).where(eq(catalogOutputTable.assetId, detail.id)).all()
+  const currentCatalogs = db.select().from(catalogTable).where(eq(catalogTable.projectId, projectIdentifier)).all()
+  const currentGenerationIds = new Set(currentCatalogs.map((catalog) => catalog.generationId))
+  const generations = new Map(
+    db
+      .select()
+      .from(catalogGenerationTable)
+      .where(eq(catalogGenerationTable.projectId, projectIdentifier))
+      .all()
+      .map((generation) => [generation.id, generation] as const),
+  )
+  const versions = new Map(
+    db
+      .select()
+      .from(outputVersionTable)
+      .where(eq(outputVersionTable.assetId, detail.id))
+      .all()
+      .map((version) => [version.id, version] as const),
+  )
+  const project = db
+    .select({ defaultEnvironment: projectTable.defaultEnvironment })
+    .from(projectTable)
+    .where(eq(projectTable.id, projectIdentifier))
+    .get()
+  const currentVersionIds = new Set(
+    detail.outputHistory.flatMap((history) =>
+      history.versions.filter((version) => version.current).map((version) => version.id),
+    ),
+  )
+  const candidates = outputs.flatMap((output) => {
+    const metadata = v.safeParse(mediaMetadataSchema, output.metadata)
+    if (!metadata.success || metadata.output.kind !== "image" || output.class !== "image") return []
+    return [
+      {
+        output,
+        metadata: metadata.output,
+        generation: generations.get(output.generationId),
+        version: versions.get(output.outputVersionId),
+        published: currentGenerationIds.has(output.generationId),
+      },
+    ]
+  })
+  const selected = candidates.toSorted((left, right) => {
+    const publishedRank = (candidate: (typeof candidates)[number]): number => {
+      if (!candidate.published) return 0
+      if (candidate.generation?.environment === "production") return 3
+      if (candidate.generation?.environment === project?.defaultEnvironment) return 2
+      return 1
+    }
+    const leftPublished = publishedRank(left)
+    const rightPublished = publishedRank(right)
+    if (leftPublished !== rightPublished) return rightPublished - leftPublished
+
+    const currentOutputRank = (candidate: (typeof candidates)[number]): number => {
+      if (candidate.version?.current === true && candidate.version.sourceRevisionId === detail.currentSourceRevisionId)
+        return 2
+      if (currentVersionIds.has(candidate.output.outputVersionId)) return 1
+      return 0
+    }
+    const leftCurrent = currentOutputRank(left)
+    const rightCurrent = currentOutputRank(right)
+    if (leftCurrent !== rightCurrent) return rightCurrent - leftCurrent
+
+    const leftGenerationCreatedAt = left.generation?.createdAt ?? ""
+    const rightGenerationCreatedAt = right.generation?.createdAt ?? ""
+    if (leftGenerationCreatedAt !== rightGenerationCreatedAt)
+      return rightGenerationCreatedAt.localeCompare(leftGenerationCreatedAt)
+    const leftVersionCreatedAt = left.version?.createdAt ?? ""
+    const rightVersionCreatedAt = right.version?.createdAt ?? ""
+    if (leftVersionCreatedAt !== rightVersionCreatedAt) return rightVersionCreatedAt.localeCompare(leftVersionCreatedAt)
+    return left.output.outputVersionId.localeCompare(right.output.outputVersionId)
+  })
+  const catalogMetadata = selected[0]?.metadata
+  if (catalogMetadata !== undefined) return { success: true, data: catalogMetadata }
+
+  const jobs = db
+    .select()
+    .from(jobTable)
+    .where(and(eq(jobTable.status, "succeeded"), eq(jobTable.kind, "process_image_output")))
+    .orderBy(desc(jobTable.updatedAt), desc(jobTable.id))
+    .all()
+  for (const job of jobs) {
+    const payload = v.safeParse(jobPayloadSchema, job.payload)
+    if (
+      !payload.success ||
+      payload.output.assetId !== detail.id ||
+      payload.output.sourceRevisionId !== detail.currentSourceRevisionId ||
+      payload.output.values === undefined
+    )
+      continue
+    const metadata = v.safeParse(mediaMetadataSchema, payload.output.values.metadata)
+    if (metadata.success && metadata.output.kind === "image") return { success: true, data: metadata.output }
+  }
+  return { success: true, data: null }
 }
 
 const outputDefinitionRead = (
