@@ -584,6 +584,9 @@ type DiffOutputEntry = {
   sourcePath: string
   logicalPath: string
   deletionEligible: boolean
+  altChanged?: boolean
+  localAlt?: string | null
+  remoteAlt?: string | null
   reason?: string
 }
 
@@ -591,7 +594,16 @@ type DiffOutput = {
   root: string
   environment: string
   entries: readonly DiffOutputEntry[]
+  altUpdatesPending: number
 }
+
+const altUpdatesPendingRead = (diff: AssetDiff): number =>
+  diff.entries.filter(
+    (entry) =>
+      entry.local !== undefined &&
+      entry.altChanged &&
+      (entry.status === "new" || entry.status === "changed" || entry.status === "metadata"),
+  ).length
 
 const diffOutputCreate = (root: string, environment: string, diff: AssetDiff): DiffOutput => ({
   root,
@@ -602,8 +614,10 @@ const diffOutputCreate = (root: string, environment: string, diff: AssetDiff): D
     sourcePath: entry.sourcePath,
     logicalPath: entry.logicalPath,
     deletionEligible: entry.deletionEligible,
+    ...(entry.altChanged ? { altChanged: true, localAlt: entry.localAlt, remoteAlt: entry.remoteAlt } : {}),
     ...(entry.reason === undefined ? {} : { reason: entry.reason }),
   })),
+  altUpdatesPending: altUpdatesPendingRead(diff),
 })
 
 const diffHumanOutputRead = (output: DiffOutput): string => {
@@ -618,7 +632,9 @@ const diffHumanOutputRead = (output: DiffOutput): string => {
     lines.push(`${entry.status} ${entry.class} ${entry.sourcePath}${eligibility}${reason}`)
   }
   if (output.entries.length === 0) lines.push("No asset differences.")
-  lines.push(`Summary: ${assetDiffStatuses.map((status) => `${status}=${counts.get(status) ?? 0}`).join(" ")}`)
+  lines.push(
+    `Summary: ${assetDiffStatuses.map((status) => `${status}=${counts.get(status) ?? 0}`).join(" ")} alt-updates-pending=${output.altUpdatesPending}`,
+  )
   return `${lines.join("\n")}\n`
 }
 
@@ -635,6 +651,12 @@ type UploadAllOutputEntry = {
   workflowStatus?: string
   eligible?: boolean
   deleted?: boolean
+  altChanged?: boolean
+  localAlt?: string | null
+  remoteAlt?: string | null
+  altUpdated?: boolean
+  altUpdatePlanned?: boolean
+  altUpdateFailed?: boolean
   error?: string
 }
 
@@ -645,6 +667,8 @@ type UploadAllOutput = {
   delete: boolean
   dryRun: boolean
   entries: readonly UploadAllOutputEntry[]
+  altUpdated: number
+  altUpdatesPending: number
 }
 
 const uploadAllOutputEntryCreate = (
@@ -684,9 +708,51 @@ const uploadAllHumanOutputRead = (output: UploadAllOutput): string => {
   lines.push(
     `Summary: ${(["uploaded", "skipped", "planned", "failed"] as const)
       .map((action) => `${action}=${counts.get(action) ?? 0}`)
-      .join(" ")}`,
+      .join(" ")} alt-updated=${output.altUpdated} alt-updates-pending=${output.altUpdatesPending}`,
   )
   return `${lines.join("\n")}\n`
+}
+
+const altNormalize = (alt: string | null | undefined): string | null => {
+  const normalized = alt?.trim() ?? ""
+  return normalized.length === 0 ? null : normalized
+}
+
+const altUpdateRequired = (entry: AssetDiffEntry): boolean =>
+  entry.altChanged && altNormalize(entry.localAlt) !== altNormalize(entry.remoteAlt)
+
+type AltUpdateOutputState = "updated" | "planned" | "failed"
+
+const altUpdateOutputDetailsCreate = (
+  entry: AssetDiffEntry,
+  state: AltUpdateOutputState,
+): Pick<
+  UploadAllOutputEntry,
+  "altChanged" | "localAlt" | "remoteAlt" | "altUpdated" | "altUpdatePlanned" | "altUpdateFailed"
+> => ({
+  altChanged: true,
+  localAlt: entry.localAlt,
+  remoteAlt: entry.remoteAlt,
+  ...(state === "updated" ? { altUpdated: true } : {}),
+  ...(state === "planned" ? { altUpdatePlanned: true } : {}),
+  ...(state === "failed" ? { altUpdateFailed: true } : {}),
+})
+
+const assetAltMetadataUpdate = async (
+  client: AssetsApiClient,
+  projectId: string,
+  assetId: string,
+  alt: string | null,
+): Promise<Result<undefined>> => {
+  const normalizedAlt = altNormalize(alt)
+  if (normalizedAlt === null) {
+    const unset = await client.assetMetadataUnset(projectId, assetId, { field: "alt" })
+    if (!unset.success) return unset
+    return { success: true, data: undefined }
+  }
+  const updated = await client.assetMetadataSet(projectId, assetId, { alt: normalizedAlt })
+  if (!updated.success) return updated
+  return { success: true, data: undefined }
 }
 
 const diffDeletionEligibilityApply = async (
@@ -760,7 +826,7 @@ const uploadAllCommandRun = async (
   const remote = await remoteAssetHistoryManifestLoad({ client, projectId })
   if (!remote.success) return { result: remote }
   const classified = assetDiffClassify({
-    local: local.data.entries.filter((entry) => !entry.file.sourcePath.toLowerCase().endsWith(".md")),
+    local: local.data.entries,
     remote: remote.data.entries,
   })
   if (!classified.success) return { result: classified }
@@ -768,10 +834,7 @@ const uploadAllCommandRun = async (
   const wait = flagRead(parsed, "wait") || flagRead(parsed, "delete")
   const deleteLocal = flagRead(parsed, "delete")
   const dryRun = flagRead(parsed, "dry-run")
-  const localEntries = classified.data.entries.filter((entry) => {
-    if (entry.local === undefined) return false
-    return !entry.sourcePath.toLowerCase().endsWith(".md")
-  })
+  const localEntries = classified.data.entries.filter((entry) => entry.local !== undefined)
   const preflightFailures = localEntries.filter(
     (entry) => entry.status === "unsupported" || entry.status === "conflict",
   )
@@ -790,6 +853,8 @@ const uploadAllCommandRun = async (
       delete: deleteLocal,
       dryRun,
       entries,
+      altUpdated: 0,
+      altUpdatesPending: 0,
     }
     return {
       result: { success: true, data: output },
@@ -801,9 +866,14 @@ const uploadAllCommandRun = async (
   const actionableEntries = classified.data.entries.filter(
     (entry) =>
       entry.local !== undefined &&
-      (entry.status === "new" || entry.status === "changed" || entry.status === "matching"),
+      (entry.status === "new" ||
+        entry.status === "changed" ||
+        entry.status === "matching" ||
+        entry.status === "metadata"),
   )
   const entries: UploadAllOutputEntry[] = []
+  const altUpdatesPending = actionableEntries.filter(altUpdateRequired).length
+  let altUpdated = 0
   let failed = false
   for (const entry of actionableEntries) {
     const localEntry = entry.local
@@ -815,33 +885,77 @@ const uploadAllCommandRun = async (
       continue
     }
     if (dryRun) {
-      entries.push(uploadAllOutputEntryCreate(entry, entry.status === "matching" ? "skipped" : "planned"))
+      entries.push(
+        uploadAllOutputEntryCreate(
+          entry,
+          entry.status === "matching" && !altUpdateRequired(entry) ? "skipped" : "planned",
+          altUpdateRequired(entry) ? altUpdateOutputDetailsCreate(entry, "planned") : {},
+        ),
+      )
+      continue
+    }
+
+    let altDetails: Partial<Omit<UploadAllOutputEntry, "status" | "class" | "sourcePath" | "logicalPath" | "action">> =
+      {}
+    if (altUpdateRequired(entry) && (entry.status === "metadata" || entry.status === "matching")) {
+      const assetId = entry.remote?.assetId
+      if (assetId === undefined) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altUpdateOutputDetailsCreate(entry, "failed"),
+            error: "The asset metadata update had no remote asset id",
+          }),
+        )
+        continue
+      }
+      const updated = await assetAltMetadataUpdate(client, projectId, assetId, entry.localAlt)
+      if (!updated.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altUpdateOutputDetailsCreate(entry, "failed"),
+            error: updated.errorMessage,
+          }),
+        )
+        continue
+      }
+      altUpdated += 1
+      altDetails = altUpdateOutputDetailsCreate(entry, "updated")
+    }
+
+    if (entry.status === "metadata") {
+      entries.push(uploadAllOutputEntryCreate(entry, "skipped", altDetails))
       continue
     }
 
     if (entry.status === "matching") {
       if (!deleteLocal) {
-        entries.push(uploadAllOutputEntryCreate(entry, "skipped"))
+        entries.push(uploadAllOutputEntryCreate(entry, "skipped", altDetails))
         continue
       }
       const sourceRevisionId = entry.remote?.currentSourceRevisionId
       if (sourceRevisionId === undefined) {
         failed = true
         entries.push(
-          uploadAllOutputEntryCreate(entry, "failed", { error: "The matching asset had no source revision" }),
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
+            error: "The matching asset had no source revision",
+          }),
         )
         continue
       }
       const eligibility = await client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
       if (!eligibility.success) {
         failed = true
-        entries.push(uploadAllOutputEntryCreate(entry, "failed", { error: eligibility.errorMessage }))
+        entries.push(uploadAllOutputEntryCreate(entry, "failed", { ...altDetails, error: eligibility.errorMessage }))
         continue
       }
       if (eligibility.data.sourceRevisionId !== sourceRevisionId) {
         failed = true
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
             eligible: false,
             error: "The deletion eligibility revision did not match",
           }),
@@ -852,6 +966,7 @@ const uploadAllCommandRun = async (
         failed = true
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
             eligible: false,
             error: "The source revision was not eligible for local deletion",
           }),
@@ -868,6 +983,7 @@ const uploadAllCommandRun = async (
         failed = true
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
             eligible: true,
             deleted: false,
             error: deleted.errorMessage,
@@ -875,7 +991,13 @@ const uploadAllCommandRun = async (
         )
         continue
       }
-      entries.push(uploadAllOutputEntryCreate(entry, "skipped", { eligible: true, deleted: true }))
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "skipped", {
+          ...altDetails,
+          eligible: true,
+          deleted: true,
+        }),
+      )
       continue
     }
 
@@ -934,12 +1056,35 @@ const uploadAllCommandRun = async (
       sourceRevisionId: uploaded.data.completion.sourceRevisionId,
       workflowId: uploaded.data.completion.workflowId,
     }
+    if (altUpdateRequired(entry)) {
+      const assetId = entry.remote?.assetId ?? uploaded.data.completion.assetId
+      const updated = await assetAltMetadataUpdate(client, projectId, assetId, entry.localAlt)
+      if (!updated.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...altUpdateOutputDetailsCreate(entry, "failed"),
+            error: updated.errorMessage,
+          }),
+        )
+        continue
+      }
+      altUpdated += 1
+      altDetails = altUpdateOutputDetailsCreate(entry, "updated")
+    }
     let workflowStatus: string | undefined
     if (wait) {
       const workflow = await client.workflowWait(projectId, uploaded.data.completion.workflowId)
       if (!workflow.success) {
         failed = true
-        entries.push(uploadAllOutputEntryCreate(entry, "failed", { ...uploadDetails, error: workflow.errorMessage }))
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...uploadDetails,
+            ...altDetails,
+            error: workflow.errorMessage,
+          }),
+        )
         continue
       }
       workflowStatus = workflow.data.status
@@ -948,6 +1093,7 @@ const uploadAllCommandRun = async (
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
             ...uploadDetails,
+            ...altDetails,
             workflowStatus,
             error: `The upload workflow ended with status ${workflow.data.status}`,
           }),
@@ -966,6 +1112,7 @@ const uploadAllCommandRun = async (
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
             ...uploadDetails,
+            ...altDetails,
             ...(workflowStatus === undefined ? {} : { workflowStatus }),
             error: eligibility.errorMessage,
           }),
@@ -977,6 +1124,7 @@ const uploadAllCommandRun = async (
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
             ...uploadDetails,
+            ...altDetails,
             ...(workflowStatus === undefined ? {} : { workflowStatus }),
             eligible: false,
             error: "The deletion eligibility revision did not match",
@@ -989,6 +1137,7 @@ const uploadAllCommandRun = async (
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
             ...uploadDetails,
+            ...altDetails,
             ...(workflowStatus === undefined ? {} : { workflowStatus }),
             eligible: false,
             error: "The source revision was not eligible for local deletion",
@@ -1007,6 +1156,7 @@ const uploadAllCommandRun = async (
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
             ...uploadDetails,
+            ...altDetails,
             ...(workflowStatus === undefined ? {} : { workflowStatus }),
             eligible: true,
             deleted: false,
@@ -1018,6 +1168,7 @@ const uploadAllCommandRun = async (
       entries.push(
         uploadAllOutputEntryCreate(entry, "uploaded", {
           ...uploadDetails,
+          ...altDetails,
           ...(workflowStatus === undefined ? {} : { workflowStatus }),
           eligible: true,
           deleted: true,
@@ -1028,6 +1179,7 @@ const uploadAllCommandRun = async (
     entries.push(
       uploadAllOutputEntryCreate(entry, "uploaded", {
         ...uploadDetails,
+        ...altDetails,
         ...(workflowStatus === undefined ? {} : { workflowStatus }),
       }),
     )
@@ -1040,6 +1192,8 @@ const uploadAllCommandRun = async (
     delete: deleteLocal,
     dryRun,
     entries,
+    altUpdated,
+    altUpdatesPending,
   }
   return {
     result: { success: true, data: output },
@@ -1164,8 +1318,7 @@ const commandRun = async (
       projectId,
     })
     if (!remote.success) return { result: remote }
-    const localEntries = local.data.entries.filter((entry) => !entry.file.sourcePath.toLowerCase().endsWith(".md"))
-    const classified = assetDiffClassify({ local: localEntries, remote: remote.data.entries })
+    const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
     if (!classified.success) return { result: classified }
     const diff = await diffDeletionEligibilityApply(
       client,

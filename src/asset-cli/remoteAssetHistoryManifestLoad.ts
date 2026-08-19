@@ -25,6 +25,7 @@ export type RemoteAssetHistoryManifestEntry = {
   sourcePath: string
   logicalPath: string
   keys: AssetTargetKeys
+  alt: string | null
   currentSourceRevisionId: string
   sourceHistory: readonly SourceRevision[]
   outputHistory: NonNullable<AssetListItem["outputHistory"]>
@@ -54,6 +55,8 @@ const entryCreate = (
   const current = sourceHistory.find((source) => source.id === asset.currentSourceRevisionId)
   const logicalPath = assetSourcePathCreate(asset.folders, asset.filename)
   const keys = assetTargetKeysCreate(asset.class, asset.folders, asset.filename)
+  const metadata = asset.metadata
+  const alt = metadata?.metadata.kind === "image" ? metadata.metadata.alt : null
   if (current === undefined) {
     return {
       assetId: asset.id,
@@ -63,6 +66,7 @@ const entryCreate = (
       sourcePath: asset.sourcePath.normalize("NFC"),
       logicalPath,
       keys,
+      alt,
       currentSourceRevisionId: asset.currentSourceRevisionId,
       sourceHistory,
       outputHistory,
@@ -94,6 +98,7 @@ const entryCreate = (
       sourcePath,
       logicalPath,
       keys,
+      alt,
       currentSourceRevisionId: asset.currentSourceRevisionId,
       sourceHistory,
       outputHistory,
@@ -113,6 +118,7 @@ const entryCreate = (
     sourcePath,
     logicalPath,
     keys,
+    alt,
     currentSourceRevisionId: asset.currentSourceRevisionId,
     sourceHistory,
     outputHistory,
@@ -178,7 +184,7 @@ export const remoteAssetHistoryManifestLoad = async (
   input: RemoteAssetHistoryManifestLoadInput,
 ): Promise<Result<RemoteAssetHistoryManifest>> => {
   const op = "remoteAssetHistoryManifestLoad"
-  const assets = await input.client.assetsReadAll(input.projectId, { include: "history" })
+  const assets = await input.client.assetsReadAll(input.projectId, { include: "history,metadata" })
   if (!assets.success) return assets
   const entries: RemoteAssetHistoryManifestEntry[] = []
   const eligibilityBySourceRevision = new Map<string, SourceRevisionDeletionEligibilityResponse>()

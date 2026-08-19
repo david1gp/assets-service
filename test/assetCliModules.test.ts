@@ -43,7 +43,13 @@ const sourceCreate = (input: {
   createdAt: "2026-08-18T00:00:00.000Z",
 })
 
-const assetCreate = (input: { id: string; filename: string; sha256: string; byteSize: number }) => {
+const assetCreate = (input: {
+  id: string
+  filename: string
+  sha256: string
+  byteSize: number
+  alt?: string | null
+}) => {
   const source = sourceCreate({ ...input, assetId: input.id })
   return {
     id: input.id,
@@ -59,6 +65,30 @@ const assetCreate = (input: { id: string; filename: string; sha256: string; byte
     outputCount: 0,
     sourceHistory: [source],
     outputHistory: [],
+    ...(input.alt === undefined
+      ? {}
+      : {
+          metadata: {
+            id: `metadata-${input.id}`,
+            assetId: input.id,
+            sourceRevisionId: source.id,
+            metadata: {
+              kind: "image" as const,
+              width: 1,
+              height: 1,
+              format: "jpg" as const,
+              colorSpace: "sRGB",
+              alpha: false,
+              orientationApplied: true,
+              frameCount: 1,
+              animated: false,
+              alt: input.alt,
+              aiProvenance: null,
+            },
+            createdAt: "2026-08-18T00:00:00.000Z",
+            updatedAt: "2026-08-18T00:00:00.000Z",
+          },
+        }),
   }
 }
 
@@ -233,8 +263,50 @@ test("local manifests fingerprint large files without changing their identity", 
   }
 })
 
+test("local manifests consume markdown image sidecars without emitting them as assets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-modules-sidecar-md-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    await writeFile(join(root, "images", "hero.jpg"), "hero")
+    await writeFile(join(root, "images", "hero.md"), "  Hero alt  \n")
+
+    const manifest = await localAssetManifestLoad(root, sourceDirectories(root))
+    expect(manifest.success).toBe(true)
+    if (!manifest.success) return
+    expect(manifest.data.entries).toHaveLength(1)
+    expect(manifest.data.entries[0]).toMatchObject({ status: "valid", alt: "Hero alt" })
+    expect(manifest.data.entries[0]?.file.sourcePath).toBe("images/hero.jpg")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("local manifests consume text image sidecars without emitting them as assets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-modules-sidecar-txt-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    await writeFile(join(root, "images", "hero.jpg"), "hero")
+    await writeFile(join(root, "images", "hero.txt"), "Text alt")
+
+    const manifest = await localAssetManifestLoad(root, sourceDirectories(root))
+    expect(manifest.success).toBe(true)
+    if (!manifest.success) return
+    expect(manifest.data.entries).toHaveLength(1)
+    expect(manifest.data.entries[0]).toMatchObject({ status: "valid", alt: "Text alt" })
+    expect(manifest.data.entries[0]?.file.sourcePath).toBe("images/hero.jpg")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("remote history manifests use paginated asset loading and retain deletion eligibility", async () => {
-  const first = assetCreate({ id: "asset-1", filename: "first.jpg", sha256: "a".repeat(64), byteSize: 1 })
+  const first = assetCreate({
+    id: "asset-1",
+    filename: "first.jpg",
+    sha256: "a".repeat(64),
+    byteSize: 1,
+    alt: "Remote first",
+  })
   const second = assetCreate({ id: "asset-2", filename: "second.jpg", sha256: "b".repeat(64), byteSize: 2 })
   const requests: string[] = []
   const clientResult = assetsApiClientCreate({
@@ -274,8 +346,9 @@ test("remote history manifests use paginated asset loading and retain deletion e
   })
   expect(manifest.success).toBe(true)
   if (!manifest.success) return
-  expect(requests).toEqual(["?include=history&limit=100", "?cursor=1&include=history&limit=100"])
+  expect(requests).toEqual(["?include=history%2Cmetadata&limit=100", "?cursor=1&include=history%2Cmetadata&limit=100"])
   expect(manifest.data.entries.map((entry) => entry.filename)).toEqual(["first.jpg", "second.jpg"])
+  expect(manifest.data.entries[0]?.alt).toBe("Remote first")
   expect(manifest.data.entries[0]?.deletionEligibility?.eligible).toBe(true)
 })
 
@@ -302,7 +375,12 @@ test("remote history manifests reject malformed current history and source ident
 })
 
 test("diff classification is complete, fingerprint-based, and deterministically ordered", () => {
-  const makeLocal = (filename: string, status: "valid" | "unsupported" | "conflict", sha256 = "a".repeat(64)) => ({
+  const makeLocal = (
+    filename: string,
+    status: "valid" | "unsupported" | "conflict",
+    sha256 = "a".repeat(64),
+    alt: string | null = null,
+  ) => ({
     file: { class: "image" as const, filePath: `/project/images/${filename}`, sourcePath: `images/${filename}` },
     mapping:
       status === "valid"
@@ -322,6 +400,7 @@ test("diff classification is complete, fingerprint-based, and deterministically 
         : undefined,
     mediaType: status === "valid" ? ("image/jpeg" as const) : undefined,
     status,
+    alt,
     ...(status === "unsupported" ? { errorMessage: "unsupported" } : {}),
     ...(status === "conflict" ? { errorMessage: "conflict" } : {}),
     ...(status === "valid"
@@ -335,7 +414,7 @@ test("diff classification is complete, fingerprint-based, and deterministically 
         }
       : {}),
   })
-  const makeRemote = (filename: string, sha256: string, byteSize = 1) => ({
+  const makeRemote = (filename: string, sha256: string, byteSize = 1, alt: string | null = null) => ({
     assetId: `asset-${filename}`,
     class: "image" as const,
     folders: [],
@@ -346,6 +425,7 @@ test("diff classification is complete, fingerprint-based, and deterministically 
       logicalKey: JSON.stringify(["image", filename]),
       targetKey: JSON.stringify(["image", filename.split(".")[0]]),
     },
+    alt,
     currentSourceRevisionId: `source-${filename}`,
     sourceHistory: [],
     outputHistory: [],
@@ -362,12 +442,16 @@ test("diff classification is complete, fingerprint-based, and deterministically 
       makeLocal("a-new.jpg", "valid"),
       makeLocal("m-matching.jpg", "valid", "b".repeat(64)),
       makeLocal("c-changed.jpg", "valid", "c".repeat(64)),
+      makeLocal("d-alt-drift.jpg", "valid", "e".repeat(64), "Local alt"),
       makeLocal("d-conflict.jpg", "conflict"),
+      makeLocal("e-alt-matching.jpg", "valid", "f".repeat(64), "Same alt"),
     ],
     remote: [
       makeRemote("remote-only.jpg", "d".repeat(64)),
       makeRemote("m-matching.jpg", "b".repeat(64)),
       makeRemote("c-changed.jpg", "a".repeat(64)),
+      makeRemote("d-alt-drift.jpg", "e".repeat(64), 1, "Remote alt"),
+      makeRemote("e-alt-matching.jpg", "f".repeat(64), 1, "Same alt"),
     ],
   })
   expect(result.success).toBe(true)
@@ -375,12 +459,27 @@ test("diff classification is complete, fingerprint-based, and deterministically 
   expect(result.data.entries.map((entry) => [entry.sourcePath, entry.status])).toEqual([
     ["images/a-new.jpg", "new"],
     ["images/c-changed.jpg", "changed"],
+    ["images/d-alt-drift.jpg", "metadata"],
+    ["images/e-alt-matching.jpg", "matching"],
     ["images/d-conflict.jpg", "conflict"],
     ["images/z-unsupported.bin", "unsupported"],
     ["images/m-matching.jpg", "matching"],
     ["remote-only.jpg", "remote-only"],
   ])
   expect(result.data.entries.find((entry) => entry.status === "matching")?.deletionEligible).toBe(false)
+  const altDrift = result.data.entries.find((entry) => entry.sourcePath === "images/d-alt-drift.jpg")
+  expect(altDrift).toMatchObject({
+    status: "metadata",
+    altChanged: true,
+    localAlt: "Local alt",
+    remoteAlt: "Remote alt",
+  })
+  expect(result.data.entries.find((entry) => entry.sourcePath === "images/e-alt-matching.jpg")).toMatchObject({
+    status: "matching",
+    altChanged: false,
+    localAlt: "Same alt",
+    remoteAlt: "Same alt",
+  })
 })
 
 test("diff classification rejects normalized duplicate remote identities, including remote-only entries", () => {
@@ -395,6 +494,7 @@ test("diff classification rejects normalized duplicate remote identities, includ
       logicalKey: JSON.stringify(["image", filename.normalize("NFC")]),
       targetKey: JSON.stringify(["image", filename.slice(0, filename.lastIndexOf(".")).normalize("NFC")]),
     },
+    alt: null,
     currentSourceRevisionId: `source-${id}`,
     sourceHistory: [],
     outputHistory: [],

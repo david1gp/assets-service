@@ -27,6 +27,8 @@ export const assetSourcePreflight = (
 ): Result<AssetSourcePreflight> => {
   const entries: AssetSourcePreflightEntry[] = []
   for (const file of scan.files) {
+    if (file.sourcePath.toLowerCase().endsWith(".md")) continue
+    if (file.class === "image" && file.sourcePath.toLowerCase().endsWith(".txt")) continue
     const classRoot = sourceDirectories[file.class]
     if (classRoot === null) {
       entries.push({ file, status: "conflict", errorMessage: "The asset class was disabled after scanning" })

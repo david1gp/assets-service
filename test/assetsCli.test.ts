@@ -54,6 +54,7 @@ const assetCreate = (input: {
   mediaType?: string
   folders?: string[]
   sourcePath?: string
+  alt?: string | null
 }) => {
   const source = sourceCreate({
     id: input.sourceRevisionId ?? input.id,
@@ -79,6 +80,30 @@ const assetCreate = (input: {
     outputCount: 0,
     sourceHistory: [source],
     outputHistory: [],
+    ...(input.alt === undefined
+      ? {}
+      : {
+          metadata: {
+            id: `metadata-${input.id}`,
+            assetId: input.id,
+            sourceRevisionId: source.id,
+            metadata: {
+              kind: "image" as const,
+              width: 1,
+              height: 1,
+              format: "jpg" as const,
+              colorSpace: "sRGB",
+              alpha: false,
+              orientationApplied: true,
+              frameCount: 1,
+              animated: false,
+              alt: input.alt,
+              aiProvenance: null,
+            },
+            createdAt: "2026-08-18T00:00:00.000Z",
+            updatedAt: "2026-08-18T00:00:00.000Z",
+          },
+        }),
   }
 }
 
@@ -356,6 +381,8 @@ test("upload-all uploads only new and changed files in stable order and skips ma
         delete: false,
         dryRun: false,
         environment: "development",
+        altUpdated: 0,
+        altUpdatesPending: 0,
         root,
         wait: false,
         entries: [
@@ -387,6 +414,264 @@ test("upload-all uploads only new and changed files in stable order and skips ma
             status: "new",
             uploadId: "upload-2",
             workflowId: "workflow-new",
+          },
+        ],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all uploads a new image, then applies its markdown sidecar alt to the created asset", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-new-alt-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("new image")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    await writeFile(join(root, "images", "hero.md"), "  Hero alt  \n")
+    await writeFile(join(root, "images", "hero.txt"), "Fallback alt")
+    const requests: Request[] = []
+    const metadataBodies: unknown[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.endsWith("/uploads/intent"))
+        return envelopeResponseCreate({
+          uploadId: "upload-new-alt",
+          status: "pending",
+          intent: {
+            method: "PUT",
+            url: "https://upload.example.test/staging/upload-new-alt",
+            key: "private/staging/upload-new-alt",
+            expiresAt: "2026-08-18T00:10:00.000Z",
+            headers: { "content-length": String(bytes.byteLength), "content-type": "image/jpeg" },
+            mediaType: "image/jpeg",
+            byteSize: bytes.byteLength,
+          },
+        })
+      if (url.hostname === "upload.example.test") return new Response(null, { status: 200 })
+      if (url.pathname.endsWith("/uploads/upload-new-alt/complete"))
+        return envelopeResponseCreate({
+          uploadId: "upload-new-alt",
+          assetId: "asset-new-alt",
+          sourceRevisionId: "source-new-alt",
+          workflowId: "workflow-new-alt",
+          status: "accepted",
+        })
+      if (url.pathname.endsWith("/assets/asset-new-alt/metadata")) {
+        metadataBodies.push(await request.json())
+        const detail = assetCreate({
+          id: "asset-new-alt",
+          filename: "hero.jpg",
+          sha256: contentSha256Create(bytes),
+          byteSize: bytes.byteLength,
+          sourceRevisionId: "source-new-alt",
+          alt: "Hero alt",
+        })
+        const { outputCount: _outputCount, ...assetDetail } = detail
+        return envelopeResponseCreate(assetDetail)
+      }
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "POST", "PUT", "POST", "PATCH"])
+    expect(new Uint8Array(await requests[2]!.arrayBuffer())).toEqual(bytes)
+    expect(metadataBodies).toEqual([{ alt: "Hero alt" }])
+    expect(requests.filter((request) => request.url.includes("/uploads/intent"))).toHaveLength(1)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        altUpdated: 1,
+        altUpdatesPending: 1,
+        entries: [
+          {
+            action: "uploaded",
+            altChanged: true,
+            altUpdated: true,
+            assetId: "asset-new-alt",
+            localAlt: "Hero alt",
+            remoteAlt: null,
+            sourcePath: "images/hero.jpg",
+            status: "new",
+          },
+        ],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all updates metadata-only drift without uploading matching bytes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-metadata-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("hero")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    await writeFile(join(root, "images", "hero.md"), "Local alt")
+    const remote = assetCreate({
+      id: "asset-metadata",
+      filename: "hero.jpg",
+      sha256: contentSha256Create(bytes),
+      byteSize: bytes.byteLength,
+      alt: "Remote alt",
+    })
+    const requests: Request[] = []
+    const metadataBodies: unknown[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.endsWith("/assets/asset-metadata/metadata")) {
+        metadataBodies.push(await request.json())
+        const { outputCount: _outputCount, ...assetDetail } = remote
+        return envelopeResponseCreate({
+          ...assetDetail,
+          metadata: { ...remote.metadata, metadata: { ...remote.metadata!.metadata, alt: "Local alt" } },
+        })
+      }
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "PATCH"])
+    expect(metadataBodies).toEqual([{ alt: "Local alt" }])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        altUpdated: 1,
+        altUpdatesPending: 1,
+        entries: [
+          {
+            action: "skipped",
+            altChanged: true,
+            altUpdated: true,
+            localAlt: "Local alt",
+            remoteAlt: "Remote alt",
+            status: "metadata",
+          },
+        ],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all does not update metadata when the sidecar alt already matches", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-matching-alt-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("hero")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    await writeFile(join(root, "images", "hero.md"), "Same alt")
+    const remote = assetCreate({
+      id: "asset-matching-alt",
+      filename: "hero.jpg",
+      sha256: contentSha256Create(bytes),
+      byteSize: bytes.byteLength,
+      alt: "Same alt",
+    })
+    const requests: Request[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        altUpdated: 0,
+        altUpdatesPending: 0,
+        entries: [{ action: "skipped", status: "matching" }],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all dry-run reports pending alt metadata without mutating the service", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-dry-run-alt-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("hero")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    await writeFile(join(root, "images", "hero.md"), "Local alt")
+    const remote = assetCreate({
+      id: "asset-dry-run-alt",
+      filename: "hero.jpg",
+      sha256: contentSha256Create(bytes),
+      byteSize: bytes.byteLength,
+      alt: "Remote alt",
+    })
+    const requests: Request[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--dry-run", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        altUpdated: 0,
+        altUpdatesPending: 1,
+        dryRun: true,
+        entries: [
+          {
+            action: "planned",
+            altChanged: true,
+            altUpdatePlanned: true,
+            localAlt: "Local alt",
+            remoteAlt: "Remote alt",
+            status: "metadata",
           },
         ],
       },
@@ -1312,7 +1597,7 @@ test("upload-all human output keeps deterministic entry ordering", async () => {
     expect(output[0]).toBe(
       `Root: ${root}\nEnvironment: development\nWait: no\nDelete: no\nDry run: yes\n` +
         "new image images/a.jpg planned\nnew image images/z.jpg planned\n" +
-        "Summary: uploaded=0 skipped=0 planned=2 failed=0\n",
+        "Summary: uploaded=0 skipped=0 planned=2 failed=0 alt-updated=0 alt-updates-pending=0\n",
     )
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -1451,6 +1736,7 @@ test("diff integrates authenticated paginated history, categories, exact eligibi
     expect(JSON.parse(firstJson ?? "")).toEqual({
       ok: true,
       data: {
+        altUpdatesPending: 0,
         entries: [
           {
             class: "image",
@@ -1497,8 +1783,8 @@ test("diff integrates authenticated paginated history, categories, exact eligibi
     expect(output[0]).toBe(firstJson)
     const assetsRequests = requests.filter((request) => new URL(request.url).pathname.endsWith("/assets"))
     expect(assetsRequests.map((request) => new URL(request.url).search)).toEqual([
-      "?include=history&limit=100",
-      "?cursor=1&include=history&limit=100",
+      "?include=history%2Cmetadata&limit=100",
+      "?cursor=1&include=history%2Cmetadata&limit=100",
     ])
     const eligibilityRequests = requests.filter((request) => request.url.includes("deletion-eligibility"))
     expect(eligibilityRequests).toHaveLength(1)
@@ -1514,6 +1800,58 @@ test("diff integrates authenticated paginated history, categories, exact eligibi
     })
     expect(secondExitCode).toBe(1)
     expect(secondOutput).toEqual(output)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("diff reports local sidecar alt drift separately from byte changes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-diff-alt-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    await writeFile(join(root, "images", "hero.jpg"), "hero")
+    await writeFile(join(root, "images", "hero.md"), "Local alt")
+    const bytes = new TextEncoder().encode("hero")
+    const remote = assetCreate({
+      id: "asset-hero",
+      filename: "hero.jpg",
+      sha256: contentSha256Create(bytes),
+      byteSize: bytes.byteLength,
+      alt: "Remote alt",
+    })
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["diff", root, "--json"], {
+      env: cliEnvironment,
+      fetcher: async (input) => {
+        if (!new URL(input).pathname.endsWith("/assets")) throw new Error(`Unexpected request ${input}`)
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(JSON.parse(output[0] ?? "")).toEqual({
+      ok: true,
+      data: {
+        altUpdatesPending: 1,
+        entries: [
+          {
+            altChanged: true,
+            class: "image",
+            deletionEligible: false,
+            localAlt: "Local alt",
+            logicalPath: "hero.jpg",
+            reason: "The local sidecar alt differs from remote metadata",
+            remoteAlt: "Remote alt",
+            sourcePath: "images/hero.jpg",
+            status: "metadata",
+          },
+        ],
+        environment: "development",
+        root,
+      },
+    })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -1708,7 +2046,7 @@ test("diff returns deterministic human output and succeeds for matching and empt
     })
     expect(exitCode).toBe(0)
     expect(output[0]).toBe(
-      `Root: ${root}\nEnvironment: development\nmatching image images/matching.jpg deletion-eligible\nSummary: new=0 changed=0 matching=1 remote-only=0 unsupported=0 conflict=0\n`,
+      `Root: ${root}\nEnvironment: development\nmatching image images/matching.jpg deletion-eligible\nSummary: new=0 changed=0 matching=1 remote-only=0 unsupported=0 conflict=0 metadata=0 alt-updates-pending=0\n`,
     )
 
     const emptyOutput: string[] = []
@@ -1729,12 +2067,12 @@ test("diff returns deterministic human output and succeeds for matching and empt
     })
     expect(emptyExitCode).toBe(0)
     expect(emptyRequests.map((request) => new URL(request.url).search)).toEqual([
-      "?include=history&limit=100",
-      "?cursor=1&include=history&limit=100",
+      "?include=history%2Cmetadata&limit=100",
+      "?cursor=1&include=history%2Cmetadata&limit=100",
     ])
     expect(JSON.parse(emptyOutput[0] ?? "")).toEqual({
       ok: true,
-      data: { entries: [], environment: "development", root: emptyRoot },
+      data: { entries: [], environment: "development", root: emptyRoot, altUpdatesPending: 0 },
     })
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -1784,7 +2122,7 @@ conflict font fonts/same.woff Multiple local files target the same normalized as
 conflict font fonts/same.woff2 Multiple local files target the same normalized asset
 changed image images/changed.jpg The source fingerprint differs
 remote-only video remote.mp4
-Summary: new=0 changed=1 matching=0 remote-only=1 unsupported=1 conflict=2
+Summary: new=0 changed=1 matching=0 remote-only=1 unsupported=1 conflict=2 metadata=0 alt-updates-pending=0
 `,
     )
   } finally {

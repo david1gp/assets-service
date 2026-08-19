@@ -90,7 +90,8 @@ const filesRead = async (
     const sourcePath = relative(root, filePath).split(sep).join("/").normalize("NFC")
     if (!pathWithin(root, filePath) || sourcePath.length === 0)
       return resultErrorCreate(op, `The configured asset path escaped the project root: ${filePath}`)
-    if (entry.toLowerCase().endsWith(".md")) continue
+    if (entry.toLowerCase().endsWith(".md") || (assetClass === "image" && entry.toLowerCase().endsWith(".txt")))
+      continue
     files.push({ class: assetClass, filePath, sourcePath })
   }
   return { success: true, data: files }

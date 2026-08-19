@@ -5,7 +5,15 @@ import type { LocalAssetManifestEntry } from "./localAssetManifestLoad.js"
 import { nfcLexicalCompare } from "./nfcLexicalCompare.js"
 import type { RemoteAssetHistoryManifestEntry } from "./remoteAssetHistoryManifestLoad.js"
 
-export const assetDiffStatuses = ["new", "changed", "matching", "remote-only", "unsupported", "conflict"] as const
+export const assetDiffStatuses = [
+  "new",
+  "changed",
+  "matching",
+  "remote-only",
+  "unsupported",
+  "conflict",
+  "metadata",
+] as const
 
 export type AssetDiffStatus = (typeof assetDiffStatuses)[number]
 
@@ -22,6 +30,9 @@ export type AssetDiffEntry = {
   logicalPath: string
   local?: LocalAssetManifestEntry
   remote?: RemoteAssetHistoryManifestEntry
+  localAlt: string | null
+  remoteAlt: string | null
+  altChanged: boolean
   deletionEligible: boolean
   deletionEligibility: AssetDiffDeletionEligibility
   reason?: string
@@ -38,6 +49,21 @@ const deletionEligibilityCreate = (
   ...(remote === undefined ? {} : { sourceRevisionId: remote.currentSourceRevisionId }),
   ...(remote?.deletionEligibility === null || remote === undefined ? {} : { details: remote.deletionEligibility }),
 })
+
+const altFieldsCreate = (
+  local: LocalAssetManifestEntry | undefined,
+  remote: RemoteAssetHistoryManifestEntry | undefined,
+): Pick<AssetDiffEntry, "localAlt" | "remoteAlt" | "altChanged"> => {
+  const localAlt = local?.alt ?? null
+  const remoteAlt = remote?.alt ?? null
+  const normalizedLocalAlt = (localAlt ?? "").trim()
+  const normalizedRemoteAlt = (remoteAlt ?? "").trim()
+  return {
+    localAlt,
+    remoteAlt,
+    altChanged: normalizedLocalAlt !== normalizedRemoteAlt,
+  }
+}
 
 const entrySort = (left: AssetDiffEntry, right: AssetDiffEntry): number => {
   const leftKey = `${left.class}\u0000${left.logicalPath.normalize("NFC")}`
@@ -121,6 +147,7 @@ export const assetDiffClassify = (input: {
         sourcePath: local.file.sourcePath,
         logicalPath,
         local,
+        ...altFieldsCreate(local, undefined),
         deletionEligible: false,
         deletionEligibility: { eligible: false },
         ...(local.errorMessage === undefined ? {} : { reason: local.errorMessage }),
@@ -139,6 +166,7 @@ export const assetDiffClassify = (input: {
         sourcePath: local.file.sourcePath,
         logicalPath,
         local,
+        ...altFieldsCreate(local, undefined),
         deletionEligible: false,
         deletionEligibility: { eligible: false },
         reason: local.errorMessage ?? "The local asset could not be preflighted",
@@ -162,6 +190,7 @@ export const assetDiffClassify = (input: {
         logicalPath,
         local,
         ...(remote === undefined ? {} : { remote }),
+        ...altFieldsCreate(local, remote),
         deletionEligible: false,
         deletionEligibility: { eligible: false },
         reason: "The remote manifest contains conflicting entries for this asset",
@@ -175,29 +204,40 @@ export const assetDiffClassify = (input: {
         sourcePath: local.file.sourcePath,
         logicalPath,
         local,
+        ...altFieldsCreate(local, undefined),
         deletionEligible: false,
         deletionEligibility: { eligible: false },
       })
       continue
     }
     consumedRemote.add(remote)
-    const matching =
+    const bytesMatching =
       remote.class === assetClass &&
       remote.logicalPath.normalize("NFC") === mapping.logicalPath.normalize("NFC") &&
       remote.byteSize === local.fingerprint.byteSize &&
       remote.sha256 === local.fingerprint.sha256 &&
       remote.mediaType.trim().toLowerCase() === local.fingerprint.mediaType
+    const altFields = altFieldsCreate(local, remote)
+    const matching = bytesMatching && !altFields.altChanged
+    const status = matching ? "matching" : bytesMatching ? "metadata" : "changed"
     const deletionEligibility = deletionEligibilityCreate(remote)
     entries.push({
-      status: matching ? "matching" : "changed",
+      status,
       class: assetClass,
       sourcePath: local.file.sourcePath,
       logicalPath,
       local,
       remote,
+      ...altFields,
       deletionEligible: matching && deletionEligibility.eligible,
       deletionEligibility,
-      ...(matching ? {} : { reason: "The source fingerprint differs" }),
+      ...(matching
+        ? {}
+        : {
+            reason: bytesMatching
+              ? "The local sidecar alt differs from remote metadata"
+              : "The source fingerprint differs",
+          }),
     })
   }
 
@@ -210,6 +250,7 @@ export const assetDiffClassify = (input: {
         sourcePath: remote.sourcePath,
         logicalPath: remote.logicalPath,
         remote,
+        ...altFieldsCreate(undefined, remote),
         deletionEligible: false,
         deletionEligibility: deletionEligibilityCreate(remote),
         reason: "The remote manifest contains duplicate normalized asset identities",
@@ -226,6 +267,7 @@ export const assetDiffClassify = (input: {
         sourcePath: remote.sourcePath,
         logicalPath: remote.logicalPath,
         remote,
+        ...altFieldsCreate(undefined, remote),
         deletionEligible: false,
         deletionEligibility: deletionEligibilityCreate(remote),
         reason: "The remote manifest contains conflicting asset targets",
@@ -238,6 +280,7 @@ export const assetDiffClassify = (input: {
       sourcePath: remote.sourcePath,
       logicalPath: remote.logicalPath,
       remote,
+      ...altFieldsCreate(undefined, remote),
       deletionEligible: false,
       deletionEligibility: deletionEligibilityCreate(remote),
       ...(remote.valid ? {} : { reason: remote.errorMessage ?? "The remote manifest entry was invalid" }),
