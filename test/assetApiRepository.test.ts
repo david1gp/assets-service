@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
 
 import { assetApiRepositoryCreate } from "../src/asset/assetApiRepositoryCreate.js"
+import { catalogApiRepositoryCreate } from "../src/catalog/catalogApiRepositoryCreate.js"
 import { deletionApiRepositoryCreate } from "../src/deletion/deletionApiRepositoryCreate.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
@@ -296,6 +297,18 @@ describe("asset API persistence", () => {
           metadata: { ...catalogMetadata, alt: "Catalog alt" },
         },
       ])
+
+      const catalogRepository = catalogApiRepositoryCreate(connection.db)
+      const lists = catalogRepository.catalogListsRead("project-1", "development", {})
+      expect(lists).toMatchObject({
+        success: true,
+        data: { imageList: expect.stringContaining('"alt": "Catalog alt"') },
+      })
+      const current = catalogRepository.catalogCurrentRead("project-1", "development")
+      expect(current).toMatchObject({
+        success: true,
+        data: { catalog: { outputs: [{ metadata: { ...catalogMetadata, alt: "Catalog alt" } }] } },
+      })
     } finally {
       databaseClose(connection)
     }

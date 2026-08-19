@@ -1,22 +1,23 @@
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import * as v from "valibot"
 
-import { catalogListsRender } from "./catalogListsRender.js"
-import { catalogSchema } from "./catalogSchema.js"
-import type { CatalogApiRepository } from "./catalogApiRepository.js"
-import { manifestSchema } from "./manifestSchema.js"
+import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
+import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
 import { manifestTable } from "../infrastructure/db/schema/manifestTable.js"
 import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTable.js"
-import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
+import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
+import type { CatalogApiRepository } from "./catalogApiRepository.js"
+import { catalogListsRender } from "./catalogListsRender.js"
 import { catalogOutputSchema } from "./catalogOutputSchema.js"
+import { catalogSchema } from "./catalogSchema.js"
+import { manifestSchema } from "./manifestSchema.js"
 
 const pageLimitRead = (limit: number | undefined): number => Math.min(100, Math.max(1, limit ?? 50))
 
@@ -28,9 +29,25 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
       .where(eq(catalogOutputTable.generationId, generationId))
       .orderBy(asc(catalogOutputTable.property), asc(catalogOutputTable.outputVersionId))
       .all()
+    const assetIds = [...new Set(rows.map((row) => row.assetId))]
+    const metadataByAssetId = new Map(
+      assetIds.length === 0
+        ? []
+        : db
+            .select({ assetId: assetMetadataTable.assetId, metadata: assetMetadataTable.metadata })
+            .from(assetMetadataTable)
+            .where(inArray(assetMetadataTable.assetId, assetIds))
+            .all()
+            .map((row) => [row.assetId, row.metadata] as const),
+    )
     const outputs: import("./catalogOutputSchema.js").CatalogOutput[] = []
     for (const row of rows) {
-      const { generationId: _generationId, ...output } = row
+      const assetMetadata = metadataByAssetId.get(row.assetId)
+      const metadata =
+        assetMetadata?.kind === "image" && row.metadata.kind === "image"
+          ? { ...row.metadata, alt: assetMetadata.alt }
+          : row.metadata
+      const { generationId: _generationId, ...output } = { ...row, metadata }
       const parsed = v.safeParse(catalogOutputSchema, output)
       if (!parsed.success)
         return resultErrorCreate("catalogApiRepositoryOutputRead", "The stored catalog output was invalid")
