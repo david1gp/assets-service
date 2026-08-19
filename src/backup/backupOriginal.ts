@@ -18,31 +18,34 @@ export const backupOriginal = async (
   const parsed = v.safeParse(rcloneBackupRequestSchema, input)
   if (!parsed.success) return rcloneErrorCreate(op, "invalid_request", v.summarize(parsed.issues), input)
   const request = parsed.output
-
-  const path = rcloneRemotePathCreate({
-    remote: "gdrive_beta",
-    backupRoot: "backups",
-    organizationName: request.organizationName,
-    projectName: request.projectName,
-    logicalFolders: request.logicalFolders,
-    sourceRevisionId: request.sourceRevisionId,
-    originalFilename: request.originalFilename,
-  })
-  if (!path.success) return path
-
   const existing = options.existingReceipt
   if (
     existing?.checkResult === "verified" &&
     existing.projectId === request.projectId &&
     existing.sourceRevisionId === request.sourceRevisionId &&
-    existing.remotePath === path.data &&
     existing.byteSize === request.expectedByteSize &&
     existing.sha256 === request.expectedSha256
   ) {
     return { success: true, data: existing }
   }
 
-  const result = await adapter(request, options)
+  const backupDate = options.backupDate ?? new Date()
+
+  const path = rcloneRemotePathCreate(
+    {
+      remote: "gdrive_beta",
+      backupRoot: "backups",
+      organizationName: request.organizationName,
+      projectName: request.projectName,
+      logicalFolders: request.logicalFolders,
+      sourceRevisionId: request.sourceRevisionId,
+      originalFilename: request.originalFilename,
+    },
+    backupDate,
+  )
+  if (!path.success) return path
+
+  const result = await adapter(request, { ...options, backupDate })
   if (!result.success) return result
   return backupReceiptCreate({
     id: options.receiptId ?? crypto.randomUUID(),

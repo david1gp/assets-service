@@ -46,15 +46,18 @@ export const rcloneBackupAdapterFake = (
     if (options.failure === "timeout") return rcloneErrorCreate(op, "timeout", "rclone operation timed out")
 
     const request = parsed.output
-    const path = rcloneRemotePathCreate({
-      remote: "gdrive_beta",
-      backupRoot: "backups",
-      organizationName: request.organizationName,
-      projectName: request.projectName,
-      logicalFolders: request.logicalFolders,
-      sourceRevisionId: request.sourceRevisionId,
-      originalFilename: request.originalFilename,
-    })
+    const path = rcloneRemotePathCreate(
+      {
+        remote: "gdrive_beta",
+        backupRoot: "backups",
+        organizationName: request.organizationName,
+        projectName: request.projectName,
+        logicalFolders: request.logicalFolders,
+        sourceRevisionId: request.sourceRevisionId,
+        originalFilename: request.originalFilename,
+      },
+      operationOptions.backupDate ?? new Date(),
+    )
     if (!path.success) return path
     invocations.push({ args: ["copyto", request.localSourcePath, path.data] })
     if (options.failure === "copy_failed") return rcloneErrorCreate(op, "copy_failed", "fake copyto failed")

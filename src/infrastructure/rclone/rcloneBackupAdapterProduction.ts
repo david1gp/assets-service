@@ -29,15 +29,19 @@ export const rcloneBackupAdapterProduction = (
     if (!parsed.success) return rcloneErrorCreate(op, "invalid_request", v.summarize(parsed.issues), input)
 
     const request = parsed.output
-    const remotePath = rcloneRemotePathCreate({
-      remote: config.rcloneRemote,
-      backupRoot: config.rcloneBackupRoot,
-      organizationName: request.organizationName,
-      projectName: request.projectName,
-      logicalFolders: request.logicalFolders,
-      sourceRevisionId: request.sourceRevisionId,
-      originalFilename: request.originalFilename,
-    })
+    const backupDate = options.backupDate ?? new Date()
+    const remotePath = rcloneRemotePathCreate(
+      {
+        remote: config.rcloneRemote,
+        backupRoot: config.rcloneBackupRoot,
+        organizationName: request.organizationName,
+        projectName: request.projectName,
+        logicalFolders: request.logicalFolders,
+        sourceRevisionId: request.sourceRevisionId,
+        originalFilename: request.originalFilename,
+      },
+      backupDate,
+    )
     if (!remotePath.success) return remotePath
 
     const source = await sourceFileRead(request, options.signal)
