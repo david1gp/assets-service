@@ -13,7 +13,9 @@ const shapeRead = (definition: OutputDefinition | OutputDefinitionInput): string
     ? `image:${definition.width}x${definition.height}:${definition.format}:${definition.quality ?? ""}:${definition.showAiLabel ?? ""}`
     : definition.kind === "font"
       ? `font:${definition.format}`
-      : "video"
+      : definition.kind === "document"
+        ? "document"
+        : "video"
 
 /**
  * Compares the editor state against the stored definitions. Removals drop

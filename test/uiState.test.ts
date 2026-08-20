@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { uiAssetPathFormat } from "../src/ui/common/uiAssetPathFormat.js"
 import { uiByteSizeFormat } from "../src/ui/common/uiByteSizeFormat.js"
+import { uiAssetClassOptions } from "../src/ui/pages/uiAssetClassOptions.js"
 import { uiPaths } from "../src/ui/routing/uiPaths.js"
 import { uiSearchParamNumberRead } from "../src/ui/search/uiSearchParamNumberRead.js"
 import { uiSearchParamStringRead } from "../src/ui/search/uiSearchParamStringRead.js"
@@ -78,5 +79,11 @@ describe("uiByteSizeFormat", () => {
 describe("uiPaths", () => {
   test("encodes identifiers for deep links", () => {
     expect(uiPaths.asset("p 1", "a/1")).toBe("/projects/p%201/assets/a%2F1")
+  })
+})
+
+describe("uiAssetClassOptions", () => {
+  test("includes all, image, video, font, and document classes", () => {
+    expect(uiAssetClassOptions).toEqual(["all", "image", "video", "font", "document"])
   })
 })

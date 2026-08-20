@@ -94,11 +94,15 @@ describe("uiOutputDraftsInputsRead", () => {
     expect(uiOutputDraftsInputsRead([draftCreate({ quality: "140" })], "image").success).toBe(false)
   })
 
-  test("builds video and font sets without image fields", () => {
+  test("builds video, font, and document sets without image fields", () => {
     expect(uiOutputDraftsInputsRead([draftCreate({ key: "source" })], "video").success).toBe(true)
     expect(uiOutputDraftsInputsRead([draftCreate({ key: "woff2" })], "font")).toEqual({
       success: true,
       data: [{ kind: "font", key: "woff2", format: "woff2" }],
+    })
+    expect(uiOutputDraftsInputsRead([draftCreate({ key: "default" })], "document")).toEqual({
+      success: true,
+      data: [{ kind: "document", key: "default" }],
     })
   })
 })

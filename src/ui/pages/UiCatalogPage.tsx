@@ -66,6 +66,10 @@ export function UiCatalogPage() {
                       <h3 class="font-medium">Fonts</h3>
                       <CodeBlock class="mt-1 max-h-72 overflow-auto" data={ready().lists.fontList} />
                     </div>
+                    <div>
+                      <h3 class="font-medium">Documents</h3>
+                      <CodeBlock class="mt-1 max-h-72 overflow-auto" data={ready().lists.documentList} />
+                    </div>
                   </div>
                 </section>
               </div>

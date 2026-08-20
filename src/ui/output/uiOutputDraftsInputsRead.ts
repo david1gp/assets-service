@@ -18,6 +18,7 @@ const draftInputRead = (draft: UiOutputDraft, assetClass: AssetClass): OutputDef
   const key = draft.key.trim()
   if (assetClass === "video") return { kind: "video", key }
   if (assetClass === "font") return { kind: "font", key, format: "woff2" }
+  if (assetClass === "document") return { kind: "document", key: "default" }
   const quality = numberRead(draft.quality)
   return {
     kind: "image",

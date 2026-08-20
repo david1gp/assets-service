@@ -10,7 +10,7 @@ import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { uiSearchParamStringRead } from "../search/uiSearchParamStringRead.js"
 
-export const uiAssetClassOptions = ["all", "image", "video", "font"] as const
+export { uiAssetClassOptions } from "./uiAssetClassOptions.js"
 
 /** Holds asset inventory filters, search, and pagination bound to the URL. */
 export const uiAssetListPageStateCreate = () => {
