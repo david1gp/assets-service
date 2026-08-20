@@ -16,7 +16,20 @@ const artifactPaths = [
   "ops/reconcile.sh",
   "ops/sqlite-restore.sh",
   "ops/sqlite-snapshot.sh",
+  "ops/deploy-contentoren.sh",
 ]
+
+const deploymentOperations = [
+  "frontend:build",
+  "frontend:upload",
+  "frontend:deploy",
+  "backend:build",
+  "backend:upload",
+  "backend:deploy",
+  "deploy",
+] as const
+
+const contentorenDeployScript = "/home/david/leo/contentoren-server/assets-service/scripts/deploy.sh"
 
 test("production artifacts define separate API and worker processes with durable health checks", async () => {
   const dockerfile = await readFile(join(root, "Dockerfile"), "utf8")
@@ -40,6 +53,47 @@ test("production artifacts define separate API and worker processes with durable
   expect(systemdInstall).toContain('[[ "$line" == WorkingDirectory=* ]]')
 })
 
+test("package scripts expose the canonical split deployment command matrix", async () => {
+  const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>
+  }
+
+  for (const operation of deploymentOperations) {
+    expect(packageJson.scripts?.[operation]).toBe(`bash ./ops/deploy-contentoren.sh ${operation}`)
+  }
+})
+
+test("the repository deployment adapter delegates to the Contentoren wrapper", async () => {
+  const adapter = await readFile(join(root, "ops/deploy-contentoren.sh"), "utf8")
+
+  expect(adapter).toContain(`DEPLOY_SCRIPT="\${CONTENTOREN_DEPLOY_SCRIPT:-${contentorenDeployScript}}"`)
+  expect(adapter).toContain('SOURCE_DIR="${ASSETS_SOURCE_DIR:-$ROOT_DIR}"')
+  expect(adapter).toContain('export ASSETS_SOURCE_DIR="$SOURCE_DIR"')
+  expect(adapter).toContain('exec bash -- "$DEPLOY_SCRIPT" "$@"')
+})
+
+test("the Contentoren wrapper composes component and aggregate deployment flows", async () => {
+  const wrapper = await readFile(contentorenDeployScript, "utf8")
+
+  expect(wrapper).toContain(
+    "frontend:build | frontend:upload | frontend:deploy | backend:build | backend:upload | backend:deploy | deploy",
+  )
+  expect(wrapper).toMatch(/frontend_deploy\(\) \{\s+local_build vite:build\s+frontend_upload\s+\}/u)
+  expect(wrapper).toMatch(/backend_deploy\(\) \{\s+local_build build\s+backend_upload\s+\}/u)
+  expect(wrapper).toMatch(
+    /aggregate_deploy\(\) \{\s+backend_deploy\s+frontend_deploy\s+run_migrations\s+activate_services\s+apply_route\s+health_check\s+/u,
+  )
+
+  const frontendUploadStart = wrapper.indexOf("frontend_upload() {")
+  const backendUploadStart = wrapper.indexOf("backend_upload() {")
+  expect(frontendUploadStart).toBeGreaterThanOrEqual(0)
+  expect(backendUploadStart).toBeGreaterThan(frontendUploadStart)
+  const frontendUpload = wrapper.slice(frontendUploadStart, backendUploadStart)
+  expect(frontendUpload).toContain('"$FRONTEND_DIR/" "$SSH_HOST:$SRC_DIR/dist/ui/"')
+  expect(frontendUpload).not.toContain("--delete")
+  expect(wrapper).not.toContain("ASSETS_BUILD_UI")
+})
+
 test("operational artifacts never invoke forbidden rclone modes", async () => {
   const contents = await Promise.all(artifactPaths.map(async (path) => readFile(join(root, path), "utf8")))
   expect(contents.join("\n")).not.toMatch(/\brclone\s+(?:sync|bisync)\b/u)
@@ -56,7 +110,13 @@ test("the example environment contains placeholders and no credential values", a
 })
 
 test("service scripts are executable and systemd units stay separate", async () => {
-  const scripts = ["ops/start-api.sh", "ops/start-worker.sh", "ops/deploy.sh", "ops/doctor.sh"]
+  const scripts = [
+    "ops/start-api.sh",
+    "ops/start-worker.sh",
+    "ops/deploy.sh",
+    "ops/deploy-contentoren.sh",
+    "ops/doctor.sh",
+  ]
   for (const path of scripts) {
     const mode = (await stat(join(root, path))).mode
     expect(mode & 0o111).not.toBe(0)

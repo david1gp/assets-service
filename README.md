@@ -116,6 +116,18 @@ Copy `.env.example` to `.env` and replace its placeholders. `compose.production.
 containers with a persistent SQLite volume. `ops/caddy/assets-service.Caddyfile` is a Caddy reverse-proxy example,
 and `ops/systemd` contains separate user units for hosts that do not use Compose.
 
+For the Contentoren production deployment, the package scripts are the canonical command interface:
+
+| Command | Action |
+| --- | --- |
+| `bun run frontend:build`<br>`bun run backend:build` | Build only the frontend `dist/ui` or backend artifacts. |
+| `bun run frontend:upload`<br>`bun run backend:upload` | Upload an existing frontend build or backend source/runtime files. |
+| `bun run frontend:deploy`<br>`bun run backend:deploy` | Build, then upload one component without shared activation. |
+| `bun run deploy` | Deploy backend first, then frontend, and run migrations, service/proxy activation, and health checks once. |
+
+Provisioning remains separate. The package commands delegate through `ops/deploy-contentoren.sh`; see the Contentoren
+deployment README for host-specific setup.
+
 Read [production configuration](docs/production-configuration.md) before provisioning R2, rclone, Zitadel, or
 Telegram. [Operations](docs/operations.md) covers health checks, migrations, backups, restore, reconciliation,
 deploys, and recovery.
