@@ -1,3 +1,4 @@
+import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
 import type { BackupReceipt } from "../../backup/backupReceiptSchema.js"
@@ -7,6 +8,8 @@ import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
 import { uiBackupsPageStateCreate } from "./uiBackupsPageStateCreate.js"
+import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
+import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 
 const columns: TableColumnDef<BackupReceipt>[] = [
   {
@@ -53,15 +56,22 @@ export function UiBackupsPage() {
         isEmpty={(data) => data.receipts.length === 0}
       >
         {(data) => (
-          <>
-            <Table1R rows={[...data.receipts]} columns={columns} />
+          <div class="flex flex-col gap-4">
+            <CardWrapper class="overflow-hidden p-0">
+              <Table1R
+                rows={[...data.receipts]}
+                columns={columns}
+                desktopClasses={uiTableDesktopClassesRead()}
+                mobileClasses={uiTableMobileClassesRead()}
+              />
+            </CardWrapper>
             <UiPager
               isFirstPage={state.isFirstPage()}
               nextCursor={state.nextCursor()}
               onFirstPage={state.goToFirstPage}
               onNextPage={state.goToNextPage}
             />
-          </>
+          </div>
         )}
       </UiQueryView>
     </>

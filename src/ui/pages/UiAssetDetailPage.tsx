@@ -191,7 +191,9 @@ export function UiAssetDetailPage() {
                                 )}
                               </Show>
                               <br />
-                              <span class="text-muted-foreground">sha256 {version.sha256.slice(0, 16)}…</span>
+                              <span class="wrap-anywhere font-mono text-xs text-muted-foreground">
+                                sha256 {version.sha256}
+                              </span>
                             </li>
                           )}
                         </For>
@@ -216,7 +218,7 @@ export function UiAssetDetailPage() {
                         {revision.mediaType} · {revision.createdAt.slice(0, 10)}
                       </p>
                       <p class="font-mono text-muted-foreground">{revision.objectKey}</p>
-                      <p class="text-muted-foreground">sha256 {revision.sha256.slice(0, 16)}…</p>
+                      <p class="wrap-anywhere font-mono text-xs text-muted-foreground">sha256 {revision.sha256}</p>
                       <Show
                         when={state.activity
                           .data()

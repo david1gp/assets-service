@@ -22,7 +22,7 @@ export function UiShell(p: RouteSectionProps) {
         Skip to content
       </a>
       <header class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 p-4">
+        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <A href={uiPaths.projects} class="text-lg font-semibold">
             Assets service
           </A>
@@ -55,7 +55,7 @@ export function UiShell(p: RouteSectionProps) {
         </div>
       </header>
 
-      <div class="mx-auto flex max-w-7xl flex-col gap-6 p-4 md:flex-row">
+      <div class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 md:flex-row">
         <Show when={state.links().length > 0}>
           <nav
             id="project-navigation"

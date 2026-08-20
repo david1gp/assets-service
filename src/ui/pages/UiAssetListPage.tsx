@@ -3,6 +3,7 @@ import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
+import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
 import { mdiClose, mdiCloudUpload, mdiMagnify } from "@mdi/js"
@@ -18,6 +19,8 @@ import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPa
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
+import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
+import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 import { Show } from "solid-js"
 
 const columnsCreate = (projectId: () => string): TableColumnDef<AssetListItem>[] => [
@@ -77,45 +80,47 @@ export function UiAssetListPage() {
         }
       />
 
-      <form
-        class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          state.applyFilters()
-        }}
-      >
-        <div>
-          <Label for="asset-search">Search</Label>
-          <InputS id="asset-search" type="search" valueSignal={state.searchDraft} placeholder="Filename" />
-        </div>
-        <div>
-          <Label for="asset-folder">Folder</Label>
-          <InputS id="asset-folder" valueSignal={state.folderDraft} placeholder="brand/logos" />
-        </div>
-        <div>
-          <Label for="asset-class">Class</Label>
-          <SelectSingleNative
-            id="asset-class"
-            valueSignal={state.classDraft}
-            getOptions={() => [...uiAssetClassOptions]}
-            valueText={(value) => (value === "all" ? "All classes" : value)}
-          />
-        </div>
-        <div class="flex items-end gap-2">
-          <ButtonIcon type="submit" icon={mdiMagnify}>
-            Apply
-          </ButtonIcon>
-          <ButtonIcon
-            type="button"
-            icon={mdiClose}
-            variant="outline"
-            disabled={!state.hasFilters()}
-            onClick={state.clearFilters}
-          >
-            Clear
-          </ButtonIcon>
-        </div>
-      </form>
+      <CardWrapper class="mb-6 p-4 sm:p-5">
+        <form
+          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            state.applyFilters()
+          }}
+        >
+          <div>
+            <Label for="asset-search">Search</Label>
+            <InputS id="asset-search" type="search" valueSignal={state.searchDraft} placeholder="Filename" />
+          </div>
+          <div>
+            <Label for="asset-folder">Folder</Label>
+            <InputS id="asset-folder" valueSignal={state.folderDraft} placeholder="brand/logos" />
+          </div>
+          <div>
+            <Label for="asset-class">Class</Label>
+            <SelectSingleNative
+              id="asset-class"
+              valueSignal={state.classDraft}
+              getOptions={() => [...uiAssetClassOptions]}
+              valueText={(value) => (value === "all" ? "All classes" : value)}
+            />
+          </div>
+          <div class="flex items-end gap-2">
+            <ButtonIcon type="submit" icon={mdiMagnify}>
+              Apply
+            </ButtonIcon>
+            <ButtonIcon
+              type="button"
+              icon={mdiClose}
+              variant="outline"
+              disabled={!state.hasFilters()}
+              onClick={state.clearFilters}
+            >
+              Clear
+            </ButtonIcon>
+          </div>
+        </form>
+      </CardWrapper>
 
       <UiQueryView
         query={state.query}
@@ -124,15 +129,22 @@ export function UiAssetListPage() {
         isEmpty={(data) => data.assets.length === 0}
       >
         {(data) => (
-          <>
-            <Table1R rows={[...data.assets]} columns={columns} />
+          <div class="flex flex-col gap-4">
+            <CardWrapper class="overflow-hidden p-0">
+              <Table1R
+                rows={[...data.assets]}
+                columns={columns}
+                desktopClasses={uiTableDesktopClassesRead()}
+                mobileClasses={uiTableMobileClassesRead()}
+              />
+            </CardWrapper>
             <UiPager
               isFirstPage={state.isFirstPage()}
               nextCursor={state.nextCursor()}
               onFirstPage={state.goToFirstPage}
               onNextPage={state.goToNextPage}
             />
-          </>
+          </div>
         )}
       </UiQueryView>
     </>
