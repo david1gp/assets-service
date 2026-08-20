@@ -317,7 +317,9 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       })
     }
     if (context.req.header("accept")?.includes("application/json")) {
-      return successResponseCreate(context, { authorizationUrl: initiation.data.authorizationUrl })
+      return successResponseCreate(context, { authorizationUrl: initiation.data.authorizationUrl }, 200, {
+        "set-cookie": initiation.data.stateCookie,
+      })
     }
     return redirectResponseCreate(context, initiation.data.authorizationUrl, [initiation.data.stateCookie])
   })
@@ -338,6 +340,7 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       },
     )
     if (!callback.success) {
+      console.error(`[auth/callback failed] [${callback.op}] ${callback.errorMessage}`, callback.rawData)
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 401,

@@ -279,6 +279,7 @@ describe("HTTP API", () => {
     )
 
     expect(login.status).toBe(200)
+    expect(login.headers.get("set-cookie")).toContain("assets_state=")
     expect(await login.json()).toMatchObject({
       ok: true,
       data: { authorizationUrl: "https://zitadel.example.test/authorize?state=one" },

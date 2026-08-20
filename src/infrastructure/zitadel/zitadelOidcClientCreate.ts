@@ -64,7 +64,10 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
       url.searchParams.set("response_type", "code")
       url.searchParams.set("client_id", options.config.clientId)
       url.searchParams.set("redirect_uri", options.config.redirectUri)
-      url.searchParams.set("scope", "openid profile email")
+      url.searchParams.set(
+        "scope",
+        "openid profile email urn:zitadel:iam:org:project:roles urn:zitadel:iam:org:id urn:zitadel:iam:user:resourceowner urn:zitadel:iam:user:resourceowner:id urn:zitadel:iam:org:project:id",
+      )
       url.searchParams.set("state", input.state)
       url.searchParams.set("code_challenge", input.codeChallenge)
       url.searchParams.set("code_challenge_method", "S256")

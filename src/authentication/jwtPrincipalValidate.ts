@@ -128,9 +128,27 @@ export const jwtPrincipalValidate = async (
   if (!audiences.includes(options.audience)) return resultErrorCreate(op, "The JWT audience was invalid")
   const subjectId = stringRead(claims.sub)
   if (!subjectId) return resultErrorCreate(op, "The JWT subject was missing")
+  const orgClaim =
+    stringRead(claims["urn:zitadel:iam:org:id"]) ??
+    stringRead(claims["urn:zitadel:iam:user:resourceowner:id"]) ??
+    stringRead(claims["urn:zitadel:iam:user:resourceowner"]) ??
+    stringRead(claims.organization_id) ??
+    stringRead(claims.org_id) ??
+    stringRead(claims.organizationId) ??
+    stringRead(claims.orgId)
+  const roleOrgs = isRecord(claims["urn:zitadel:iam:org:project:roles"])
+    ? Object.values(claims["urn:zitadel:iam:org:project:roles"]).flatMap((v) =>
+        isRecord(v) ? Object.keys(v) : stringArrayRead(v),
+      )
+    : []
   const organizationId =
-    stringRead(claims["urn:zitadel:iam:org:id"]) ?? stringRead(claims.organization_id) ?? stringRead(claims.org_id)
-  if (organizationId !== options.organizationId) return resultErrorCreate(op, "The JWT organization was invalid")
+    orgClaim ?? (roleOrgs.includes(options.organizationId) ? options.organizationId : roleOrgs[0]) ?? null
+  if (organizationId !== options.organizationId)
+    return resultErrorCreate(op, "The JWT organization was invalid", {
+      foundOrganizationId: organizationId,
+      expectedOrganizationId: options.organizationId,
+      claims,
+    })
   if (options.requiredClientId) {
     const clientId = stringRead(claims.client_id) ?? stringRead(claims.azp)
     if (clientId !== options.requiredClientId) return resultErrorCreate(op, "The service account client was invalid")

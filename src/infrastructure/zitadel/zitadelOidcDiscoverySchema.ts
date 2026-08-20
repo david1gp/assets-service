@@ -1,6 +1,6 @@
 import * as v from "valibot"
 
-export const zitadelOidcDiscoverySchema = v.strictObject({
+export const zitadelOidcDiscoverySchema = v.looseObject({
   issuer: v.pipe(v.string(), v.url()),
   authorization_endpoint: v.pipe(v.string(), v.url()),
   token_endpoint: v.pipe(v.string(), v.url()),
