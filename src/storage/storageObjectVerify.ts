@@ -37,7 +37,10 @@ export const storageObjectVerify = async (
     return resultErrorCreate(op, "Storage object metadata checksum does not match")
 
   if (head.data.byteSize === 0)
-    return { success: true, data: { byteSize: input.byteSize, sha256: expectedSha.output, mediaType: expectedMediaType.output } }
+    return {
+      success: true,
+      data: { byteSize: input.byteSize, sha256: expectedSha.output, mediaType: expectedMediaType.output },
+    }
 
   const stream = adapter.readObjectStream ? await adapter.readObjectStream(input.location) : undefined
   if (stream && !stream.success) return stream

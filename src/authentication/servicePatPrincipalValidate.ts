@@ -66,7 +66,8 @@ export const servicePatPrincipalValidate = async (
   } catch (error) {
     return resultErrorCreate(op, "Unable to reach the Zitadel grant endpoint", error, { retryable: true })
   }
-  if (!grantsResponse.ok) return resultErrorCreate(op, "The Zitadel grant lookup failed", undefined, { retryable: true })
+  if (!grantsResponse.ok)
+    return resultErrorCreate(op, "The Zitadel grant lookup failed", undefined, { retryable: true })
   const grantsBody = await jsonBodyRead(grantsResponse, op)
   if (!grantsBody.success) return grantsBody
   const grantsParsed = v.safeParse(servicePatGrantSearchResponseSchema, grantsBody.data)
@@ -79,9 +80,7 @@ export const servicePatPrincipalValidate = async (
     const roleKeys = [...(grant.roleKeys ?? []), ...(grant.roles ?? [])]
     const roles = [
       ...new Set(
-        roleKeys.filter((role): role is "assets.admin" | "assets.uploader" =>
-          v.is(authenticationRoleSchema, role),
-        ),
+        roleKeys.filter((role): role is "assets.admin" | "assets.uploader" => v.is(authenticationRoleSchema, role)),
       ),
     ].sort()
     if (roles.length === 0) continue
