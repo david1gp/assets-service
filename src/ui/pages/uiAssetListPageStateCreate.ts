@@ -1,14 +1,15 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useParams, useSearchParams } from "@solidjs/router"
-import { createMemo } from "solid-js"
-import type { AssetListResponse } from "../../api-client/assetListResponseSchema.js"
-import { assetClassSchema } from "../../schemas/assetClassSchema.js"
+import { createEffect, createMemo } from "solid-js"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { assetListQuerySchema } from "../../api-client/assetListQuerySchema.js"
+import { type AssetListResponse, assetListResponseSchema } from "../../api-client/assetListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
-import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
-import { uiSearchParamStringRead } from "../search/uiSearchParamStringRead.js"
+import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
+import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 
 export { uiAssetClassOptions } from "./uiAssetClassOptions.js"
 
@@ -18,26 +19,95 @@ export const uiAssetListPageStateCreate = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const projectId = createMemo(() => params.projectId)
-  const assetClass = createMemo(() => uiSearchParamPicklistRead(assetClassSchema, searchParams.class))
-  const folder = createMemo(() => uiSearchParamStringRead(searchParams.folder))
-  const search = createMemo(() => uiSearchParamStringRead(searchParams.search))
+  const classSchema = assetListQuerySchema.entries.class
+  const folderSchema = assetListQuerySchema.entries.folder
+  const searchSchema = assetListQuerySchema.entries.search
+  const assetClass = createMemo(() => uiSearchParamSchemaRead(classSchema, searchParams.class))
+  const folder = createMemo(() => uiSearchParamSchemaRead(folderSchema, searchParams.folder))
+  const search = createMemo(() => uiSearchParamSchemaRead(searchSchema, searchParams.search))
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
 
-  const searchDraft = createSignalObject(uiSearchParamStringRead(searchParams.search) ?? "")
-  const folderDraft = createSignalObject(uiSearchParamStringRead(searchParams.folder) ?? "")
-  const classDraft = createSignalObject<string>(assetClass() ?? "all")
+  const searchDraftState = createSignalObject(search() ?? "")
+  const folderDraftState = createSignalObject(folder() ?? "")
+  const classDraftState = createSignalObject<string>(assetClass() ?? "all")
+  let pendingFilterSearchParams = new URLSearchParams(window.location.search)
 
-  const query = uiQueryCreate<AssetListResponse>(async () => {
-    const client = uiApiClientRead()
-    if (!client.success) return resultErrorCreate("uiAssetListPageRead", client.errorMessage)
-    return client.data.assetListRead(projectId(), {
-      limit: 25,
-      ...(assetClass() === undefined ? {} : { class: assetClass() }),
-      ...(folder() === undefined ? {} : { folder: folder() }),
-      ...(search() === undefined ? {} : { search: search() }),
-      ...(cursor() === undefined ? {} : { cursor: cursor() }),
+  const filterUrlValuesRead = () => {
+    const searchValue = uiSearchParamSchemaRead(searchSchema, searchDraftState.get())
+    const folderValue = uiSearchParamSchemaRead(folderSchema, folderDraftState.get())
+    const classValue =
+      classDraftState.get() === "all" ? undefined : uiSearchParamSchemaRead(classSchema, classDraftState.get())
+    return {
+      search: searchValue ?? null,
+      folder: folderValue ?? null,
+      class: classValue ?? null,
+      cursor: null,
+    }
+  }
+
+  const filtersUrlReplace = () => {
+    const values = filterUrlValuesRead()
+    for (const [key, value] of Object.entries(values)) {
+      if (value === null) pendingFilterSearchParams.delete(key)
+      else pendingFilterSearchParams.set(key, value)
+    }
+    void uiSearchParamsReplace(pendingFilterSearchParams).then((result) => {
+      if (!result.success) return
+      setSearchParams(filterUrlValuesRead(), { replace: true })
     })
+  }
+
+  const searchDraft = {
+    get: searchDraftState.get,
+    set: (value: string) => {
+      searchDraftState.set(value)
+      filtersUrlReplace()
+    },
+  }
+  const folderDraft = {
+    get: folderDraftState.get,
+    set: (value: string) => {
+      folderDraftState.set(value)
+      filtersUrlReplace()
+    },
+  }
+  const classDraft = {
+    get: classDraftState.get,
+    set: (value: string) => {
+      classDraftState.set(value)
+      filtersUrlReplace()
+    },
+  }
+
+  createEffect(() => {
+    searchDraftState.set(search() ?? "")
+    folderDraftState.set(folder() ?? "")
+    classDraftState.set(assetClass() ?? "all")
+    pendingFilterSearchParams = new URLSearchParams(window.location.search)
   })
+
+  const query = uiQueryCreate<AssetListResponse>(
+    async () => {
+      const client = uiApiClientRead()
+      if (!client.success) return resultErrorCreate("uiAssetListPageRead", client.errorMessage)
+      return client.data.assetListRead(projectId(), {
+        limit: 25,
+        ...(assetClass() === undefined ? {} : { class: assetClass() }),
+        ...(folder() === undefined ? {} : { folder: folder() }),
+        ...(search() === undefined ? {} : { search: search() }),
+        ...(cursor() === undefined ? {} : { cursor: cursor() }),
+      })
+    },
+    {
+      cacheKey: () =>
+        uiQueryCacheKeyCreate(
+          "assets",
+          projectId(),
+          `class=${assetClass() ?? ""}&folder=${folder() ?? ""}&search=${search() ?? ""}&cursor=${cursor() ?? ""}`,
+        ),
+      cacheSchema: assetListResponseSchema,
+    },
+  )
 
   const hasFilters = () => assetClass() !== undefined || folder() !== undefined || search() !== undefined
 
@@ -50,25 +120,12 @@ export const uiAssetListPageStateCreate = () => {
     hasFilters,
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => cursor() === undefined,
-    applyFilters: () => {
-      const searchValue = searchDraft.get().trim()
-      const folderValue = folderDraft.get().trim()
-      const classValue = classDraft.get()
-      setSearchParams(
-        {
-          search: searchValue === "" ? null : searchValue,
-          folder: folderValue === "" ? null : folderValue,
-          class: classValue === "all" ? null : classValue,
-          cursor: null,
-        },
-        { replace: true },
-      )
-    },
+    applyFilters: filtersUrlReplace,
     clearFilters: () => {
-      searchDraft.set("")
-      folderDraft.set("")
-      classDraft.set("all")
-      setSearchParams({ search: null, folder: null, class: null, cursor: null }, { replace: true })
+      searchDraftState.set("")
+      folderDraftState.set("")
+      classDraftState.set("all")
+      filtersUrlReplace()
     },
     goToNextPage: () => setSearchParams({ cursor: query.data()?.page.nextCursor ?? null }),
     goToFirstPage: () => setSearchParams({ cursor: null }),

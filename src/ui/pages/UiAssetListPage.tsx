@@ -1,27 +1,27 @@
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { mdiClose, mdiCloudUpload, mdiMagnify } from "@mdi/js"
+import { A } from "@solidjs/router"
+import { Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
-import { mdiClose, mdiCloudUpload, mdiMagnify } from "@mdi/js"
-import { A } from "@solidjs/router"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
-import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { UiLinkButton } from "../common/UiLinkButton.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
-import { uiPaths } from "../routing/uiPaths.js"
-import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
-import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
-import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
+import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
+import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
+import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { uiPaths } from "../routing/uiPaths.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
-import { Show } from "solid-js"
+import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
 
 const columnsCreate = (projectId: () => string): TableColumnDef<AssetListItem>[] => [
   {
@@ -90,11 +90,17 @@ export function UiAssetListPage() {
         >
           <div>
             <Label for="asset-search">Search</Label>
-            <InputS id="asset-search" type="search" valueSignal={state.searchDraft} placeholder="Filename" />
+            <InputS
+              id="asset-search"
+              type="search"
+              maxLength={255}
+              valueSignal={state.searchDraft}
+              placeholder="Filename"
+            />
           </div>
           <div>
             <Label for="asset-folder">Folder</Label>
-            <InputS id="asset-folder" valueSignal={state.folderDraft} placeholder="brand/logos" />
+            <InputS id="asset-folder" maxLength={255} valueSignal={state.folderDraft} placeholder="brand/logos" />
           </div>
           <div>
             <Label for="asset-class">Class</Label>

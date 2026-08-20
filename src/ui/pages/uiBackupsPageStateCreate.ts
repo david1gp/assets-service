@@ -1,8 +1,9 @@
 import { useParams, useSearchParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
-import type { BackupListResponse } from "../../api-client/backupListResponseSchema.js"
+import { type BackupListResponse, backupListResponseSchema } from "../../api-client/backupListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 
@@ -14,14 +15,20 @@ export const uiBackupsPageStateCreate = () => {
   const projectId = createMemo(() => params.projectId)
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
 
-  const query = uiQueryCreate<BackupListResponse>(async () => {
-    const client = uiApiClientRead()
-    if (!client.success) return resultErrorCreate("uiBackupsPageRead", client.errorMessage)
-    return client.data.backupListRead(projectId(), {
-      limit: 25,
-      ...(cursor() === undefined ? {} : { cursor: cursor() }),
-    })
-  })
+  const query = uiQueryCreate<BackupListResponse>(
+    async () => {
+      const client = uiApiClientRead()
+      if (!client.success) return resultErrorCreate("uiBackupsPageRead", client.errorMessage)
+      return client.data.backupListRead(projectId(), {
+        limit: 25,
+        ...(cursor() === undefined ? {} : { cursor: cursor() }),
+      })
+    },
+    {
+      cacheKey: () => uiQueryCacheKeyCreate("backups", projectId(), `cursor=${cursor() ?? ""}`),
+      cacheSchema: backupListResponseSchema,
+    },
+  )
 
   return {
     query,

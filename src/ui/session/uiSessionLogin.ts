@@ -14,7 +14,6 @@ export const uiSessionLogin = async (returnTo: string): Promise<Result<true>> =>
   const login = await client.data.authLogin(target)
   if (!login.success) return login
   const url = new URL(login.data.authorizationUrl)
-  window.sessionStorage.setItem("assetsReturnTo", target)
   window.location.assign(url.toString())
   return { success: true, data: true }
 }

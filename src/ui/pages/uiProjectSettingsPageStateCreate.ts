@@ -1,13 +1,19 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useParams } from "@solidjs/router"
-import { createMemo } from "solid-js"
+import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
-import type { ProjectSettings } from "../../project/projectSettingsSchema.js"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { environmentSchema } from "../../project/environmentSchema.js"
+import { projectBindingSchema } from "../../project/projectBindingSchema.js"
+import { projectSchema } from "../../project/projectSchema.js"
+import { type ProjectSettings, projectSettingsSchema } from "../../project/projectSettingsSchema.js"
 import { projectSettingsUpdateSchema } from "../../project/projectSettingsUpdateSchema.js"
-import type { EnvironmentName } from "../../schemas/environmentNameSchema.js"
+import { type EnvironmentName, environmentNameSchema } from "../../schemas/environmentNameSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
+import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
 
 export type UiEnvironmentDraft = {
@@ -18,6 +24,29 @@ export type UiEnvironmentDraft = {
 }
 
 const environmentNames: readonly EnvironmentName[] = ["development", "production"]
+
+const projectSettingsDraftSchema = v.strictObject({
+  name: v.union([v.literal(""), projectSchema.entries.name]),
+  defaultEnvironment: environmentNameSchema,
+  binding: v.strictObject({
+    zitadelProjectId: v.union([v.literal(""), projectBindingSchema.entries.zitadelProjectId]),
+    serviceProjectId: v.union([v.literal(""), projectBindingSchema.entries.serviceProjectId]),
+  }),
+  environments: v.pipe(
+    v.array(
+      v.strictObject({
+        name: environmentSchema.entries.name,
+        r2Bucket: v.union([v.literal(""), environmentSchema.entries.r2Bucket]),
+        r2Prefix: v.union([v.literal(""), environmentSchema.entries.r2Prefix]),
+        publicBaseUrl: v.union([v.literal(""), environmentSchema.entries.publicBaseUrl]),
+      }),
+    ),
+    v.minLength(1),
+    v.maxLength(2),
+  ),
+})
+
+type UiProjectSettingsDraft = v.InferOutput<typeof projectSettingsDraftSchema>
 
 const environmentDraftsRead = (settings: ProjectSettings): UiEnvironmentDraft[] =>
   environmentNames.map((name) => {
@@ -36,7 +65,7 @@ export const uiProjectSettingsPageStateCreate = () => {
   const projectId = createMemo(() => params.projectId)
 
   const name = createSignalObject("")
-  const defaultEnvironment = createSignalObject<string>("development")
+  const defaultEnvironment = createSignalObject<EnvironmentName>("development")
   const zitadelProjectId = createSignalObject("")
   const serviceProjectId = createSignalObject("")
   const environments = createSignalObject<readonly UiEnvironmentDraft[]>([])
@@ -51,18 +80,76 @@ export const uiProjectSettingsPageStateCreate = () => {
     environments.set(environmentDraftsRead(settings))
   }
 
-  const query = uiQueryCreate<ProjectSettings>(async () => {
-    const client = uiApiClientRead()
-    if (!client.success) return resultErrorCreate("uiProjectSettingsPageRead", client.errorMessage)
-    const settings = await client.data.projectSettingsRead(projectId())
-    if (settings.success) draftsLoad(settings.data)
-    return settings
+  const draft = uiFormDraftPersistenceCreate<UiProjectSettingsDraft>(
+    () => uiFormDraftKeyCreate("project", projectId(), "settings"),
+    projectSettingsDraftSchema,
+    () => ({
+      name: name.get(),
+      defaultEnvironment: defaultEnvironment.get(),
+      binding: {
+        zitadelProjectId: zitadelProjectId.get(),
+        serviceProjectId: serviceProjectId.get(),
+      },
+      environments: [...environments.get()],
+    }),
+  )
+  let draftActive = false
+  const hydratedDraft = draft.hydrate()
+  if (hydratedDraft.success && hydratedDraft.data !== undefined) {
+    draftActive = true
+    name.set(hydratedDraft.data.name)
+    defaultEnvironment.set(hydratedDraft.data.defaultEnvironment)
+    zitadelProjectId.set(hydratedDraft.data.binding.zitadelProjectId)
+    serviceProjectId.set(hydratedDraft.data.binding.serviceProjectId)
+    environments.set(hydratedDraft.data.environments)
+  }
+  const draftChanged = () => {
+    draftActive = true
+    void draft.persist()
+  }
+  const nameDraft = draft.signalCreate(name, () => {
+    draftActive = true
+  })
+  const defaultEnvironmentDraft = {
+    get: defaultEnvironment.get,
+    set: (value: string) => {
+      const parsed = v.safeParse(environmentNameSchema, value)
+      if (!parsed.success) return
+      defaultEnvironment.set(parsed.output)
+      draftActive = true
+      void draft.persist()
+    },
+  }
+  const zitadelProjectIdDraft = draft.signalCreate(zitadelProjectId, () => {
+    draftActive = true
+  })
+  const serviceProjectIdDraft = draft.signalCreate(serviceProjectId, () => {
+    draftActive = true
   })
 
-  const environmentSet = (environmentName: EnvironmentName, field: keyof UiEnvironmentDraft, value: string) =>
+  const query = uiQueryCreate<ProjectSettings>(
+    async () => {
+      const client = uiApiClientRead()
+      if (!client.success) return resultErrorCreate("uiProjectSettingsPageRead", client.errorMessage)
+      return client.data.projectSettingsRead(projectId())
+    },
+    {
+      cacheKey: () => uiQueryCacheKeyCreate("project-settings", projectId()),
+      cacheSchema: projectSettingsSchema,
+    },
+  )
+
+  createEffect(() => {
+    const settings = query.data()
+    if (settings && !draftActive) draftsLoad(settings)
+  })
+
+  const environmentSet = (environmentName: EnvironmentName, field: keyof UiEnvironmentDraft, value: string) => {
     environments.set(
       environments.get().map((draft) => (draft.name === environmentName ? { ...draft, [field]: value } : draft)),
     )
+    draftChanged()
+  }
 
   const updateRead = () =>
     v.safeParse(projectSettingsUpdateSchema, {
@@ -101,6 +188,7 @@ export const uiProjectSettingsPageStateCreate = () => {
       return
     }
     draftsLoad(written.data)
+    await draft.clear()
     uiToastAdd({ tone: "positive", title: "Settings saved" })
     query.reload()
   }
@@ -108,10 +196,10 @@ export const uiProjectSettingsPageStateCreate = () => {
   return {
     projectId,
     query,
-    name,
-    defaultEnvironment,
-    zitadelProjectId,
-    serviceProjectId,
+    name: nameDraft,
+    defaultEnvironment: defaultEnvironmentDraft,
+    zitadelProjectId: zitadelProjectIdDraft,
+    serviceProjectId: serviceProjectIdDraft,
     environments: environments.get,
     environmentSet,
     isSaving: saving.get,
@@ -120,7 +208,10 @@ export const uiProjectSettingsPageStateCreate = () => {
     save,
     reset: () => {
       const settings = query.data()
-      if (settings) draftsLoad(settings)
+      if (settings) {
+        draftsLoad(settings)
+        draftChanged()
+      }
       formError.set(null)
     },
   }

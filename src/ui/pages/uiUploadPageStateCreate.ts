@@ -1,15 +1,29 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
+import * as v from "valibot"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { uploadIntentRequestSchema } from "../../api-client/uploadIntentRequestSchema.js"
+import { folderSegmentSchema } from "../../asset/folderSegmentSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
+import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
+import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiUploadAcceptAttributeRead } from "../upload/uiUploadAcceptAttributeRead.js"
 import { uiUploadFoldersRead } from "../upload/uiUploadFoldersRead.js"
 import { uiUploadMediaTypeRead } from "../upload/uiUploadMediaTypeRead.js"
 import { uiUploadSha256Read } from "../upload/uiUploadSha256Read.js"
 import type { UiUploadStage } from "../upload/uiUploadStageProgressRead.js"
 import { uiUploadStageProgressRead } from "../upload/uiUploadStageProgressRead.js"
-import { uiToastAdd } from "../toast/uiToastAdd.js"
+
+const uploadDraftSchema = v.strictObject({
+  folder1: v.union([v.literal(""), folderSegmentSchema]),
+  folder2: v.union([v.literal(""), folderSegmentSchema]),
+  folder3: v.union([v.literal(""), folderSegmentSchema]),
+  integrationNote: v.union([v.literal(""), uploadIntentRequestSchema.entries.integrationNote]),
+})
+
+type UiUploadDraft = v.InferOutput<typeof uploadDraftSchema>
 
 /** Drives the direct browser-to-storage upload form and its progress states. */
 export const uiUploadPageStateCreate = () => {
@@ -28,6 +42,28 @@ export const uiUploadPageStateCreate = () => {
   const workflowId = createSignalObject<string | null>(null)
   const workflowStatus = createSignalObject<string | null>(null)
   const uploadStatus = createSignalObject<string | null>(null)
+
+  const draft = uiFormDraftPersistenceCreate<UiUploadDraft>(
+    () => uiFormDraftKeyCreate("project", projectId(), "upload"),
+    uploadDraftSchema,
+    () => ({
+      folder1: folder1.get(),
+      folder2: folder2.get(),
+      folder3: folder3.get(),
+      integrationNote: integrationNote.get(),
+    }),
+  )
+  const hydratedDraft = draft.hydrate()
+  if (hydratedDraft.success && hydratedDraft.data !== undefined) {
+    folder1.set(hydratedDraft.data.folder1)
+    folder2.set(hydratedDraft.data.folder2)
+    folder3.set(hydratedDraft.data.folder3)
+    integrationNote.set(hydratedDraft.data.integrationNote)
+  }
+  const folder1Draft = draft.signalCreate(folder1)
+  const folder2Draft = draft.signalCreate(folder2)
+  const folder3Draft = draft.signalCreate(folder3)
+  const integrationNoteDraft = draft.signalCreate(integrationNote)
 
   const progress = createMemo(() => uiUploadStageProgressRead(stage.get()))
   const isBusy = () => !["idle", "done", "failed"].includes(stage.get())
@@ -92,6 +128,7 @@ export const uiUploadPageStateCreate = () => {
     assetId.set(completion.data.assetId)
     workflowId.set(completion.data.workflowId)
     stage.set("done")
+    await draft.clear()
     uiToastAdd({ tone: "positive", title: "Upload accepted", description: "Processing has been queued." })
     await statusRefresh(intent.data.uploadId, completion.data.workflowId)
   }
@@ -108,10 +145,10 @@ export const uiUploadPageStateCreate = () => {
   return {
     projectId,
     file,
-    folder1,
-    folder2,
-    folder3,
-    integrationNote,
+    folder1: folder1Draft,
+    folder2: folder2Draft,
+    folder3: folder3Draft,
+    integrationNote: integrationNoteDraft,
     stage: stage.get,
     progress,
     isBusy,
@@ -145,6 +182,7 @@ export const uiUploadPageStateCreate = () => {
       uploadStatus.set(null)
       errorMessage.set(null)
       stage.set("idle")
+      void draft.persist()
     },
   }
 }

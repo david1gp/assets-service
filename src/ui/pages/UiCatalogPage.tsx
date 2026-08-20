@@ -1,12 +1,13 @@
+import { Show } from "solid-js"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
-import { Show } from "solid-js"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
-import { uiCatalogEnvironments, uiCatalogPageStateCreate } from "./uiCatalogPageStateCreate.js"
+import { uiCatalogEnvironments } from "./uiCatalogEnvironments.js"
+import { uiCatalogPageStateCreate } from "./uiCatalogPageStateCreate.js"
 
 /** Shows the current catalog generation and the deterministic generated lists. */
 export function UiCatalogPage() {
@@ -20,7 +21,7 @@ export function UiCatalogPage() {
         <Label for="catalog-environment">Environment</Label>
         <SelectSingleNative
           id="catalog-environment"
-          valueSignal={{ get: state.environmentSignal.get, set: state.selectEnvironment }}
+          valueSignal={state.environmentSignal}
           getOptions={() => [...uiCatalogEnvironments]}
         />
       </div>

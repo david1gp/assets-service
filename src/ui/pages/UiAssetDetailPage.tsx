@@ -101,28 +101,32 @@ export function UiAssetDetailPage() {
             </CardWrapper>
 
             <CardWrapper class="p-4">
-              <h2 class="text-lg font-semibold">Alternative text</h2>
-              <Label class="mt-3" for="asset-alt">
-                Alt text
-              </Label>
-              <TextareaS id="asset-alt" rows={3} valueSignal={state.altDraft} />
-              <div class="mt-3 flex flex-wrap gap-2">
-                <ButtonIcon
-                  icon={mdiContentSave}
-                  isLoading={state.pendingLabel() === "Alt text"}
-                  onClick={() => void state.altSet()}
-                >
-                  Save alt text
-                </ButtonIcon>
-                <ButtonIcon
-                  icon={mdiTrashCan}
-                  variant="outline"
-                  isLoading={state.pendingLabel() === "Alt text removal"}
-                  onClick={() => void state.altUnset()}
-                >
-                  Remove alt text
-                </ButtonIcon>
-              </div>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void state.altSet()
+                }}
+              >
+                <h2 class="text-lg font-semibold">Alternative text</h2>
+                <Label class="mt-3" for="asset-alt">
+                  Alt text
+                </Label>
+                <TextareaS id="asset-alt" rows={3} valueSignal={state.altDraft} />
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <ButtonIcon type="submit" icon={mdiContentSave} isLoading={state.pendingLabel() === "Alt text"}>
+                    Save alt text
+                  </ButtonIcon>
+                  <ButtonIcon
+                    type="button"
+                    icon={mdiTrashCan}
+                    variant="outline"
+                    isLoading={state.pendingLabel() === "Alt text removal"}
+                    onClick={() => void state.altUnset()}
+                  >
+                    Remove alt text
+                  </ButtonIcon>
+                </div>
+              </form>
               <Show when={asset.metadata}>{(metadata) => <CodeBlock class="mt-4" data={metadata().metadata} />}</Show>
             </CardWrapper>
 
@@ -382,7 +386,7 @@ export function UiAssetDetailPage() {
               >
                 <ul class="flex flex-col gap-4">
                   <For
-                    each={state.outputDrafts()}
+                    each={state.outputDrafts.get()}
                     fallback={<li class="text-muted-foreground">The output set is empty.</li>}
                   >
                     {(draft, index) => (
@@ -467,7 +471,7 @@ export function UiAssetDetailPage() {
                           size="sm"
                           variant="outlineRed"
                           icon={mdiTrashCan}
-                          disabled={state.outputDrafts().length <= 1}
+                          disabled={state.outputDrafts.get().length <= 1}
                           onClick={() => state.outputDraftRemove(draft.id)}
                         >
                           Remove output {index() + 1}
@@ -544,42 +548,49 @@ export function UiAssetDetailPage() {
               onClose={state.closeDialog}
             >
               <div class="w-[min(32rem,90vw)]">
-                <p>
-                  A deletion workflow is queued for <strong>{uiAssetPathFormat(asset.folders, asset.filename)}</strong>.
-                  Once it completes, every source revision, output object, and catalog entry is gone and cannot be
-                  restored.
-                </p>
-                <label class="mt-4 flex items-start gap-2 font-medium" for="delete-confirm">
-                  <input
-                    id="delete-confirm"
-                    type="checkbox"
-                    class="mt-1"
-                    checked={state.confirmDeletion.get()}
-                    onChange={(event) => state.confirmDeletion.set(event.currentTarget.checked)}
-                  />
-                  <span>I understand that this asset is deleted permanently once the workflow completes.</span>
-                </label>
-                <div class="mt-4 flex flex-wrap gap-2">
-                  <ButtonIcon
-                    variant="filledRed"
-                    class={uiDestructiveButtonClassesRead("filled")}
-                    icon={mdiDelete}
-                    isLoading={state.pendingLabel() === "Deletion"}
-                    disabled={!state.confirmDeletion.get()}
-                    aria-describedby={state.confirmDeletion.get() ? undefined : "delete-blocked-reason"}
-                    onClick={() => void state.deleteAsset()}
-                  >
-                    Request deletion
-                  </ButtonIcon>
-                  <ButtonIcon variant="outline" onClick={state.closeDialog}>
-                    Cancel
-                  </ButtonIcon>
-                </div>
-                <Show when={!state.confirmDeletion.get()}>
-                  <p id="delete-blocked-reason" role="status" class="mt-2 text-sm text-muted-foreground">
-                    Tick the confirmation above to request deletion.
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void state.deleteAsset()
+                  }}
+                >
+                  <p>
+                    A deletion workflow is queued for{" "}
+                    <strong>{uiAssetPathFormat(asset.folders, asset.filename)}</strong>. Once it completes, every source
+                    revision, output object, and catalog entry is gone and cannot be restored.
                   </p>
-                </Show>
+                  <label class="mt-4 flex items-start gap-2 font-medium" for="delete-confirm">
+                    <input
+                      id="delete-confirm"
+                      type="checkbox"
+                      class="mt-1"
+                      checked={state.confirmDeletion.get()}
+                      onChange={(event) => state.confirmDeletion.set(event.currentTarget.checked)}
+                    />
+                    <span>I understand that this asset is deleted permanently once the workflow completes.</span>
+                  </label>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <ButtonIcon
+                      type="submit"
+                      variant="filledRed"
+                      class={uiDestructiveButtonClassesRead("filled")}
+                      icon={mdiDelete}
+                      isLoading={state.pendingLabel() === "Deletion"}
+                      disabled={!state.confirmDeletion.get()}
+                      aria-describedby={state.confirmDeletion.get() ? undefined : "delete-blocked-reason"}
+                    >
+                      Request deletion
+                    </ButtonIcon>
+                    <ButtonIcon type="button" variant="outline" onClick={state.closeDialog}>
+                      Cancel
+                    </ButtonIcon>
+                  </div>
+                  <Show when={!state.confirmDeletion.get()}>
+                    <p id="delete-blocked-reason" role="status" class="mt-2 text-sm text-muted-foreground">
+                      Tick the confirmation above to request deletion.
+                    </p>
+                  </Show>
+                </form>
               </div>
             </UiDialog>
           </div>

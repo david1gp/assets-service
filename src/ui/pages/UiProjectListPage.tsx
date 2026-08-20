@@ -1,19 +1,19 @@
-import { Table1R } from "#ui/table/table1/Table1R.jsx"
-import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { InputS } from "#ui/input/input/InputS.jsx"
-import { Label } from "#ui/input/label/Label.jsx"
-import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { mdiClose, mdiMagnify } from "@mdi/js"
 import { A } from "@solidjs/router"
+import { InputS } from "#ui/input/input/InputS.jsx"
+import { Label } from "#ui/input/label/Label.jsx"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
+import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
+import { Table1R } from "#ui/table/table1/Table1R.jsx"
 import type { Project } from "../../project/projectSchema.js"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { uiPaths } from "../routing/uiPaths.js"
-import { uiProjectListPageStateCreate } from "./uiProjectListPageStateCreate.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
+import { uiProjectListPageStateCreate } from "./uiProjectListPageStateCreate.js"
 
 const columns: TableColumnDef<Project>[] = [
   {
@@ -62,7 +62,13 @@ export function UiProjectListPage() {
         >
           <div class="min-w-60 flex-1">
             <Label for="project-search">Search projects</Label>
-            <InputS id="project-search" type="search" valueSignal={state.searchDraft} placeholder="Project name" />
+            <InputS
+              id="project-search"
+              type="search"
+              maxLength={255}
+              valueSignal={state.searchDraft}
+              placeholder="Project name"
+            />
           </div>
           <ButtonIcon type="submit" icon={mdiMagnify}>
             Search

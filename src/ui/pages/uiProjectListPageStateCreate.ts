@@ -1,30 +1,70 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useSearchParams } from "@solidjs/router"
-import { createMemo } from "solid-js"
-import type { ProjectListResponse } from "../../api-client/projectListResponseSchema.js"
+import { createEffect, createMemo } from "solid-js"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { projectListQuerySchema } from "../../api-client/projectListQuerySchema.js"
+import { type ProjectListResponse, projectListResponseSchema } from "../../api-client/projectListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
-import { uiSearchParamStringRead } from "../search/uiSearchParamStringRead.js"
+import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
+import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 
 /** Holds project search and pagination state driven by URL search parameters. */
 export const uiProjectListPageStateCreate = () => {
   const [searchParams, setSearchParams] = useSearchParams()
-  const searchDraft = createSignalObject(uiSearchParamStringRead(searchParams.search) ?? "")
+  const searchSchema = projectListQuerySchema.entries.search
+  const search = createMemo(() => uiSearchParamSchemaRead(searchSchema, searchParams.search))
+  const searchDraftState = createSignalObject(search() ?? "")
+  let pendingSearchParams = new URLSearchParams(window.location.search)
 
-  const search = createMemo(() => uiSearchParamStringRead(searchParams.search))
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
 
-  const query = uiQueryCreate<ProjectListResponse>(async () => {
-    const client = uiApiClientRead()
-    if (!client.success) return resultErrorCreate("uiProjectListPageRead", client.errorMessage)
-    return client.data.projectsRead({
-      limit: 25,
-      ...(search() === undefined ? {} : { search: search() }),
-      ...(cursor() === undefined ? {} : { cursor: cursor() }),
+  const searchUrlValuesRead = () => {
+    const value = uiSearchParamSchemaRead(searchSchema, searchDraftState.get())
+    return { search: value ?? null, cursor: null }
+  }
+
+  const searchUrlReplace = () => {
+    const value = uiSearchParamSchemaRead(searchSchema, searchDraftState.get())
+    if (value === undefined) pendingSearchParams.delete("search")
+    else pendingSearchParams.set("search", value)
+    pendingSearchParams.delete("cursor")
+    void uiSearchParamsReplace(pendingSearchParams).then((result) => {
+      if (!result.success) return
+      setSearchParams(searchUrlValuesRead(), { replace: true })
     })
+  }
+
+  const searchDraft = {
+    get: searchDraftState.get,
+    set: (value: string) => {
+      searchDraftState.set(value)
+      searchUrlReplace()
+    },
+  }
+
+  createEffect(() => {
+    searchDraftState.set(search() ?? "")
+    pendingSearchParams = new URLSearchParams(window.location.search)
   })
+
+  const query = uiQueryCreate<ProjectListResponse>(
+    async () => {
+      const client = uiApiClientRead()
+      if (!client.success) return resultErrorCreate("uiProjectListPageRead", client.errorMessage)
+      return client.data.projectsRead({
+        limit: 25,
+        ...(search() === undefined ? {} : { search: search() }),
+        ...(cursor() === undefined ? {} : { cursor: cursor() }),
+      })
+    },
+    {
+      cacheKey: () => uiQueryCacheKeyCreate("projects", "all", `search=${search() ?? ""}&cursor=${cursor() ?? ""}`),
+      cacheSchema: projectListResponseSchema,
+    },
+  )
 
   return {
     query,
@@ -32,13 +72,10 @@ export const uiProjectListPageStateCreate = () => {
     hasSearch: () => search() !== undefined,
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => cursor() === undefined,
-    submitSearch: () => {
-      const value = searchDraft.get().trim()
-      setSearchParams({ search: value === "" ? null : value, cursor: null }, { replace: true })
-    },
+    submitSearch: searchUrlReplace,
     clearSearch: () => {
-      searchDraft.set("")
-      setSearchParams({ search: null, cursor: null }, { replace: true })
+      searchDraftState.set("")
+      searchUrlReplace()
     },
     goToNextPage: () => setSearchParams({ cursor: query.data()?.page.nextCursor ?? null }),
     goToFirstPage: () => setSearchParams({ cursor: null }),

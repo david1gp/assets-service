@@ -1,13 +1,14 @@
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { Badge } from "#ui/static/badge/Badge.jsx"
 import { mdiCancel, mdiRefresh } from "@mdi/js"
 import { For, Show } from "solid-js"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Badge } from "#ui/static/badge/Badge.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
-import { uiJobsPageStateCreate, uiJobsTabs } from "./uiJobsPageStateCreate.js"
 import { uiDestructiveButtonClassesRead } from "../common/uiDestructiveButtonClassesRead.js"
 import { uiErrorTextClassesRead } from "../common/uiErrorTextClassesRead.js"
+import { uiJobsPageStateCreate } from "./uiJobsPageStateCreate.js"
+import { uiJobsTabs } from "./uiJobsTabs.js"
 
 /** Lists workflows and jobs of one project with retry and cancel actions. */
 export function UiJobsPage() {
@@ -23,9 +24,9 @@ export function UiJobsPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={state.tab() === value}
+              aria-selected={state.tabSignal.get() === value}
               class="rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
-              onClick={() => state.selectTab(value)}
+              onClick={() => state.tabSignal.set(value)}
             >
               {value}
             </button>
@@ -33,7 +34,7 @@ export function UiJobsPage() {
         </For>
       </div>
 
-      <Show when={state.tab() === "workflows"}>
+      <Show when={state.tabSignal.get() === "workflows"}>
         <UiQueryView
           query={state.workflows}
           loadingItem="workflows"
@@ -79,7 +80,7 @@ export function UiJobsPage() {
         </UiQueryView>
       </Show>
 
-      <Show when={state.tab() === "jobs"}>
+      <Show when={state.tabSignal.get() === "jobs"}>
         <UiQueryView
           query={state.jobs}
           loadingItem="jobs"
