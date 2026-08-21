@@ -26,7 +26,7 @@ Let the assets CLI determine the target project from explicit configuration, `pa
 - [x] 2. Implement project-name resolution and actionable errors with focused tests/docs.
 - [x] 3. Run repository verification and review the final diff.
 - [x] 4. Commit the intended changes.
-- [ ] 5. Release and verify the published version/artifacts.
+- [x] 5. Release and verify the published version/artifacts.
 
 ## Paths
 
@@ -38,6 +38,6 @@ Let the assets CLI determine the target project from explicit configuration, `pa
 
 - Resolution is implemented for bulk commands using the positional root’s exact `package.json.name`, after explicit environment/saved configuration and before sole-project fallback.
 - The CLI has no explicit dotenv parser; Bun runtime `.env` loading supports the current-working-directory guidance in the error.
-- Releases use `bun run release`; the script versions, builds, commits, tags, pushes, and creates a GitHub release, but npm publication is not visible in the repository workflow.
+- Version `0.3.0` is published on GitHub and npm with provenance; both CLI bins and a clean `bunx` invocation are verified.
 - Error guidance distinguishes missing token/access from ambiguous project selection and accurately describes Bun’s current-working-directory `.env` behavior.
 - Full repository checks pass with 311 tests.
