@@ -45,8 +45,9 @@ export function UiUploadPage() {
               onChange={(event) => state.selectFile(event.currentTarget.files?.item(0) ?? null)}
             />
             <p id="upload-file-hint" class="mt-1 text-sm text-muted-foreground">
-              JPEG, PNG, WebP, AVIF, GIF, MP4, WebM, TTF, OTF, WOFF, or WOFF2. SVG files are not processed by this
-              service; keep them in the project under `public/`.
+              JPEG, PNG, WebP, AVIF, GIF, MP4, WebM, TTF, OTF, WOFF, or WOFF2.
+              <br />
+              SVG files are not processed by this service; keep them in the project under `public/`.
             </p>
             <Show when={state.file.get()}>
               {(selected) => (
