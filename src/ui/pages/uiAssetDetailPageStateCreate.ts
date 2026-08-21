@@ -9,6 +9,7 @@ import { folderSegmentSchema } from "../../asset/folderSegmentSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiPublicUrlFormat } from "../common/uiPublicUrlFormat.js"
 import { uiOutputDraftFromDefinition } from "../output/uiOutputDraftFromDefinition.js"
 import { type UiOutputDraft, uiOutputDraftSchema } from "../output/uiOutputDraftSchema.js"
 import { uiOutputDraftsInputsRead } from "../output/uiOutputDraftsInputsRead.js"
@@ -22,6 +23,7 @@ import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiUploadFoldersRead } from "../upload/uiUploadFoldersRead.js"
 import { type UiAssetActivity, uiAssetActivitySchema } from "./uiAssetActivitySchema.js"
 import { type UiAssetDialog, uiAssetDialogSchema } from "./uiAssetDialogSchema.js"
+import { uiSourceRevisionLatestImageRead } from "./uiSourceRevisionLatestImageRead.js"
 
 const assetAltDraftSchema = v.strictObject({ value: metadataSetRequestSchema.entries.alt })
 
@@ -282,6 +284,42 @@ export const uiAssetDetailPageStateCreate = () => {
     return null
   })
 
+  const sourceRevisionLinks = createMemo(() => {
+    const asset = query.data()
+    const client = clientRead()
+    if (asset === null || client === null) return []
+    return asset.sourceHistory.map((revision) => ({
+      ...revision,
+      contentUrl: client.assetSourceRevisionContentUrlCreate(projectId(), assetId(), revision.id, "download"),
+      previewUrl: client.assetSourceRevisionContentUrlCreate(projectId(), assetId(), revision.id, "preview"),
+    }))
+  })
+
+  const latestImagePreview = createMemo(() => {
+    const asset = query.data()
+    const revision = uiSourceRevisionLatestImageRead(sourceRevisionLinks())
+    if (asset === null || revision === null) return null
+    return {
+      ...revision,
+      contentUrl: revision.previewUrl,
+      alt: altValueRead(asset) || `Preview of ${revision.originalFilename}`,
+    }
+  })
+
+  const outputHistoryLinks = createMemo(() => {
+    const publicBaseUrl = activity.data()?.environment?.publicBaseUrl
+    const client = clientRead()
+    return (query.data()?.outputHistory ?? []).map((entry) => ({
+      ...entry,
+      versions: entry.versions.map((version) => ({
+        ...version,
+        publicUrl: publicBaseUrl ? uiPublicUrlFormat(publicBaseUrl, version.objectKey) : null,
+        downloadUrl: client ? client.assetOutputVersionContentUrlCreate(projectId(), assetId(), version.id) : null,
+        downloadFilename: `${entry.definition.key}.${version.extension}`,
+      })),
+    }))
+  })
+
   const outputsSave = async () => {
     const inputs = outputInputs()
     if (!inputs.success) {
@@ -362,6 +400,9 @@ export const uiAssetDetailPageStateCreate = () => {
     confirmOutputs,
     confirmDeletion,
     outputSaveBlockedReason,
+    sourceRevisionLinks,
+    latestImagePreview,
+    outputHistoryLinks,
     openDialog,
     pendingLabel: pending.get,
     actionError: actionError.get,

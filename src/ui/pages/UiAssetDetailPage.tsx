@@ -6,6 +6,7 @@ import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
+import { Img } from "#ui/static/img/Img.jsx"
 import {
   mdiContentSave,
   mdiDelete,
@@ -20,7 +21,6 @@ import { For, Show } from "solid-js"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
-import { uiPublicUrlFormat } from "../common/uiPublicUrlFormat.js"
 import { UiDialog } from "../common/UiDialog.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
@@ -100,6 +100,19 @@ export function UiAssetDetailPage() {
               </div>
             </CardWrapper>
 
+            <Show when={state.latestImagePreview()}>
+              {(preview) => (
+                <CardWrapper class="p-4">
+                  <h2 class="text-lg font-semibold">Latest original preview</h2>
+                  <Img
+                    class="mt-3 max-h-[36rem] w-full rounded-lg bg-gray-100 object-contain dark:bg-gray-800"
+                    src={preview().contentUrl}
+                    alt={preview().alt}
+                  />
+                </CardWrapper>
+              )}
+            </Show>
+
             <CardWrapper class="p-4">
               <form
                 onSubmit={(event) => {
@@ -139,7 +152,7 @@ export function UiAssetDetailPage() {
               </div>
               <ul class="mt-3 flex flex-col gap-3">
                 <For
-                  each={asset.outputHistory}
+                  each={state.outputHistoryLinks()}
                   fallback={<li class="text-muted-foreground">No outputs are defined yet.</li>}
                 >
                   {(entry) => (
@@ -180,18 +193,27 @@ export function UiAssetDetailPage() {
                               </Show>
                               <br />
                               <Show
-                                when={state.activity.data()?.environment}
+                                when={version.publicUrl}
                                 fallback={<span class="font-mono">{version.objectKey}</span>}
                               >
-                                {(environment) => (
-                                  <a
-                                    class="font-mono underline"
-                                    href={uiPublicUrlFormat(environment().publicBaseUrl, version.objectKey)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    {uiPublicUrlFormat(environment().publicBaseUrl, version.objectKey)}
-                                  </a>
+                                {(publicUrl) => (
+                                  <div class="flex flex-wrap gap-2">
+                                    <a
+                                      class="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
+                                      href={publicUrl()}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Open
+                                    </a>
+                                    <a
+                                      class="inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
+                                      href={version.downloadUrl ?? undefined}
+                                      download={version.downloadFilename}
+                                    >
+                                      Download
+                                    </a>
+                                  </div>
                                 )}
                               </Show>
                               <br />
@@ -212,7 +234,7 @@ export function UiAssetDetailPage() {
               <h2 class="text-lg font-semibold">Source revisions</h2>
               <ul class="mt-3 flex flex-col gap-3 text-sm">
                 <For
-                  each={asset.sourceHistory}
+                  each={state.sourceRevisionLinks()}
                   fallback={<li class="text-muted-foreground">No source revisions were recorded.</li>}
                 >
                   {(revision) => (
@@ -222,6 +244,13 @@ export function UiAssetDetailPage() {
                         {revision.mediaType} · {revision.createdAt.slice(0, 10)}
                       </p>
                       <p class="font-mono text-muted-foreground">{revision.objectKey}</p>
+                      <a
+                        class="mt-2 inline-flex items-center rounded-lg border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800"
+                        href={revision.contentUrl}
+                        download={revision.originalFilename}
+                      >
+                        Download original
+                      </a>
                       <p class="wrap-anywhere font-mono text-xs text-muted-foreground">sha256 {revision.sha256}</p>
                       <Show
                         when={state.activity
