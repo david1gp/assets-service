@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import * as v from "valibot"
 
 import { apiFailureEnvelopeCreate } from "../api/apiFailureEnvelopeCreate.js"
@@ -225,6 +225,8 @@ const commandHelp = {
     "--check",
     "--write",
   ],
+  projectResolution:
+    "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project.",
 }
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
@@ -542,19 +544,54 @@ const assetReferenceRead = async (
   return resultFailure("assetsCliAssetReferenceRead", `The asset ${reference} was not found`)
 }
 
+const packageNameRead = async (projectRoot: string): Promise<Result<string | null>> => {
+  const packagePath = join(resolve(projectRoot), "package.json")
+  let content: string
+  try {
+    content = await readFile(packagePath, "utf8")
+  } catch {
+    return { success: true, data: null }
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(content)
+  } catch {
+    return { success: true, data: null }
+  }
+  if (value === null || typeof value !== "object" || !("name" in value) || typeof value.name !== "string")
+    return { success: true, data: null }
+  if (value.name.length === 0) return { success: true, data: null }
+  return { success: true, data: value.name }
+}
+
 const projectAndEnvironmentRead = async (
   client: AssetsApiClient,
   parsed: ParsedCommand,
   config: CliConfig,
+  projectRoot?: string,
 ): Promise<Result<{ projectId: string; environment?: string }>> => {
   let projectId = optionRead(parsed, "project") ?? config.project
   if (projectId === undefined) {
     const projects = await client.projectsReadAll()
     if (!projects.success) return projects
-    if (projects.data.length !== 1)
-      return resultFailure("assetsCliProjectRead", "Set --project or ASSETS_PROJECT before running this command")
-    projectId = projects.data[0]?.id
-    if (projectId === undefined) return resultFailure("assetsCliProjectRead", "The service returned no project")
+    const packageNameResult: Result<string | null> =
+      projectRoot === undefined ? { success: true, data: null } : await packageNameRead(projectRoot)
+    if (!packageNameResult.success) return packageNameResult
+    const matches =
+      packageNameResult.data === null ? [] : projects.data.filter((project) => project.name === packageNameResult.data)
+    if (matches.length === 1) projectId = matches[0]?.id
+    if (projectId === undefined && projects.data.length === 1) projectId = projects.data[0]?.id
+    if (projectId === undefined) {
+      if (projects.data.length === 0)
+        return resultFailure(
+          "assetsCliProjectRead",
+          "Could not determine the project. No accessible projects were found. Verify the API URL, token, and access.",
+        )
+      return resultFailure(
+        "assetsCliProjectRead",
+        "Could not determine the project. Use --project <name> or set ASSETS_PROJECT in the environment or the current working directory's .env file.",
+      )
+    }
   }
   const selectedEnvironment = optionRead(parsed, "environment") ?? config.environment
   if (selectedEnvironment !== undefined) {
@@ -793,8 +830,6 @@ const uploadAllCommandRun = async (
   environment: string | undefined,
 ): Promise<CommandOutput> => {
   const op = "assetsCliUploadAll"
-  if (parsed.positionals.length > 1)
-    return { result: resultFailure(op, "The upload-all command takes zero or one root argument") }
   const allowed = optionAllowed(parsed, [
     ...diffSourceDirectoryOptionNames,
     "integration-note",
@@ -1291,15 +1326,20 @@ const commandRun = async (
   )
     return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
 
-  const selected = await projectAndEnvironmentRead(client, parsed, config)
+  if (parsed.command === "diff" && parsed.positionals.length > 1)
+    return { result: resultFailure("assetsCliDiff", "The diff command takes zero or one root argument") }
+  if (parsed.command === "upload-all" && parsed.positionals.length > 1)
+    return { result: resultFailure("assetsCliUploadAll", "The upload-all command takes zero or one root argument") }
+
+  const projectRoot =
+    parsed.command === "diff" || parsed.command === "upload-all" ? (parsed.positionals[0] ?? ".") : undefined
+  const selected = await projectAndEnvironmentRead(client, parsed, config, projectRoot)
   if (!selected.success) return { result: selected }
   const projectId = selected.data.projectId
 
   if (parsed.command === "upload-all") return uploadAllCommandRun(parsed, client, projectId, selected.data.environment)
 
   if (parsed.command === "diff") {
-    if (parsed.positionals.length > 1)
-      return { result: resultFailure("assetsCliDiff", "The diff command takes zero or one root argument") }
     const allowed = optionAllowed(parsed, [...diffSourceDirectoryOptionNames])
     if (!allowed.success) return { result: allowed }
     if (selected.data.environment === undefined)

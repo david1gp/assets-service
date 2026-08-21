@@ -88,6 +88,12 @@ delete. `--wait` and `--no-wait` cannot be combined. `--delete --no-wait` is rej
 Use `ASSETS_API_URL`, `ASSETS_TOKEN`, `ASSETS_PROJECT`, and `ASSETS_ENVIRONMENT` for non-interactive calls. `--json`
 writes one newline-terminated deterministic envelope to stdout. Failed commands return a nonzero exit code.
 
+Project selection uses `--project`, `ASSETS_PROJECT` (or legacy `ASSETS_PROJECT_ID`), saved CLI configuration, the exact
+`name` in the bulk command root's `package.json` (never the directory basename), and finally the sole accessible project. Bun loads `ASSETS_PROJECT`
+from the current working directory's `.env` file when running the CLI. If more than one project is accessible and no
+identity matches, use `--project <name>` or set `ASSETS_PROJECT`; if none are accessible, verify the API URL, token,
+and access.
+
 ## Local CLI
 
 `assets-local` processes the configured project filesystem and never falls back to the remote CLI. It keeps state in

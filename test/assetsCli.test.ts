@@ -128,6 +128,62 @@ const cliEnvironment = {
   ASSETS_SESSION_FILE: join(tmpdir(), "assets-cli-test-missing-session.json"),
 }
 
+const cliEnvironmentWithoutProject: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(cliEnvironment).filter(([name]) => name !== "ASSETS_PROJECT"),
+)
+
+const apiProjectCreate = (input: { id: string; name: string; slug?: string }) => ({
+  id: input.id,
+  organizationId: "organization-1",
+  name: input.name,
+  slug: input.slug ?? input.id,
+  defaultEnvironment: "development",
+  createdAt: "2026-08-17T00:00:00.000Z",
+  updatedAt: "2026-08-17T00:00:00.000Z",
+})
+
+const projectResolutionFetcherCreate = (
+  projects: readonly ReturnType<typeof apiProjectCreate>[],
+  projectsResponse?: Response,
+) => {
+  const requests: Request[] = []
+  const fetcher = async (input: string | URL, init?: RequestInit) => {
+    const request = new Request(input, init)
+    requests.push(request)
+    const url = new URL(request.url)
+    if (url.pathname === "/api/v1/projects")
+      return projectsResponse ?? envelopeResponseCreate({ projects, page: { limit: 100, nextCursor: null } })
+    const projectPrefix = "/api/v1/projects/"
+    if (url.pathname.startsWith(projectPrefix) && !url.pathname.endsWith("/assets")) {
+      const project = projects.find(
+        (value) => value.id === decodeURIComponent(url.pathname.slice(projectPrefix.length)),
+      )
+      return project === undefined ? failureResponseCreate("Project not found", 404) : envelopeResponseCreate(project)
+    }
+    if (url.pathname.endsWith("/assets"))
+      return envelopeResponseCreate({ assets: [], page: { limit: 100, nextCursor: null } })
+    return failureResponseCreate(`Unexpected request ${url.pathname}`, 404)
+  }
+  return { fetcher, requests }
+}
+
+const projectResolutionDiffRun = async (
+  root: string,
+  projects: readonly ReturnType<typeof apiProjectCreate>[],
+  env: NodeJS.ProcessEnv = cliEnvironmentWithoutProject,
+  extraArgs: readonly string[] = [],
+) => {
+  const output: string[] = []
+  const transport = projectResolutionFetcherCreate(projects)
+  const exitCode = await assetsCliMain(["diff", root, ...extraArgs, "--json"], {
+    env,
+    fetcher: transport.fetcher,
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+  return { exitCode, output: JSON.parse(output[0] ?? ""), requests: transport.requests }
+}
+
 test("diff help documents its root and all source directory controls", async () => {
   const output: string[] = []
   const exitCode = await assetsCliMain(["diff", "--help", "--json"], {
@@ -150,8 +206,240 @@ test("diff help documents its root and all source directory controls", async () 
           "font: ./fonts, --font-dir <directory>, --no-font-dir",
         ],
       },
+      projectResolution: expect.stringContaining("package.json.name"),
     },
   })
+})
+
+test("bulk project resolution gives an explicit project precedence over package.json.name", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-explicit-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "package-project-id", name: "package-project" }),
+        apiProjectCreate({ id: "explicit-project-id", name: "explicit-project" }),
+      ],
+      { ...cliEnvironmentWithoutProject },
+      ["--project", "explicit-project-id"],
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/explicit-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/package-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution uses ASSETS_PROJECT before package.json.name", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-env-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "package-project-id", name: "package-project" }),
+        apiProjectCreate({ id: "env-project-id", name: "env-project" }),
+      ],
+      { ...cliEnvironmentWithoutProject, ASSETS_PROJECT: "env-project-id" },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/env-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/package-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution keeps ASSETS_PROJECT_ID as a legacy override", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-legacy-env-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "package-project-id", name: "package-project" }),
+        apiProjectCreate({ id: "legacy-project-id", name: "legacy-project" }),
+      ],
+      { ...cliEnvironmentWithoutProject, ASSETS_PROJECT_ID: "legacy-project-id" },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/legacy-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/package-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution reads an exact scoped package name from the explicit root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "unrelated-directory-name-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/site" }))
+    const result = await projectResolutionDiffRun(root, [
+      apiProjectCreate({ id: "scoped-project-id", name: "@acme/site", slug: "acme-site" }),
+      apiProjectCreate({ id: "other-project-id", name: "other-site" }),
+    ])
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/scoped-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/other-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution keeps saved CLI project configuration compatible", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-saved-"))
+  const config = join(root, "config.json")
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    await writeFile(config, JSON.stringify({ project: "saved-project-id" }))
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "package-project-id", name: "package-project" }),
+        apiProjectCreate({ id: "saved-project-id", name: "saved-project" }),
+      ],
+      { ...cliEnvironmentWithoutProject, ASSETS_CONFIG_FILE: config },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/saved-project-id/assets"))).toBe(true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution falls back to the sole accessible project", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-sole-"))
+  try {
+    const result = await projectResolutionDiffRun(root, [
+      apiProjectCreate({ id: "sole-project-id", name: "sole-project" }),
+    ])
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/sole-project-id/assets"))).toBe(true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution reports API, token, and access guidance when no project is accessible", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-zero-"))
+  try {
+    const result = await projectResolutionDiffRun(root, [])
+    expect(result.exitCode).toBe(1)
+    expect(result.output.error.message).toBe(
+      "Could not determine the project. No accessible projects were found. Verify the API URL, token, and access.",
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution reports actionable guidance for multiple unmatched projects", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-multiple-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "unmatched-package" }))
+    const result = await projectResolutionDiffRun(root, [
+      apiProjectCreate({ id: "project-one-id", name: "project-one" }),
+      apiProjectCreate({ id: "project-two-id", name: "project-two" }),
+    ])
+    expect(result.exitCode).toBe(1)
+    expect(result.output.error.message).toBe(
+      "Could not determine the project. Use --project <name> or set ASSETS_PROJECT in the environment or the current working directory's .env file.",
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution preserves project-list API failures", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-api-failure-"))
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    const transport = projectResolutionFetcherCreate(
+      [apiProjectCreate({ id: "package-project-id", name: "package-project" })],
+      new Response(
+        JSON.stringify({
+          ok: false,
+          error: { code: "service_unavailable", message: "Project listing failed", retryable: true },
+          requestId: "request-project-list",
+        }),
+        { status: 503, headers: { "content-type": "application/json" } },
+      ),
+    )
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["diff", root, "--json"], {
+      env: cliEnvironmentWithoutProject,
+      fetcher: transport.fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(JSON.parse(output[0] ?? "")).toEqual({
+      error: { code: "service_unavailable", message: "Project listing failed", retryable: true },
+      ok: false,
+      requestId: "request-project-list",
+    })
+    expect(transport.requests.map((request) => new URL(request.url).pathname)).toEqual(["/api/v1/projects"])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution treats an inaccessible package.json as unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-inaccessible-package-"))
+  try {
+    await mkdir(join(root, "package.json"))
+    const result = await projectResolutionDiffRun(root, [
+      apiProjectCreate({ id: "project-one-id", name: "project-one" }),
+      apiProjectCreate({ id: "project-two-id", name: "project-two" }),
+    ])
+    expect(result.exitCode).toBe(1)
+    expect(result.output.error.message).toBe(
+      "Could not determine the project. Use --project <name> or set ASSETS_PROJECT in the environment or the current working directory's .env file.",
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk commands validate the root count before project resolution", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-invalid-roots-"))
+  try {
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "project-one-id", name: "project-one" }),
+        apiProjectCreate({ id: "project-two-id", name: "project-two" }),
+      ],
+      cliEnvironmentWithoutProject,
+      [join(root, "second-root")],
+    )
+    expect(result.exitCode).toBe(1)
+    expect(result.output.error.message).toBe("The diff command takes zero or one root argument")
+    expect(result.requests).toHaveLength(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("commands without a project root do not infer identity from the current package", async () => {
+  const transport = projectResolutionFetcherCreate([
+    apiProjectCreate({ id: "cwd-project-id", name: "@adaptive-ds/assets-service" }),
+    apiProjectCreate({ id: "other-project-id", name: "other-project" }),
+  ])
+  const output: string[] = []
+  const exitCode = await assetsCliMain(["list", "--json"], {
+    env: cliEnvironmentWithoutProject,
+    fetcher: transport.fetcher,
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+  expect(exitCode).toBe(1)
+  expect(JSON.parse(output[0] ?? "").error.message).toBe(
+    "Could not determine the project. Use --project <name> or set ASSETS_PROJECT in the environment or the current working directory's .env file.",
+  )
 })
 
 test("doctor reports remote checks in a deterministic JSON envelope", async () => {
