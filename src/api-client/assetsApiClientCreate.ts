@@ -17,24 +17,20 @@ import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
 import { workflowSchema } from "../workflow/workflowSchema.js"
 import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
-import { assetsApiResultOptionalRead } from "./assetsApiResultOptionalRead.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
+import { assetListResponseSchema } from "./assetListResponseSchema.js"
+import { assetsApiResultOptionalRead } from "./assetsApiResultOptionalRead.js"
 import { auditEventListResponseSchema } from "./auditEventListResponseSchema.js"
 import { backupListResponseSchema } from "./backupListResponseSchema.js"
 import { catalogHistoryResponseSchema } from "./catalogHistoryResponseSchema.js"
+import { catalogResponseSchema } from "./catalogResponseSchema.js"
+import { deletionRequestResponseSchema } from "./deletionRequestResponseSchema.js"
+import { deletionStatusResponseSchema } from "./deletionStatusResponseSchema.js"
+import { generatedListsResponseSchema } from "./generatedListsResponseSchema.js"
 import { jobActionRequestSchema } from "./jobActionRequestSchema.js"
 import { jobListResponseSchema } from "./jobListResponseSchema.js"
 import { jobResponseSchema } from "./jobResponseSchema.js"
 import { legacyImportListResponseSchema } from "./legacyImportListResponseSchema.js"
-import { workflowActionRequestSchema } from "./workflowActionRequestSchema.js"
-import { workflowListResponseSchema } from "./workflowListResponseSchema.js"
-import { workflowResponseSchema } from "./workflowResponseSchema.js"
-import { assetListResponseSchema } from "./assetListResponseSchema.js"
-import { catalogResponseSchema } from "./catalogResponseSchema.js"
-import { deletionRequestResponseSchema } from "./deletionRequestResponseSchema.js"
-import { deletionStatusResponseSchema } from "./deletionStatusResponseSchema.js"
-import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
-import { generatedListsResponseSchema } from "./generatedListsResponseSchema.js"
 import { legacyImportRequestSchema } from "./legacyImportRequestSchema.js"
 import { legacyImportResponseSchema } from "./legacyImportResponseSchema.js"
 import { metadataSetRequestSchema } from "./metadataSetRequestSchema.js"
@@ -45,10 +41,15 @@ import { outputListResponseSchema } from "./outputListResponseSchema.js"
 import { outputRemoveRequestSchema } from "./outputRemoveRequestSchema.js"
 import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
+import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
+import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
 import { uploadCompletionRequestSchema } from "./uploadCompletionRequestSchema.js"
 import { uploadCompletionResponseSchema } from "./uploadCompletionResponseSchema.js"
 import { uploadIntentRequestSchema } from "./uploadIntentRequestSchema.js"
 import { uploadIntentResponseSchema } from "./uploadIntentResponseSchema.js"
+import { workflowActionRequestSchema } from "./workflowActionRequestSchema.js"
+import { workflowListResponseSchema } from "./workflowListResponseSchema.js"
+import { workflowResponseSchema } from "./workflowResponseSchema.js"
 
 export type AssetsApiClientOptions = {
   apiUrl: string
@@ -499,6 +500,22 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientAssetRead",
     })
 
+  const assetSourceRevisionContentUrlCreate = (
+    projectId: string,
+    assetId: string,
+    sourceRevisionId: string,
+    mode: SourceRevisionContentMode = "download",
+  ) =>
+    apiUrlCreate(
+      `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/source-revisions/${encodeURIComponent(sourceRevisionId)}/content`,
+      { mode },
+    )
+
+  const assetOutputVersionContentUrlCreate = (projectId: string, assetId: string, outputVersionId: string) =>
+    apiUrlCreate(
+      `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/outputs/${encodeURIComponent(outputVersionId)}/content`,
+    )
+
   const assetOutputsRead = (projectId: string, assetId: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/outputs`,
@@ -893,6 +910,8 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     assetListRead,
     assetsReadAll,
     assetRead,
+    assetSourceRevisionContentUrlCreate,
+    assetOutputVersionContentUrlCreate,
     assetHistoryRead,
     assetOutputsRead,
     assetOutputAdd,

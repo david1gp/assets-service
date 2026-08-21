@@ -8,6 +8,7 @@ import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
+import { blobTable } from "../infrastructure/db/schema/blobTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
@@ -24,6 +25,8 @@ import { outputDefinitionSchema } from "../output/outputDefinitionSchema.js"
 import { outputKeySchema } from "../output/outputKeySchema.js"
 import { outputVersionSchema } from "../output/outputVersionSchema.js"
 import type { AssetClass } from "../schemas/assetClassSchema.js"
+import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
+import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { sourceRevisionSchema } from "../upload/sourceRevisionSchema.js"
@@ -154,6 +157,86 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
       return assetRecordRead(record)
     } catch (error) {
       return resultErrorCreate("assetApiRepositoryAssetRead", "The asset could not be read", error)
+    }
+  }
+
+  const assetSourceEnvironmentRead = (
+    projectId: string,
+    assetId: string,
+    sourceRevisionId: string,
+  ): Result<EnvironmentName | null> => {
+    try {
+      const record = db
+        .select({ environment: blobTable.environment })
+        .from(blobTable)
+        .where(
+          and(
+            eq(blobTable.projectId, projectId),
+            eq(blobTable.assetId, assetId),
+            eq(blobTable.sourceRevisionId, sourceRevisionId),
+            eq(blobTable.storage, "private"),
+            eq(blobTable.kind, "source"),
+          ),
+        )
+        .limit(1)
+        .get()
+      if (record === undefined) return { success: true, data: null }
+      const environment = v.safeParse(environmentNameSchema, record.environment)
+      if (!environment.success)
+        return resultErrorCreate("assetApiRepositorySourceEnvironmentRead", "The stored source blob was invalid")
+      return { success: true, data: environment.output }
+    } catch (error) {
+      return resultErrorCreate("assetApiRepositorySourceEnvironmentRead", "The source blob could not be read", error)
+    }
+  }
+
+  const assetOutputBlobRead = (
+    projectId: string,
+    assetId: string,
+    outputVersionId: string,
+  ): Result<{
+    storage: "private" | "public"
+    environment: EnvironmentName
+    objectKey: string
+    byteSize: number
+    mediaType: string
+  } | null> => {
+    try {
+      const records = db
+        .select({
+          storage: blobTable.storage,
+          environment: blobTable.environment,
+          objectKey: blobTable.objectKey,
+          byteSize: blobTable.byteSize,
+          mediaType: blobTable.mediaType,
+        })
+        .from(blobTable)
+        .where(
+          and(
+            eq(blobTable.projectId, projectId),
+            eq(blobTable.assetId, assetId),
+            eq(blobTable.outputVersionId, outputVersionId),
+            eq(blobTable.kind, "output"),
+          ),
+        )
+        .all()
+      const record = records.find((candidate) => candidate.storage === "public")
+      if (record === undefined) return { success: true, data: null }
+      const environment = v.safeParse(environmentNameSchema, record.environment)
+      if (!environment.success || record.mediaType === null)
+        return resultErrorCreate("assetApiRepositoryOutputBlobRead", "The stored output blob was invalid")
+      return {
+        success: true,
+        data: {
+          storage: record.storage,
+          environment: environment.output,
+          objectKey: record.objectKey,
+          byteSize: record.byteSize,
+          mediaType: record.mediaType,
+        },
+      }
+    } catch (error) {
+      return resultErrorCreate("assetApiRepositoryOutputBlobRead", "The output blob could not be read", error)
     }
   }
 
@@ -444,6 +527,8 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
   return {
     assetsRead,
     assetRead,
+    assetSourceEnvironmentRead,
+    assetOutputBlobRead,
     assetOutputAdd,
     assetOutputRemove,
     assetOutputsRead,

@@ -47,6 +47,29 @@ test("assets API client validates upload intent before fetching", async () => {
   expect(fetchCount).toBe(0)
 })
 
+test("assets API client creates an encoded authenticated source content URL", () => {
+  const clientResult = assetsApiClientCreate({ apiUrl: "https://assets.example.test/api/v1" })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  expect(clientResult.data.assetSourceRevisionContentUrlCreate("project/1", "asset 1", "source/1")).toBe(
+    "https://assets.example.test/api/v1/projects/project%2F1/assets/asset%201/source-revisions/source%2F1/content?mode=download",
+  )
+  expect(clientResult.data.assetSourceRevisionContentUrlCreate("project/1", "asset 1", "source/1", "preview")).toBe(
+    "https://assets.example.test/api/v1/projects/project%2F1/assets/asset%201/source-revisions/source%2F1/content?mode=preview",
+  )
+})
+
+test("assets API client creates an encoded optimized output content URL", () => {
+  const clientResult = assetsApiClientCreate({ apiUrl: "https://assets.example.test/api/v1" })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  expect(clientResult.data.assetOutputVersionContentUrlCreate("project/1", "asset 1", "version/1")).toBe(
+    "https://assets.example.test/api/v1/projects/project%2F1/assets/asset%201/outputs/version%2F1/content",
+  )
+})
+
 test("direct uploads use the signed intent without the service bearer", async () => {
   const requests: Request[] = []
   const clientResult = assetsApiClientCreate({

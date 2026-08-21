@@ -9,9 +9,9 @@ import { outputAddRequestSchema } from "../api-client/outputAddRequestSchema.js"
 import { outputRemoveRequestSchema } from "../api-client/outputRemoveRequestSchema.js"
 import { outputSetRequestSchema } from "../api-client/outputSetRequestSchema.js"
 import { projectListQuerySchema } from "../api-client/projectListQuerySchema.js"
+import { sourceRevisionContentModeSchema } from "../api-client/sourceRevisionContentModeSchema.js"
 import { uploadCompletionRequestSchema } from "../api-client/uploadCompletionRequestSchema.js"
 import { uploadIntentRequestSchema } from "../api-client/uploadIntentRequestSchema.js"
-import { uploadMediaTypeCheck } from "../upload/uploadMediaTypeCheck.js"
 import type { AssetApiMutation } from "../asset/assetApiRepository.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
@@ -27,6 +27,10 @@ import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSch
 import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { storageBindingResolve } from "../storage/storageBindingResolve.js"
+import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
+import { sourceRevisionPreviewMediaTypeCheck } from "../upload/sourceRevisionPreviewMediaTypeCheck.js"
+import { uploadMediaTypeCheck } from "../upload/uploadMediaTypeCheck.js"
 import type { ApiAppOptions } from "./apiAppOptions.js"
 import { apiAuditRoutesRegister } from "./apiAuditRoutesRegister.js"
 import { apiAuthenticationMiddlewareCreate } from "./apiAuthenticationMiddlewareCreate.js"
@@ -39,10 +43,10 @@ import { apiProjectRoleMiddlewareCreate } from "./apiProjectRoleMiddlewareCreate
 import { apiRequestAuthenticationRead } from "./apiRequestAuthenticationRead.js"
 import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
 import { apiResponseCreate } from "./apiResponseCreate.js"
+import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
 import { apiSuccessEnvelopeCreate } from "./apiSuccessEnvelopeCreate.js"
 import { apiUploadStatusRoutesRegister } from "./apiUploadStatusRoutesRegister.js"
 import { apiWorkflowRoutesRegister } from "./apiWorkflowRoutesRegister.js"
-import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
 
 type ApiContext = { Variables: Record<string, unknown> }
 type ApiApplication = Hono<ApiContext>
@@ -200,6 +204,8 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/history$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/source-revisions\/[^/]+\/content$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/outputs\/[^/]+\/content$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/outputs$/, methods: ["GET", "POST", "PUT", "DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/outputs\/[^/]+$/, methods: ["DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata$/, methods: ["PATCH", "DELETE"] },
@@ -702,6 +708,199 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       return successResponseCreate(context, {
         sourceHistory: asset.data.sourceHistory,
         outputHistory: asset.data.outputHistory,
+      })
+    },
+  )
+
+  app.get(
+    `${apiVersionPath}/projects/:projectId/assets/:assetId/source-revisions/:sourceRevisionId/content`,
+    authenticationMiddleware,
+    uploaderMiddleware,
+    async (context) => {
+      if (options.assetApiRepository === undefined || options.storage === undefined)
+        return dependencyFailureCreate(context)
+      const assetId = v.safeParse(idSchema, context.req.param("assetId"))
+      const sourceRevisionId = v.safeParse(idSchema, context.req.param("sourceRevisionId"))
+      if (!assetId.success) return validationFailureCreate(context, "The asset identifier was invalid")
+      if (!sourceRevisionId.success)
+        return validationFailureCreate(context, "The source revision identifier was invalid")
+      const mode = v.safeParse(sourceRevisionContentModeSchema, queryObjectRead(context.req.raw).mode ?? "download")
+      if (!mode.success) return validationFailureCreate(context, "The source revision content mode was invalid")
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const asset = options.assetApiRepository.assetRead(project.id, assetId.output)
+      if (!asset.success) return failureFromRepositoryCreate(context)
+      if (asset.data === null) return assetNotFoundResponseCreate(context)
+      if (asset.data.projectId !== project.id) return assetNotFoundResponseCreate(context)
+      const source = asset.data.sourceHistory.find(
+        (candidate) => candidate.id === sourceRevisionId.output && candidate.assetId === assetId.output,
+      )
+      if (source === undefined) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The source revision was not found",
+        })
+      }
+      const sourceEnvironment = options.assetApiRepository.assetSourceEnvironmentRead(
+        project.id,
+        assetId.output,
+        source.id,
+      )
+      if (!sourceEnvironment.success) return failureFromRepositoryCreate(context)
+      if (sourceEnvironment.data === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The source content was not found",
+        })
+      }
+      const environment = options.projectRepository.environmentRead(project.id, sourceEnvironment.data)
+      if (!environment.success) return failureFromRepositoryCreate(context)
+      if (environment.data === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The storage environment was not found",
+        })
+      }
+      const binding = storageBindingResolve(environment.data, project.id)
+      if (!binding.success) return failureFromRepositoryCreate(context)
+      const location = storageObjectLocationCreate(binding.data, "private-source", source.objectKey)
+      if (!location.success) return failureFromRepositoryCreate(context)
+      const content = options.storage.readObjectStream
+        ? await options.storage.readObjectStream(location.data)
+        : await options.storage.readObject(location.data)
+      if (!content.success) return failureFromRepositoryCreate(context)
+      if (content.data === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The source content was not found",
+        })
+      }
+      const encodedFilename = encodeURIComponent(source.originalFilename).replace(
+        /['()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      )
+      const disposition =
+        mode.output === "preview" && sourceRevisionPreviewMediaTypeCheck(source.mediaType) ? "inline" : "attachment"
+      return new Response(content.data as unknown as ArrayBuffer, {
+        status: 200,
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": `${disposition}; filename*=UTF-8''${encodedFilename}`,
+          "content-length": String(source.byteSize),
+          "content-type": source.mediaType,
+          "x-content-type-options": "nosniff",
+          "x-request-id": requestIdRead(context),
+        },
+      })
+    },
+  )
+
+  app.get(
+    `${apiVersionPath}/projects/:projectId/assets/:assetId/outputs/:outputVersionId/content`,
+    authenticationMiddleware,
+    uploaderMiddleware,
+    async (context) => {
+      if (options.assetApiRepository === undefined || options.storage === undefined)
+        return dependencyFailureCreate(context)
+      const assetId = v.safeParse(idSchema, context.req.param("assetId"))
+      const outputVersionId = v.safeParse(idSchema, context.req.param("outputVersionId"))
+      if (!assetId.success) return validationFailureCreate(context, "The asset identifier was invalid")
+      if (!outputVersionId.success) return validationFailureCreate(context, "The output version identifier was invalid")
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const asset = options.assetApiRepository.assetRead(project.id, assetId.output)
+      if (!asset.success) return failureFromRepositoryCreate(context)
+      if (asset.data === null || asset.data.projectId !== project.id) return assetNotFoundResponseCreate(context)
+      let output: {
+        definitionKey: string
+        version: (typeof asset.data.outputHistory)[number]["versions"][number]
+      } | null = null
+      for (const history of asset.data.outputHistory) {
+        const version = history.versions.find(
+          (candidate) =>
+            candidate.id === outputVersionId.output &&
+            candidate.assetId === assetId.output &&
+            candidate.outputDefinitionId === history.definition.id &&
+            history.definition.assetId === assetId.output,
+        )
+        if (version !== undefined) {
+          output = { definitionKey: history.definition.key, version }
+          break
+        }
+      }
+      if (output === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The output version was not found",
+        })
+      }
+      const blob = options.assetApiRepository.assetOutputBlobRead(project.id, assetId.output, output.version.id)
+      if (!blob.success) return failureFromRepositoryCreate(context)
+      if (blob.data === null || blob.data.storage !== "public") {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The output content was not found",
+        })
+      }
+      if (
+        blob.data.objectKey !== output.version.objectKey ||
+        blob.data.byteSize !== output.version.byteSize ||
+        blob.data.mediaType !== output.version.mediaType
+      )
+        return failureFromRepositoryCreate(context)
+      const environment = options.projectRepository.environmentRead(project.id, blob.data.environment)
+      if (!environment.success) return failureFromRepositoryCreate(context)
+      if (environment.data === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The storage environment was not found",
+        })
+      }
+      const binding = storageBindingResolve(environment.data, project.id)
+      if (!binding.success) return failureFromRepositoryCreate(context)
+      const location = storageObjectLocationCreate(binding.data, "public-output", blob.data.objectKey)
+      if (!location.success) return failureFromRepositoryCreate(context)
+      const content = options.storage.readObjectStream
+        ? await options.storage.readObjectStream(location.data)
+        : await options.storage.readObject(location.data)
+      if (!content.success) return failureFromRepositoryCreate(context)
+      if (content.data === null) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The output content was not found",
+        })
+      }
+      const filename = `${output.definitionKey}.${output.version.extension}`
+      const encodedFilename = encodeURIComponent(filename).replace(
+        /['()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      )
+      return new Response(content.data as unknown as ArrayBuffer, {
+        status: 200,
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
+          "content-length": String(output.version.byteSize),
+          "content-type": output.version.mediaType,
+          "x-content-type-options": "nosniff",
+          "x-request-id": requestIdRead(context),
+        },
       })
     },
   )

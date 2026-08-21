@@ -8,7 +8,9 @@ import { memorySessionStoreCreate } from "../src/authentication/memorySessionSto
 import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.js"
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 import type { DeletionApiRepository } from "../src/deletion/deletionApiRepository.js"
+import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
 import type { ProjectRepository } from "../src/project/projectRepository.js"
+import { storageObjectLocationCreate } from "../src/storage/storageObjectLocationCreate.js"
 import type { UploadApiRepository } from "../src/upload/uploadApiRepository.js"
 
 const now = 1_700_000_000
@@ -41,6 +43,14 @@ const environment = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
+const sourceEnvironment = {
+  ...environment,
+  id: "environment-2",
+  name: "production" as const,
+  r2Bucket: "assets-production",
+  r2Prefix: "project-service-production",
+  publicBaseUrl: "https://assets-production.example.test",
+}
 const source = {
   id: "source-1",
   assetId: "asset-1",
@@ -72,6 +82,34 @@ const detail = {
   outputHistory: [],
   metadata: null,
 }
+const outputDefinition = {
+  id: "output-1",
+  assetId: "asset-1",
+  kind: "image" as const,
+  key: "1600x900_webp",
+  width: 1600,
+  height: 900,
+  format: "webp" as const,
+  quality: 82,
+  showAiLabel: true,
+}
+const outputVersion = {
+  id: "version-output-1",
+  outputDefinitionId: outputDefinition.id,
+  assetId: "asset-1",
+  sourceRevisionId: "source-1",
+  version: 1,
+  byteSize: 10,
+  sha256: "b".repeat(64),
+  mediaType: "image/webp",
+  extension: "webp" as const,
+  objectKey: "images/hero_v1.webp",
+  toolchainVersion: "fixture-1",
+  width: 1600,
+  height: 900,
+  current: true,
+  createdAt: "2026-08-17T00:00:00.000Z",
+}
 
 const projectRepositoryCreate = (): ProjectRepository => ({
   projectsRead: () => ({ success: true, data: [project] }),
@@ -81,7 +119,10 @@ const projectRepositoryCreate = (): ProjectRepository => ({
   }),
   projectBindingRead: (identifier) => ({ success: true, data: identifier === "project-service" ? binding : null }),
   environmentsRead: () => ({ success: true, data: [environment] }),
-  environmentRead: () => ({ success: true, data: environment }),
+  environmentRead: (_projectId, environmentIdentifier) => ({
+    success: true,
+    data: environmentIdentifier === sourceEnvironment.name ? sourceEnvironment : environment,
+  }),
   projectSettingsRead: () => ({
     success: true,
     data: { project, organization: null, binding, environments: [environment] },
@@ -105,6 +146,8 @@ const projectRepositoryCreate = (): ProjectRepository => ({
 const assetRepositoryCreate = (): AssetApiRepository => ({
   assetsRead: () => ({ success: true, data: [{ ...asset, sourcePath: "home/hero.jpg", outputCount: 0 }] }),
   assetRead: () => ({ success: true, data: detail }),
+  assetSourceEnvironmentRead: () => ({ success: true, data: "production" }),
+  assetOutputBlobRead: () => ({ success: true, data: null }),
   assetOutputsRead: () => ({ success: true, data: [] }),
   assetOutputAdd: () => ({ success: true, data: { asset: detail, workflowId: "workflow-output-1" } }),
   assetOutputRemove: () => ({ success: true, data: { asset: detail, workflowId: "workflow-output-1" } }),
@@ -199,6 +242,7 @@ const optionsCreate = (): ApiAppOptions => {
     },
     projectRepository: projectRepositoryCreate(),
     assetApiRepository: assetRepositoryCreate(),
+    storage: memoryStorageAdapterCreate(),
     uploadApiRepository: uploadRepositoryCreate(),
     deletionApiRepository: deletionRepositoryCreate(),
     requestIdCreate: () => "request-assets-1",
@@ -364,5 +408,220 @@ describe("asset API routes", () => {
     })
     expect(wrongMethod.status).toBe(405)
     expect(wrongMethod.headers.get("allow")).toBe("GET")
+  })
+
+  test("uses the source blob environment while streaming only the owned private revision", async () => {
+    const options = optionsCreate()
+    const app = apiAppCreate(options)
+    const unauthenticated = await app.fetch(
+      new Request(
+        "https://assets.example.test/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content",
+      ),
+    )
+    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const invalidAsset = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/not valid/source-revisions/source-1/content", cookie),
+    )
+    const invalidRevision = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/source-revisions/not valid/content", cookie),
+    )
+    const invalidMode = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content?mode=inline",
+        cookie,
+      ),
+    )
+    const missingRevision = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/source-revisions/source-2/content", cookie),
+    )
+    const otherProject = await app.fetch(
+      requestCreate("/api/v1/projects/other-project/assets/asset-1/source-revisions/source-1/content", cookie),
+    )
+    const location = storageObjectLocationCreate(
+      {
+        projectId: "project-1",
+        environment: "production",
+        bucket: "assets-production",
+        prefix: "project-service-production",
+        publicBaseUrl: "https://assets-production.example.test",
+      },
+      "private-source",
+      source.objectKey,
+    )
+    if (!location.success || options.storage === undefined) throw new Error("The test storage location was invalid")
+    await options.storage.putImmutable({
+      location: location.data,
+      bytes: new TextEncoder().encode("0123456789"),
+      mediaType: source.mediaType,
+    })
+    const streamed = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content?mode=preview",
+        cookie,
+      ),
+    )
+    const downloaded = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content?mode=download",
+        cookie,
+      ),
+    )
+    await options.storage.deleteObject(location.data)
+    const missingObject = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content", cookie),
+    )
+
+    expect(unauthenticated.status).toBe(401)
+    expect(invalidAsset.status).toBe(400)
+    expect(invalidRevision.status).toBe(400)
+    expect(invalidMode.status).toBe(400)
+    expect(missingRevision.status).toBe(404)
+    expect(otherProject.status).toBe(404)
+    expect(streamed.status).toBe(200)
+    expect(await streamed.text()).toBe("0123456789")
+    expect(streamed.headers.get("cache-control")).toBe("private, no-store")
+    expect(streamed.headers.get("content-disposition")).toBe("inline; filename*=UTF-8''hero.jpg")
+    expect(streamed.headers.get("content-length")).toBe("10")
+    expect(streamed.headers.get("content-type")).toBe("image/jpeg")
+    expect(streamed.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(downloaded.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''hero.jpg")
+    expect(downloaded.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(missingObject.status).toBe(404)
+  })
+
+  test("uses the public output blob environment while streaming only the owned output version", async () => {
+    const options = optionsCreate()
+    const repository = options.assetApiRepository
+    if (repository === undefined || options.storage === undefined)
+      throw new Error("The test repository was not configured")
+    options.assetApiRepository = {
+      ...repository,
+      assetRead: () => ({
+        success: true,
+        data: { ...detail, outputHistory: [{ definition: outputDefinition, versions: [outputVersion] }] },
+      }),
+      assetOutputBlobRead: (_projectId, _assetId, outputVersionId) =>
+        outputVersionId === outputVersion.id
+          ? {
+              success: true,
+              data: {
+                storage: "public",
+                environment: "production",
+                objectKey: outputVersion.objectKey,
+                byteSize: outputVersion.byteSize,
+                mediaType: outputVersion.mediaType,
+              },
+            }
+          : { success: true, data: null },
+    }
+    const app = apiAppCreate(options)
+    const unauthenticated = await app.fetch(
+      new Request(
+        "https://assets.example.test/api/v1/projects/project-service/assets/asset-1/outputs/version-output-1/content",
+      ),
+    )
+    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const invalidVersion = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs/not valid/content", cookie),
+    )
+    const missingVersion = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs/version-output-2/content", cookie),
+    )
+    const otherProject = await app.fetch(
+      requestCreate("/api/v1/projects/other-project/assets/asset-1/outputs/version-output-1/content", cookie),
+    )
+    const location = storageObjectLocationCreate(
+      {
+        projectId: "project-1",
+        environment: "production",
+        bucket: "assets-production",
+        prefix: "project-service-production",
+        publicBaseUrl: "https://assets-production.example.test",
+      },
+      "public-output",
+      outputVersion.objectKey,
+    )
+    if (!location.success) throw new Error("The output test storage location was invalid")
+    await options.storage.putImmutable({
+      location: location.data,
+      bytes: new TextEncoder().encode("0123456789"),
+      mediaType: outputVersion.mediaType,
+    })
+    const downloaded = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs/version-output-1/content", cookie),
+    )
+    await options.storage.deleteObject(location.data)
+    const missingObject = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs/version-output-1/content", cookie),
+    )
+
+    expect(unauthenticated.status).toBe(401)
+    expect(invalidVersion.status).toBe(400)
+    expect(missingVersion.status).toBe(404)
+    expect(otherProject.status).toBe(404)
+    expect(downloaded.status).toBe(200)
+    expect(await downloaded.text()).toBe("0123456789")
+    expect(downloaded.headers.get("cache-control")).toBe("private, no-store")
+    expect(downloaded.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''1600x900_webp.webp")
+    expect(downloaded.headers.get("content-length")).toBe("10")
+    expect(downloaded.headers.get("content-type")).toBe("image/webp")
+    expect(downloaded.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(missingObject.status).toBe(404)
+  })
+
+  test("keeps legacy SVG originals downloadable without allowing inline preview", async () => {
+    const options = optionsCreate()
+    const repository = options.assetApiRepository
+    if (repository === undefined || options.storage === undefined)
+      throw new Error("The test repository was not configured")
+    const legacySource = {
+      ...source,
+      id: "source-svg",
+      originalFilename: "legacy.svg",
+      mediaType: "image/svg+xml",
+      objectKey: "sources/asset-1/legacy.svg",
+    }
+    options.assetApiRepository = {
+      ...repository,
+      assetRead: () => ({ success: true, data: { ...detail, sourceHistory: [legacySource] } }),
+    }
+    const app = apiAppCreate(options)
+    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const location = storageObjectLocationCreate(
+      {
+        projectId: "project-1",
+        environment: "production",
+        bucket: "assets-production",
+        prefix: "project-service-production",
+        publicBaseUrl: "https://assets-production.example.test",
+      },
+      "private-source",
+      legacySource.objectKey,
+    )
+    if (!location.success) throw new Error("The legacy test storage location was invalid")
+    await options.storage.putImmutable({
+      location: location.data,
+      bytes: new TextEncoder().encode("0123456789"),
+      mediaType: legacySource.mediaType,
+    })
+    const preview = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/assets/asset-1/source-revisions/source-svg/content?mode=preview",
+        cookie,
+      ),
+    )
+    const download = await app.fetch(
+      requestCreate(
+        "/api/v1/projects/project-service/assets/asset-1/source-revisions/source-svg/content?mode=download",
+        cookie,
+      ),
+    )
+
+    expect(preview.status).toBe(200)
+    expect(preview.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''legacy.svg")
+    expect(download.status).toBe(200)
+    expect(download.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''legacy.svg")
+    expect(download.headers.get("content-type")).toBe("image/svg+xml")
+    expect(download.headers.get("x-content-type-options")).toBe("nosniff")
   })
 })

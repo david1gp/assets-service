@@ -1,24 +1,24 @@
 import { apiAppCreate } from "../api/apiAppCreate.js"
 import { assetApiRepositoryCreate } from "../asset/assetApiRepositoryCreate.js"
+import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
 import { databasePkceStateStoreCreate } from "../authentication/databasePkceStateStoreCreate.js"
 import { databaseSessionStoreCreate } from "../authentication/databaseSessionStoreCreate.js"
+import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
+import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
 import type { ServiceRuntimeConfig } from "../config/serviceRuntimeConfig.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
+import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
+import { r2StorageAdapterCreate } from "../infrastructure/storage/r2StorageAdapter.js"
 import { zitadelJwksClientCreate } from "../infrastructure/zitadel/zitadelJwksClientCreate.js"
 import { zitadelOidcClientCreate } from "../infrastructure/zitadel/zitadelOidcClientCreate.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
-import { r2StorageAdapterCreate } from "../infrastructure/storage/r2StorageAdapter.js"
+import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
 import { workflowApiRepositoryCreate } from "../workflow/workflowApiRepositoryCreate.js"
-import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
-import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
-import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
-import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
-import type { Result } from "../schemas/resultSchema.js"
 import type { ApiComposition } from "./apiComposition.js"
 
 export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiComposition> => {
@@ -86,6 +86,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const app = apiAppCreate({
     projectRepository,
     assetApiRepository,
+    storage,
     uploadApiRepository,
     deletionApiRepository,
     workflowApiRepository,

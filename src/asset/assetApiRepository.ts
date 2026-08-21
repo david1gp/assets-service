@@ -7,6 +7,7 @@ import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import type { OutputVersion } from "../output/outputVersionSchema.js"
 import type { SourceRevision } from "../upload/sourceRevisionSchema.js"
 import type { AssetClass } from "../schemas/assetClassSchema.js"
+import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
 
 export type AssetOutputHistory = {
@@ -44,6 +45,22 @@ export type AssetApiMutation = {
 export type AssetApiRepository = {
   assetsRead: (projectId: string, assetClass?: AssetClass) => Result<readonly AssetListItem[]>
   assetRead: (projectId: string, assetId: string) => Result<AssetDetail | null>
+  assetSourceEnvironmentRead: (
+    projectId: string,
+    assetId: string,
+    sourceRevisionId: string,
+  ) => Result<EnvironmentName | null>
+  assetOutputBlobRead: (
+    projectId: string,
+    assetId: string,
+    outputVersionId: string,
+  ) => Result<{
+    storage: "private" | "public"
+    environment: EnvironmentName
+    objectKey: string
+    byteSize: number
+    mediaType: string
+  } | null>
   assetOutputAdd: (projectId: string, assetId: string, input: OutputDefinitionInput) => Result<AssetApiMutation | null>
   assetOutputRemove: (projectId: string, assetId: string, outputKey: string) => Result<AssetApiMutation | null>
   assetOutputsRead: (projectId: string, assetId: string) => Result<readonly OutputDefinition[] | null>
