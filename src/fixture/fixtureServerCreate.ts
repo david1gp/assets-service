@@ -4,18 +4,19 @@ import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
 import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
+import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
-import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
 import { memoryStorageAdapterCreate } from "../infrastructure/storage/memoryStorageAdapter.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
 import { workflowApiRepositoryCreate } from "../workflow/workflowApiRepositoryCreate.js"
 import { fixtureAuthenticationCreate } from "./fixtureAuthenticationCreate.js"
+import { type FixtureSeed, fixtureDatabaseSeed } from "./fixtureDatabaseSeed.js"
+import { fixtureStorageObjectsCreate } from "./fixtureStorageObjectsCreate.js"
 import { fixtureUploadStorageCreate } from "./fixtureUploadStorageCreate.js"
-import { fixtureDatabaseSeed, type FixtureSeed } from "./fixtureDatabaseSeed.js"
 
 export type FixtureServer = {
   fetch: (request: Request) => Promise<Response>
@@ -37,7 +38,7 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     databaseClose(connection.data)
     return migrated
   }
-  const seeded = fixtureDatabaseSeed(connection.data.db)
+  const seeded = fixtureDatabaseSeed(connection.data.db, { publicBaseUrl: options.origin })
   if (!seeded.success) {
     databaseClose(connection.data)
     return seeded
@@ -49,12 +50,22 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     projectId: seeded.data.zitadelProjectId,
   })
 
-  const uploadStorage = fixtureUploadStorageCreate({ origin: options.origin })
+  const storageObjects = fixtureStorageObjectsCreate(seeded.data, options.origin)
+  if (!storageObjects.success) {
+    databaseClose(connection.data)
+    return storageObjects
+  }
+  const uploadStorage = fixtureUploadStorageCreate({
+    origin: options.origin,
+    publicBaseUrl: options.origin,
+    objects: storageObjects.data,
+  })
 
   const app = apiAppCreate({
     authentication: authentication.options,
     projectRepository: projectRepositoryCreate(connection.data.db),
     assetApiRepository: assetApiRepositoryCreate(connection.data.db),
+    storage: uploadStorage.storage,
     uploadApiRepository: uploadApiRepositoryCreate(connection.data.db, uploadStorage.storage),
     deletionApiRepository: deletionApiRepositoryCreate(connection.data.db),
     workflowApiRepository: workflowApiRepositoryCreate(connection.data.db),

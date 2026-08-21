@@ -1,6 +1,7 @@
 import { memoryStorageAdapterCreate } from "../infrastructure/storage/memoryStorageAdapter.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import type { StorageObjectLocation } from "../storage/storageObjectLocation.js"
+import type { FixtureStorageObject } from "./fixtureStorageObjectsCreate.js"
 
 export type FixtureUploadStorage = {
   storage: StorageAdapter
@@ -23,12 +24,76 @@ const corsHeadersCreate = (origin: string | null): Record<string, string> => ({
  * origin, so a real browser can run preflight, PUT, and completion without R2
  * credentials. Production keeps using the R2 adapter untouched.
  */
-export const fixtureUploadStorageCreate = (options: { origin: string }): FixtureUploadStorage => {
+export const fixtureUploadStorageCreate = (options: {
+  origin: string
+  publicBaseUrl?: string
+  objects?: readonly FixtureStorageObject[]
+}): FixtureUploadStorage => {
   const inner = memoryStorageAdapterCreate()
   const signed = new Map<string, SignedLocation>()
+  const seeded = new Map<string, FixtureStorageObject>()
+  const publicObjects = new Map<string, FixtureStorageObject>()
+  const locationKey = (location: StorageObjectLocation & { bucket: string; objectKey: string }) =>
+    `${location.bucket}/${location.objectKey}`
+
+  for (const object of options.objects ?? []) {
+    seeded.set(locationKey(object.location), object)
+    if (object.publicPath !== undefined) publicObjects.set(object.publicPath, object)
+  }
+
+  const seededObjectRead = (location: StorageObjectLocation & { bucket: string; objectKey: string }) =>
+    seeded.get(locationKey(location))
 
   const storage: StorageAdapter = {
     ...inner,
+    headObject: async (location) => {
+      const object = seededObjectRead(location)
+      if (object !== undefined)
+        return {
+          success: true,
+          data: {
+            key: location.objectKey,
+            byteSize: object.bytes.byteLength,
+            mediaType: object.mediaType,
+            cacheControl: location.namespace === "public-output" ? "public, max-age=31536000, immutable" : "no-store",
+          },
+        }
+      return inner.headObject(location)
+    },
+    readObject: async (location) => {
+      const object = seededObjectRead(location)
+      if (object !== undefined) return { success: true, data: new Uint8Array(object.bytes) }
+      return inner.readObject(location)
+    },
+    readObjectStream: async (location) => {
+      const object = seededObjectRead(location)
+      if (object !== undefined)
+        return {
+          success: true,
+          data: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array(object.bytes))
+              controller.close()
+            },
+          }),
+        }
+      return inner.readObjectStream?.(location) ?? { success: true, data: null }
+    },
+    putImmutable: async (input) => {
+      const stored = await inner.putImmutable(input)
+      if (stored.success && input.location.namespace === "public-output")
+        publicObjects.set(input.location.key, {
+          location: input.location,
+          bytes: input.bytes,
+          mediaType: input.mediaType,
+        })
+      return stored
+    },
+    deleteObject: async (location) => {
+      seeded.delete(locationKey(location))
+      publicObjects.delete(location.key)
+      return inner.deleteObject(location)
+    },
     createSignedUploadIntent: async (input) => {
       const intent = await inner.createSignedUploadIntent(input)
       if (!intent.success) return intent
@@ -39,7 +104,22 @@ export const fixtureUploadStorageCreate = (options: { origin: string }): Fixture
   }
 
   const requestHandle = async (request: Request): Promise<Response | null> => {
-    const path = new URL(request.url).pathname
+    const url = new URL(request.url)
+    const path = url.pathname
+    const publicPath = path.replace(/^\/+/, "")
+    const publicOrigin = new URL(options.publicBaseUrl ?? options.origin).origin
+    const publicObject = url.origin === publicOrigin ? publicObjects.get(publicPath) : undefined
+    if (publicObject !== undefined) {
+      if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405 })
+      return new Response(request.method === "HEAD" ? null : (publicObject.bytes as unknown as ArrayBuffer), {
+        status: 200,
+        headers: {
+          "cache-control": "public, max-age=31536000, immutable",
+          "content-length": String(publicObject.bytes.byteLength),
+          "content-type": publicObject.mediaType,
+        },
+      })
+    }
     if (!path.startsWith(uploadPathPrefix)) return null
     const origin = request.headers.get("origin")
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadersCreate(origin) })

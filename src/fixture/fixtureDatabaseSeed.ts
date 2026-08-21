@@ -4,6 +4,7 @@ import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTab
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { auditEventTable } from "../infrastructure/db/schema/auditEventTable.js"
 import { backupReceiptTable } from "../infrastructure/db/schema/backupReceiptTable.js"
+import { blobTable } from "../infrastructure/db/schema/blobTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
@@ -27,6 +28,10 @@ export type FixtureSeed = {
   serviceProjectId: string
   zitadelProjectId: string
   subjectId: string
+  sourceImageObjectKey: string
+  sourceObjectKeys: { intro: string; inter: string; guide: string }
+  heroOutputObjectKeys: { large: string; small: string }
+  nonImageOutputObjectKeys: { intro: string; inter: string; guide: string }
   assetIds: readonly string[]
   failedWorkflowId: string
   deadJobId: string
@@ -44,13 +49,31 @@ const hash = (seed: string) => seed.repeat(64).slice(0, 64)
  * metadata, jobs, backup receipts, a catalog generation, a legacy import, and
  * audit events.
  */
-export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
+export const fixtureDatabaseSeed = (
+  db: AssetDatabase,
+  options: { publicBaseUrl?: string } = {},
+): Result<FixtureSeed> => {
   const seed: FixtureSeed = {
     organizationId: "org-fixture",
     projectId: "project-fixture",
     serviceProjectId: "contentoren",
     zitadelProjectId: "zitadel-fixture",
     subjectId: "fixture-admin",
+    sourceImageObjectKey: "sources/asset-hero/1/hero.png",
+    sourceObjectKeys: {
+      intro: "sources/asset-intro/1/intro.mp4",
+      inter: "sources/asset-inter/1/Inter-Regular.ttf",
+      guide: "sources/asset-guide/1/guide.txt",
+    },
+    heroOutputObjectKeys: {
+      large: "images/home/1600x900_webp/hero_v1.webp",
+      small: "images/home/800x450_webp/hero_v1.webp",
+    },
+    nonImageOutputObjectKeys: {
+      intro: "contentoren/videos/home/intro.mp4",
+      inter: "contentoren/fonts/ui/Inter-Regular.woff2",
+      guide: "contentoren/documents/guides/guide_default_v1.txt",
+    },
     assetIds: ["asset-hero", "asset-intro", "asset-inter", "asset-guide"],
     failedWorkflowId: "workflow-publish-failed",
     deadJobId: "job-publish-failed",
@@ -103,7 +126,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
           name: environment,
           r2Bucket: `assets-${environment}`,
           r2Prefix: seed.serviceProjectId,
-          publicBaseUrl: `https://assets-${environment}.fixture.invalid`,
+          publicBaseUrl: options.publicBaseUrl ?? `https://assets-${environment}.fixture.invalid`,
           createdAt: at(0),
           updatedAt: at(0),
         })
@@ -150,6 +173,14 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
     ]
 
     for (const [index, asset] of assets.entries()) {
+      const sourceObjectKey =
+        asset.id === "asset-hero"
+          ? seed.sourceImageObjectKey
+          : asset.id === "asset-intro"
+            ? seed.sourceObjectKeys.intro
+            : asset.id === "asset-inter"
+              ? seed.sourceObjectKeys.inter
+              : seed.sourceObjectKeys.guide
       transaction
         .insert(assetTable)
         .values({
@@ -178,7 +209,25 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
           mediaType: asset.mediaType,
           byteSize: 12_000 + index * 5_000,
           sha256: hash(String(index + 1)),
-          objectKey: `${seed.serviceProjectId}/private/sources/${asset.id}/1/${asset.filename}`,
+          objectKey: sourceObjectKey,
+          createdAt: at(index),
+        })
+        .run()
+      transaction
+        .insert(blobTable)
+        .values({
+          id: `blob-source-${asset.id}`,
+          projectId: seed.projectId,
+          assetId: asset.id,
+          sourceRevisionId: `source-${asset.id}`,
+          outputVersionId: null,
+          storage: "private",
+          environment: "development",
+          kind: "source",
+          objectKey: sourceObjectKey,
+          byteSize: 12_000 + index * 5_000,
+          sha256: hash(String(index + 1)),
+          mediaType: asset.mediaType,
           createdAt: at(index),
         })
         .run()
@@ -254,7 +303,8 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
           sha256: hash(definition.key.slice(0, 1)),
           mediaType: "image/webp",
           extension: "webp",
-          objectKey: `${seed.serviceProjectId}/images/home/${definition.key}/hero.webp`,
+          objectKey:
+            definition.key === "1600x900_webp" ? seed.heroOutputObjectKeys.large : seed.heroOutputObjectKeys.small,
           toolchainVersion: "fixture-1",
           width: definition.width,
           height: definition.height,
@@ -262,6 +312,26 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
           createdAt: at(3),
         })
         .run()
+      if (definition.assetId === "asset-hero")
+        transaction
+          .insert(blobTable)
+          .values({
+            id: `blob-public-version-${definition.id}`,
+            projectId: seed.projectId,
+            assetId: definition.assetId,
+            sourceRevisionId: `source-${definition.assetId}`,
+            outputVersionId: `version-${definition.id}`,
+            storage: "public",
+            environment: "development",
+            kind: "output",
+            objectKey:
+              definition.key === "1600x900_webp" ? seed.heroOutputObjectKeys.large : seed.heroOutputObjectKeys.small,
+            byteSize: definition.width * 40,
+            sha256: hash(definition.key.slice(0, 1)),
+            mediaType: "image/webp",
+            createdAt: at(3),
+          })
+          .run()
     }
 
     transaction
@@ -292,11 +362,29 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         sha256: hash("4"),
         mediaType: "video/mp4",
         extension: "mp4",
-        objectKey: `${seed.serviceProjectId}/videos/home/intro.mp4`,
+        objectKey: seed.nonImageOutputObjectKeys.intro,
         toolchainVersion: "fixture-1",
         width: 1920,
         height: 1080,
         current: true,
+        createdAt: at(3),
+      })
+      .run()
+    transaction
+      .insert(blobTable)
+      .values({
+        id: "blob-public-version-output-intro",
+        projectId: seed.projectId,
+        assetId: "asset-intro",
+        sourceRevisionId: "source-asset-intro",
+        outputVersionId: "version-output-intro",
+        storage: "public",
+        environment: "development",
+        kind: "output",
+        objectKey: seed.nonImageOutputObjectKeys.intro,
+        byteSize: 480_000,
+        sha256: hash("4"),
+        mediaType: "video/mp4",
         createdAt: at(3),
       })
       .run()
@@ -329,11 +417,29 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         sha256: hash("6"),
         mediaType: "text/plain",
         extension: "txt",
-        objectKey: `${seed.serviceProjectId}/documents/guides/guide_default_v1.txt`,
+        objectKey: seed.nonImageOutputObjectKeys.guide,
         toolchainVersion: "fixture-1",
         width: null,
         height: null,
         current: true,
+        createdAt: at(3),
+      })
+      .run()
+    transaction
+      .insert(blobTable)
+      .values({
+        id: "blob-public-version-output-guide",
+        projectId: seed.projectId,
+        assetId: "asset-guide",
+        sourceRevisionId: "source-asset-guide",
+        outputVersionId: "version-output-guide",
+        storage: "public",
+        environment: "development",
+        kind: "output",
+        objectKey: seed.nonImageOutputObjectKeys.guide,
+        byteSize: 32,
+        sha256: hash("6"),
+        mediaType: "text/plain",
         createdAt: at(3),
       })
       .run()
@@ -366,11 +472,29 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         sha256: hash("5"),
         mediaType: "font/woff2",
         extension: "woff2",
-        objectKey: `${seed.serviceProjectId}/fonts/ui/Inter-Regular.woff2`,
+        objectKey: seed.nonImageOutputObjectKeys.inter,
         toolchainVersion: "fixture-1",
         width: null,
         height: null,
         current: true,
+        createdAt: at(3),
+      })
+      .run()
+    transaction
+      .insert(blobTable)
+      .values({
+        id: "blob-public-version-output-inter",
+        projectId: seed.projectId,
+        assetId: "asset-inter",
+        sourceRevisionId: "source-asset-inter",
+        outputVersionId: "version-output-inter",
+        storage: "public",
+        environment: "development",
+        kind: "output",
+        objectKey: seed.nonImageOutputObjectKeys.inter,
+        byteSize: 96_000,
+        sha256: hash("5"),
+        mediaType: "font/woff2",
         createdAt: at(3),
       })
       .run()
@@ -612,7 +736,7 @@ export const fixtureDatabaseSeed = (db: AssetDatabase): Result<FixtureSeed> => {
         class: "image",
         key: "1600x900_webp",
         property: "home/hero",
-        path: "images/home/1600x900_webp/hero.webp",
+        path: "images/home/1600x900_webp/hero_v1.webp",
         metadata: {
           kind: "image",
           width: 1600,

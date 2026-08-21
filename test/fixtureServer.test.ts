@@ -1,9 +1,8 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdir, rm } from "node:fs/promises"
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-
-import { fixtureServerCreate } from "../src/fixture/fixtureServerCreate.js"
 import type { FixtureServer } from "../src/fixture/fixtureServerCreate.js"
+import { fixtureServerCreate } from "../src/fixture/fixtureServerCreate.js"
 
 const origin = "http://127.0.0.1:3021"
 const databasePath = `data/fixture-test-${crypto.randomUUID()}.sqlite`
@@ -37,6 +36,65 @@ describe("fixture server", () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: { assets: { class: string }[] } }
     expect(body.data.assets.map((asset) => asset.class).sort()).toEqual(["document", "font", "image", "video"])
+  })
+
+  test("serves every seeded original and output through fixture download routes", async () => {
+    const environmentResponse = await get(`/api/v1/projects/${server.seed.serviceProjectId}/environments/development`)
+    expect(environmentResponse.status).toBe(200)
+    const environment = (await environmentResponse.json()) as { data: { publicBaseUrl: string } }
+    expect(environment.data.publicBaseUrl).toBe(origin)
+    for (const assetId of server.seed.assetIds) {
+      const detail = await get(`/api/v1/projects/${server.seed.serviceProjectId}/assets/${assetId}`)
+      expect(detail.status).toBe(200)
+      const body = (await detail.json()) as {
+        data: {
+          sourceHistory: { id: string; originalFilename: string; mediaType: string; byteSize: number }[]
+          outputHistory: {
+            definition: { key: string }
+            versions: { id: string; objectKey: string; mediaType: string; extension: string; byteSize: number }[]
+          }[]
+        }
+      }
+
+      for (const source of body.data.sourceHistory) {
+        const original = await get(
+          `/api/v1/projects/${server.seed.serviceProjectId}/assets/${assetId}/source-revisions/${source.id}/content`,
+        )
+        expect(original.status).toBe(200)
+        expect(original.headers.get("cache-control")).toBe("private, no-store")
+        expect(original.headers.get("content-disposition")).toBe(
+          `attachment; filename*=UTF-8''${encodeURIComponent(source.originalFilename)}`,
+        )
+        expect(original.headers.get("content-length")).toBe(String(source.byteSize))
+        expect(original.headers.get("content-type")).toBe(source.mediaType)
+        expect(original.headers.get("x-content-type-options")).toBe("nosniff")
+        expect((await original.arrayBuffer()).byteLength).toBeGreaterThan(0)
+      }
+
+      for (const history of body.data.outputHistory) {
+        for (const output of history.versions) {
+          const optimized = await server.fetch(new Request(`${environment.data.publicBaseUrl}/${output.objectKey}`))
+          expect(optimized.status).toBe(200)
+          expect(optimized.headers.get("content-type")).toBe(output.mediaType)
+          expect(optimized.headers.get("content-length")).toBe(String(output.byteSize))
+          expect(optimized.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
+          expect((await optimized.arrayBuffer()).byteLength).toBeGreaterThan(0)
+
+          const downloaded = await get(
+            `/api/v1/projects/${server.seed.serviceProjectId}/assets/${assetId}/outputs/${output.id}/content`,
+          )
+          expect(downloaded.status).toBe(200)
+          expect(downloaded.headers.get("cache-control")).toBe("private, no-store")
+          expect(downloaded.headers.get("content-disposition")).toBe(
+            `attachment; filename*=UTF-8''${history.definition.key}.${output.extension}`,
+          )
+          expect(downloaded.headers.get("content-length")).toBe(String(output.byteSize))
+          expect(downloaded.headers.get("content-type")).toBe(output.mediaType)
+          expect(downloaded.headers.get("x-content-type-options")).toBe("nosniff")
+          expect((await downloaded.arrayBuffer()).byteLength).toBeGreaterThan(0)
+        }
+      }
+    }
   })
 
   test("rejects an unauthenticated request", async () => {
