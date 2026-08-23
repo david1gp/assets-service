@@ -1,2 +1,5 @@
 [console]
 depth = 5
+
+[test]
+preload = ["./test/testSolidBrowserPreload.ts"]

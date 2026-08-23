@@ -94,12 +94,14 @@
     "@tailwindcss/vite": "^4.2.2",
     "@types/bun": "^1.3.14",
     "drizzle-kit": "^0.31.10",
+    "happy-dom": "^20.11.6",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.1",
     "vite-plugin-solid": "^2.11.11"
   },
   "dependencies": {
     "@corvu/dialog": "^0.2.4",
+    "@formkit/drag-and-drop": "^0.6.1",
     "@mdi/js": "^7.4.47",
     "@solid-primitives/keyed": "^1.5.3",
     "@solidjs/router": "^1.0.0",

@@ -1,6 +1,6 @@
 import { mdiClose, mdiCloudUpload, mdiMagnify } from "@mdi/js"
 import { A } from "@solidjs/router"
-import { Show } from "solid-js"
+import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
@@ -21,7 +21,9 @@ import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.j
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
+import { UiAssetStructureView } from "../structure/UiAssetStructureView.jsx"
 import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
+import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
 const columnsCreate = (projectId: () => string): TableColumnDef<AssetListItem>[] => [
   {
@@ -80,6 +82,25 @@ export function UiAssetListPage() {
         }
       />
 
+      <div role="tablist" aria-label="Asset views" class="mb-6 flex gap-2">
+        <For each={uiAssetViewTabs}>
+          {(value) => (
+            <button
+              type="button"
+              role="tab"
+              id={`asset-view-tab-${value}`}
+              aria-selected={state.tabSignal.get() === value}
+              aria-controls={`asset-view-panel-${value}`}
+              class="rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
+              onClick={() => state.tabSignal.set(value)}
+            >
+              {value}
+            </button>
+          )}
+        </For>
+      </div>
+
+      {/* The filters are shared by both views so switching tabs keeps the same asset set. */}
       <CardWrapper class="mb-6 p-4 sm:p-5">
         <form
           class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -128,31 +149,53 @@ export function UiAssetListPage() {
         </form>
       </CardWrapper>
 
-      <UiQueryView
-        query={state.query}
-        loadingItem="assets"
-        emptyMessage="No assets matched these filters."
-        isEmpty={(data) => data.assets.length === 0}
+      <div
+        id="asset-view-panel-structure"
+        role="tabpanel"
+        aria-labelledby="asset-view-tab-structure"
+        hidden={state.tabSignal.get() !== "structure"}
+        tabIndex={0}
       >
-        {(data) => (
-          <div class="flex flex-col gap-4">
-            <CardWrapper class="overflow-hidden p-0">
-              <Table1R
-                rows={[...data.assets]}
-                columns={columns}
-                desktopClasses={uiTableDesktopClassesRead()}
-                mobileClasses={uiTableMobileClassesRead()}
-              />
-            </CardWrapper>
-            <UiPager
-              isFirstPage={state.isFirstPage()}
-              nextCursor={state.nextCursor()}
-              onFirstPage={state.goToFirstPage}
-              onNextPage={state.goToNextPage}
-            />
-          </div>
-        )}
-      </UiQueryView>
+        <Show when={state.tabSignal.get() === "structure"}>
+          <UiAssetStructureView projectId={state.projectId()} state={state.structure} />
+        </Show>
+      </div>
+
+      <div
+        id="asset-view-panel-list"
+        role="tabpanel"
+        aria-labelledby="asset-view-tab-list"
+        hidden={state.tabSignal.get() !== "list"}
+        tabIndex={0}
+      >
+        <Show when={state.tabSignal.get() === "list"}>
+          <UiQueryView
+            query={state.query}
+            loadingItem="assets"
+            emptyMessage="No assets matched these filters."
+            isEmpty={(data) => (data?.assets.length ?? 0) === 0}
+          >
+            {(data) => (
+              <div class="flex flex-col gap-4">
+                <CardWrapper class="overflow-hidden p-0">
+                  <Table1R
+                    rows={[...(data?.assets ?? [])]}
+                    columns={columns}
+                    desktopClasses={uiTableDesktopClassesRead()}
+                    mobileClasses={uiTableMobileClassesRead()}
+                  />
+                </CardWrapper>
+                <UiPager
+                  isFirstPage={state.isFirstPage()}
+                  nextCursor={state.nextCursor()}
+                  onFirstPage={state.goToFirstPage}
+                  onNextPage={state.goToNextPage}
+                />
+              </div>
+            )}
+          </UiQueryView>
+        </Show>
+      </div>
     </>
   )
 }
