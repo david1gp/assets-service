@@ -1,4 +1,6 @@
-import { mdiClose, mdiCloudUpload, mdiMagnify } from "@mdi/js"
+import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
+import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
+import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
 import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"

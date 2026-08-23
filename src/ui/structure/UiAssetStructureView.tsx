@@ -1,4 +1,4 @@
-import { mdiFolderPlus } from "@mdi/js"
+import { mdiFolderPlus } from "@adaptive-ds/mdi/mdiFolderPlus.js"
 import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"

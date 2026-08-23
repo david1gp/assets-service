@@ -1,6 +1,6 @@
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
-import { mdiRefresh } from "@mdi/js"
+import { mdiRefresh } from "@adaptive-ds/mdi/mdiRefresh.js"
 import type { JSXElement } from "solid-js"
 import { Match, Switch } from "solid-js"
 import type { UiQuery } from "../query/uiQueryCreate.js"

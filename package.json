@@ -102,7 +102,7 @@
   "dependencies": {
     "@corvu/dialog": "^0.2.4",
     "@formkit/drag-and-drop": "^0.6.1",
-    "@mdi/js": "^7.4.47",
+    "@adaptive-ds/mdi": "^0.1.2",
     "@solid-primitives/keyed": "^1.5.3",
     "@solidjs/router": "^1.0.0",
     "aws4fetch": "^1.0.20",

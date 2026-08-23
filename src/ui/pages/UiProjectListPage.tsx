@@ -1,4 +1,5 @@
-import { mdiClose, mdiMagnify } from "@mdi/js"
+import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
+import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"

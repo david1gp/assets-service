@@ -7,16 +7,14 @@ import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
 import { Img } from "#ui/static/img/Img.jsx"
-import {
-  mdiContentSave,
-  mdiDelete,
-  mdiFolderMove,
-  mdiPlus,
-  mdiRestore,
-  mdiShareVariant,
-  mdiTrashCan,
-  mdiTune,
-} from "@mdi/js"
+import { mdiContentSave } from "@adaptive-ds/mdi/mdiContentSave.js"
+import { mdiDelete } from "@adaptive-ds/mdi/mdiDelete.js"
+import { mdiFolderMove } from "@adaptive-ds/mdi/mdiFolderMove.js"
+import { mdiPlus } from "@adaptive-ds/mdi/mdiPlus.js"
+import { mdiRestore } from "@adaptive-ds/mdi/mdiRestore.js"
+import { mdiShareVariant } from "@adaptive-ds/mdi/mdiShareVariant.js"
+import { mdiTrashCan } from "@adaptive-ds/mdi/mdiTrashCan.js"
+import { mdiTune } from "@adaptive-ds/mdi/mdiTune.js"
 import { For, Show } from "solid-js"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"

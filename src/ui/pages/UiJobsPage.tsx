@@ -1,4 +1,5 @@
-import { mdiCancel, mdiRefresh } from "@mdi/js"
+import { mdiCancel } from "@adaptive-ds/mdi/mdiCancel.js"
+import { mdiRefresh } from "@adaptive-ds/mdi/mdiRefresh.js"
 import { For, Show } from "solid-js"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"

@@ -1,13 +1,11 @@
-import {
-  mdiClipboardTextClock,
-  mdiCloudUpload,
-  mdiCogOutline,
-  mdiDatabaseArrowUp,
-  mdiFileTree,
-  mdiImageMultiple,
-  mdiPlaylistCheck,
-  mdiSwapHorizontal,
-} from "@mdi/js"
+import { mdiClipboardTextClock } from "@adaptive-ds/mdi/mdiClipboardTextClock.js"
+import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
+import { mdiCogOutline } from "@adaptive-ds/mdi/mdiCogOutline.js"
+import { mdiDatabaseArrowUp } from "@adaptive-ds/mdi/mdiDatabaseArrowUp.js"
+import { mdiFileTree } from "@adaptive-ds/mdi/mdiFileTree.js"
+import { mdiImageMultiple } from "@adaptive-ds/mdi/mdiImageMultiple.js"
+import { mdiPlaylistCheck } from "@adaptive-ds/mdi/mdiPlaylistCheck.js"
+import { mdiSwapHorizontal } from "@adaptive-ds/mdi/mdiSwapHorizontal.js"
 import { uiPaths } from "../routing/uiPaths.js"
 
 export type UiNavigationLink = { href: string; label: string; icon: string }

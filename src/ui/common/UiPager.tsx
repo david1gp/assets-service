@@ -1,5 +1,6 @@
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { mdiChevronRight, mdiPageFirst } from "@mdi/js"
+import { mdiChevronRight } from "@adaptive-ds/mdi/mdiChevronRight.js"
+import { mdiPageFirst } from "@adaptive-ds/mdi/mdiPageFirst.js"
 
 export type UiPagerProps = {
   isFirstPage: boolean
