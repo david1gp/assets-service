@@ -7,6 +7,7 @@ import { apiSuccessEnvelopeCreate } from "../api/apiSuccessEnvelopeCreate.js"
 import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
 import { assetsLocalServiceCreate } from "../local/assetsLocalServiceCreate.js"
 import { localOutputPublisherFromEnvironment } from "../local/localOutputPublisherFromEnvironment.js"
+import { packageVersion } from "../packageVersion.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
@@ -47,7 +48,7 @@ const valueOptions = new Set([
   "width",
 ])
 
-const flagOptions = new Set(["check", "help", "json", "show-ai-label", "write"])
+const flagOptions = new Set(["check", "help", "json", "show-ai-label", "version", "write"])
 
 const commandHelp = {
   commands: [
@@ -94,6 +95,7 @@ const commandHelp = {
     "--json",
     "--check",
     "--write",
+    "--version",
   ],
 }
 
@@ -180,6 +182,10 @@ export const assetsLocalCliMain = async (
   const stdout = options.stdout ?? ((text: string) => process.stdout.write(text))
   const parsed = parsedCommandRead(args)
   if (!parsed.success) return outputWrite({ result: parsed }, stdout)
+  if (flagRead(parsed.data, "version")) {
+    stdout(`assets-local ${packageVersion}\n`)
+    return 0
+  }
   if (parsed.data.command === "help" || flagRead(parsed.data, "help"))
     return outputWrite({ result: { success: true, data: commandHelp } }, stdout)
 

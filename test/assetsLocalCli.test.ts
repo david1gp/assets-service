@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import sharp from "sharp"
 
+import pkg from "../package.json" with { type: "json" }
 import { assetsLocalCliMain } from "../src/entrypoints/assets-local-cli.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
 import { assetsLocalServiceCreate } from "../src/local/assetsLocalServiceCreate.js"
@@ -28,6 +29,17 @@ const cliRun = async (root: string, args: readonly string[]) => {
   })
   return { exitCode, value: JSON.parse(output[0] ?? "{}") as { ok: boolean; data?: any; error?: any } }
 }
+
+test("reports the package version before configuring the local service", async () => {
+  const output: string[] = []
+  const exitCode = await assetsLocalCliMain(["--version"], {
+    env: { ASSETS_LOCAL_ROOT: "\u0000invalid-root" },
+    stdout: (text) => output.push(text),
+  })
+
+  expect(exitCode).toBe(0)
+  expect(output).toEqual([`assets-local ${pkg.version}\n`])
+})
 
 test("local import writes content-hashed outputs and deterministic lists", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-service-local-"))

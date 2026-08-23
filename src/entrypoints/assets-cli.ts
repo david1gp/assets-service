@@ -33,6 +33,7 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
+import { packageVersion } from "../packageVersion.js"
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 
@@ -139,6 +140,7 @@ const flagNames = new Set([
   "wait",
   "write",
   "delete",
+  "version",
 ])
 
 const diffSourceDirectoryOptionNames = new Set([
@@ -224,6 +226,7 @@ const commandHelp = {
     "--no-font-dir",
     "--check",
     "--write",
+    "--version",
   ],
   projectResolution:
     "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project.",
@@ -1719,6 +1722,10 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
   const stderr = options.stderr ?? ((text: string) => process.stderr.write(text))
   const parsed = parsedCommandRead(args)
   if (!parsed.success) return outputWrite({ result: parsed }, args.includes("--json"), stdout, stderr)
+  if (flagRead(parsed.data, "version")) {
+    stdout(`assets ${packageVersion}\n`)
+    return 0
+  }
   if (flagRead(parsed.data, "help") || parsed.data.command === "help")
     return outputWrite({ result: { success: true, data: commandHelp } }, parsed.data.json, stdout, stderr)
 

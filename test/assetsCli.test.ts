@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile }
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import pkg from "../package.json" with { type: "json" }
 import { assetsCliMain } from "../src/entrypoints/assets-cli.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 import type { AssetClass } from "../src/schemas/assetClassSchema.js"
@@ -209,6 +210,20 @@ test("diff help documents its root and all source directory controls", async () 
       projectResolution: expect.stringContaining("package.json.name"),
     },
   })
+})
+
+test("reports the package version before reading configuration", async () => {
+  const output: string[] = []
+  const errors: string[] = []
+  const exitCode = await assetsCliMain(["--version"], {
+    env: { ASSETS_CONFIG_FILE: join(tmpdir(), "assets-cli-invalid-config.json") },
+    stdout: (text) => output.push(text),
+    stderr: (text) => errors.push(text),
+  })
+
+  expect(exitCode).toBe(0)
+  expect(output).toEqual([`assets ${pkg.version}\n`])
+  expect(errors).toEqual([])
 })
 
 test("bulk project resolution gives an explicit project precedence over package.json.name", async () => {
