@@ -9,6 +9,7 @@ import type { SourceRevision } from "../upload/sourceRevisionSchema.js"
 import type { AssetClass } from "../schemas/assetClassSchema.js"
 import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
+import type { StructureFolderRepository } from "../structure/structureFolderRepository.js"
 
 export type AssetOutputHistory = {
   definition: OutputDefinition
@@ -68,4 +69,4 @@ export type AssetApiRepository = {
   assetMetadataSet: (projectId: string, assetId: string, alt: string) => Result<AssetApiMutation | null>
   assetMetadataUnset: (projectId: string, assetId: string, field: "alt") => Result<AssetApiMutation | null>
   assetMove: (projectId: string, assetId: string, input: AssetMoveInput) => Result<Asset | null>
-}
+} & Partial<StructureFolderRepository>

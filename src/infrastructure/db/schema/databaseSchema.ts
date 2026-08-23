@@ -1,4 +1,5 @@
 import { assetMetadataTable } from "./assetMetadataTable.js"
+import { assetStructureFolderMembershipTable } from "./assetStructureFolderMembershipTable.js"
 import { assetTable } from "./assetTable.js"
 import { auditEventTable } from "./auditEventTable.js"
 import { backupReceiptTable } from "./backupReceiptTable.js"
@@ -21,11 +22,13 @@ import { projectGrantTable } from "./projectGrantTable.js"
 import { projectTable } from "./projectTable.js"
 import { reconciliationRunTable } from "./reconciliationRunTable.js"
 import { sourceRevisionTable } from "./sourceRevisionTable.js"
+import { structureFolderTable } from "./structureFolderTable.js"
 import { uploadTable } from "./uploadTable.js"
 import { workflowTable } from "./workflowTable.js"
 
 export const databaseSchema = {
   assetMetadataTable,
+  assetStructureFolderMembershipTable,
   assetTable,
   auditEventTable,
   backupReceiptTable,
@@ -48,6 +51,7 @@ export const databaseSchema = {
   projectTable,
   reconciliationRunTable,
   sourceRevisionTable,
+  structureFolderTable,
   uploadTable,
   workflowTable,
 }

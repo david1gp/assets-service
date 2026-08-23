@@ -29,6 +29,7 @@ import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { structureFolderRepositoryCreate } from "../structure/structureFolderRepositoryCreate.js"
 import { sourceRevisionSchema } from "../upload/sourceRevisionSchema.js"
 import { assetProcessingWorkflowEnqueue } from "../workflow/assetProcessingWorkflowEnqueue.js"
 import { jobPayloadSchema } from "../workflow/jobPayloadSchema.js"
@@ -49,6 +50,7 @@ import { foldersDatabaseColumnsRead } from "./foldersDatabaseColumnsRead.js"
 import { foldersSchema } from "./foldersSchema.js"
 
 export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository => {
+  const structureFolderRepository = structureFolderRepositoryCreate(db)
   const assetRecordRead = (record: typeof assetTable.$inferSelect): Result<AssetDetail> => {
     const folders = foldersDatabaseColumnsRead({
       folder1: record.folder1,
@@ -536,6 +538,7 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     assetMetadataSet,
     assetMetadataUnset,
     assetMove,
+    ...structureFolderRepository,
   }
 
   function assetMetadataChange(

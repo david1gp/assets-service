@@ -46,6 +46,7 @@ describe("SQLite persistence", () => {
         .all() as Array<{ name: string }>
       expect(tables.map((table) => table.name)).toEqual([
         "asset_metadata",
+        "asset_structure_folder_memberships",
         "assets",
         "audit_events",
         "backup_receipts",
@@ -68,6 +69,7 @@ describe("SQLite persistence", () => {
         "projects",
         "reconciliation_runs",
         "source_revisions",
+        "structure_folders",
         "uploads",
         "workflows",
       ])
