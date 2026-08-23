@@ -44,6 +44,7 @@ import { apiRequestAuthenticationRead } from "./apiRequestAuthenticationRead.js"
 import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
 import { apiResponseCreate } from "./apiResponseCreate.js"
 import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
+import { apiStructureRoutesRegister } from "./apiStructureRoutesRegister.js"
 import { apiSuccessEnvelopeCreate } from "./apiSuccessEnvelopeCreate.js"
 import { apiUploadStatusRoutesRegister } from "./apiUploadStatusRoutesRegister.js"
 import { apiWorkflowRoutesRegister } from "./apiWorkflowRoutesRegister.js"
@@ -212,6 +213,9 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/[^/]+$/, methods: ["DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/unset$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/move$/, methods: ["POST"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/structure-membership$/, methods: ["PUT"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/structure$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/structure\/folders$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/deletion-request$/, methods: ["GET", "POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/(deletion|deletion-status)$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/(workflows|jobs)$/, methods: ["GET"] },
@@ -1169,6 +1173,12 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     repository: options.catalogApiRepository,
     authenticationMiddleware,
     uploaderMiddleware,
+  })
+  apiStructureRoutesRegister(app, {
+    repository: options.assetApiRepository,
+    authenticationMiddleware,
+    uploaderMiddleware,
+    adminMiddleware,
   })
   apiImportRoutesRegister(app, {
     executor: options.legacyImportExecutor,

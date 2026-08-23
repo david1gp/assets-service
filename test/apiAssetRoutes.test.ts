@@ -196,9 +196,9 @@ const deletionRepositoryCreate = (): DeletionApiRepository => ({
   }),
 })
 
-const optionsCreate = (): ApiAppOptions => {
+const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   lastUploaderId = undefined
-  const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => "session-1" })
+  const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => sessionId })
   const stateStore = memoryPkceStateStoreCreate({ now: () => now * 1000 })
   const authenticationConfig = {
     issuer: "https://zitadel.example.test",
@@ -387,6 +387,136 @@ describe("asset API routes", () => {
       workflowId: "workflow-deletion-1",
       status: "requested",
     })
+  })
+
+  test("exposes project-scoped structure reads and administrator structure mutations", async () => {
+    const folder = {
+      id: "structure-folder-1",
+      projectId: "project-1",
+      parentId: null,
+      name: "images",
+      depth: 1 as const,
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    }
+    const membership = {
+      id: "membership-1",
+      assetId: "asset-1",
+      structureFolderId: folder.id,
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    }
+    const canonicalAssetBefore = structuredClone(detail)
+    const structureProjectIds: string[] = []
+    const membershipSets: { projectId: string; assetId: string; structureFolderId: string | null }[] = []
+    let canonicalMoveCount = 0
+    const structureRepositoryConfigure = (options: ApiAppOptions) => {
+      const repository = options.assetApiRepository
+      if (repository === undefined) throw new Error("The asset repository was not configured")
+      options.assetApiRepository = {
+        ...repository,
+        structureRead: (projectId) => {
+          structureProjectIds.push(projectId)
+          return { success: true, data: { folders: [folder], memberships: [membership] } }
+        },
+        structureFolderCreate: (projectId, input) => {
+          structureProjectIds.push(projectId)
+          const parentId = input.parentId ?? null
+          return {
+            success: true,
+            data: {
+              ...folder,
+              id: parentId === null ? "structure-folder-2" : "structure-folder-3",
+              name: input.name,
+              parentId,
+              depth: parentId === null ? (1 as const) : (2 as const),
+            },
+          }
+        },
+        assetStructureFolderMembershipSet: (projectId, assetId, structureFolderId) => {
+          membershipSets.push({ projectId, assetId, structureFolderId })
+          return structureFolderId === null
+            ? { success: true, data: null }
+            : { success: true, data: { ...membership, structureFolderId } }
+        },
+        assetMove: (...args) => {
+          canonicalMoveCount += 1
+          return repository.assetMove(...args)
+        },
+      }
+    }
+    const options = optionsCreate("structure-uploader")
+    structureRepositoryConfigure(options)
+    const app = apiAppCreate(options)
+    const uploader = await sessionCookieRead(options, "assets.uploader")
+    const structure = await app.fetch(requestCreate("/api/v1/projects/project-service/structure", uploader))
+    const denied = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/structure/folders", uploader, {
+        method: "POST",
+        body: JSON.stringify({ name: "new-folder" }),
+      }),
+    )
+    const adminOptions = optionsCreate("structure-admin")
+    structureRepositoryConfigure(adminOptions)
+    const adminApp = apiAppCreate(adminOptions)
+    const admin = await sessionCookieRead(adminOptions, "assets.admin")
+    const created = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/structure/folders", admin, {
+        method: "POST",
+        body: JSON.stringify({ name: "new-folder" }),
+      }),
+    )
+    const nested = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/structure/folders", admin, {
+        method: "POST",
+        body: JSON.stringify({ name: "nested", parentId: folder.id }),
+      }),
+    )
+    const moved = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/structure-membership", admin, {
+        method: "PUT",
+        body: JSON.stringify({ structureFolderId: folder.id }),
+      }),
+    )
+    const unassigned = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/structure-membership", admin, {
+        method: "PUT",
+        body: JSON.stringify({ structureFolderId: null }),
+      }),
+    )
+    const invalid = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/structure-membership", admin, {
+        method: "PUT",
+        body: JSON.stringify({}),
+      }),
+    )
+    const otherProject = await app.fetch(requestCreate("/api/v1/projects/other-project/structure", uploader))
+
+    expect(structure.status).toBe(200)
+    expect(((await structure.json()) as { data: unknown }).data).toEqual({
+      folders: [folder],
+      memberships: [membership],
+    })
+    expect(denied.status).toBe(403)
+    expect(created.status).toBe(201)
+    expect(((await created.json()) as { data: { name: string } }).data.name).toBe("new-folder")
+    expect(nested.status).toBe(201)
+    expect(((await nested.json()) as { data: { parentId: string; depth: number } }).data).toMatchObject({
+      parentId: folder.id,
+      depth: 2,
+    })
+    expect(moved.status).toBe(200)
+    expect(unassigned.status).toBe(200)
+    expect(((await unassigned.json()) as { data: unknown }).data).toBeNull()
+    expect(structureProjectIds).toEqual(["project-1", "project-1", "project-1"])
+    expect(membershipSets).toEqual([
+      { projectId: "project-1", assetId: "asset-1", structureFolderId: folder.id },
+      { projectId: "project-1", assetId: "asset-1", structureFolderId: null },
+    ])
+    expect(canonicalMoveCount).toBe(0)
+    expect(detail).toEqual(canonicalAssetBefore)
+    expect(invalid.status).toBe(400)
+    expect(otherProject.status).toBe(404)
   })
 
   test("returns validation envelopes and deterministic method headers", async () => {

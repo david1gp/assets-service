@@ -47,6 +47,62 @@ test("assets API client validates upload intent before fetching", async () => {
   expect(fetchCount).toBe(0)
 })
 
+test("assets API client reads all matching assets across pages and preserves filters", async () => {
+  const assetCreate = (id: string) => ({
+    id,
+    projectId: "project-1",
+    class: "image",
+    folders: ["images"],
+    filename: `${id}.jpg`,
+    basename: id,
+    currentSourceRevisionId: `source-${id}`,
+    sourcePath: `/images/${id}.jpg`,
+    outputCount: 0,
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  })
+  const firstPage = Array.from({ length: 100 }, (_, index) => assetCreate(`asset-${index}`))
+  const secondPage = [assetCreate("asset-100")]
+  const requests: Request[] = []
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async (input, init) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      const cursor = new URL(request.url).searchParams.get("cursor")
+      return envelopeResponseCreate(
+        cursor === "100"
+          ? { assets: secondPage, page: { limit: 100, nextCursor: null } }
+          : { assets: firstPage, page: { limit: 100, nextCursor: "100" } },
+      )
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const assets = await clientResult.data.assetsReadAll("project-1", {
+    class: "image",
+    folder: "images",
+    search: "hero",
+  })
+
+  expect(assets.success).toBe(true)
+  if (!assets.success) return
+  expect(assets.data).toHaveLength(101)
+  expect(assets.data[0]?.id).toBe("asset-0")
+  expect(assets.data[100]?.id).toBe("asset-100")
+  expect(requests).toHaveLength(2)
+  for (const request of requests) {
+    const query = new URL(request.url).searchParams
+    expect(query.get("class")).toBe("image")
+    expect(query.get("folder")).toBe("images")
+    expect(query.get("search")).toBe("hero")
+    expect(query.get("limit")).toBe("100")
+  }
+  expect(new URL(requests[0]?.url ?? "https://assets.example.test").searchParams.get("cursor")).toBeNull()
+  expect(new URL(requests[1]?.url ?? "https://assets.example.test").searchParams.get("cursor")).toBe("100")
+})
+
 test("assets API client creates an encoded authenticated source content URL", () => {
   const clientResult = assetsApiClientCreate({ apiUrl: "https://assets.example.test/api/v1" })
 
@@ -151,4 +207,64 @@ test("assets API client rejects an invalid eligibility environment before fetchi
   const eligibility = await clientResult.data.sourceRevisionDeletionEligibilityRead("project-1", "staging", "source-1")
   expect(eligibility.success).toBe(false)
   expect(fetchCount).toBe(0)
+})
+
+test("assets API client reads and mutates the project structure with validated requests", async () => {
+  const requests: Request[] = []
+  const folder = {
+    id: "structure-folder-1",
+    projectId: "project-1",
+    parentId: null,
+    name: "images",
+    depth: 1,
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  }
+  const membership = {
+    id: "membership-1",
+    assetId: "asset-1",
+    structureFolderId: folder.id,
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  }
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async (input, init) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      if (request.url.endsWith("/structure"))
+        return envelopeResponseCreate({ folders: [folder], memberships: [membership] })
+      if (request.url.endsWith("/structure/folders")) return envelopeResponseCreate(folder, 201)
+      const body = (await request.clone().json()) as { structureFolderId: string | null }
+      return envelopeResponseCreate(body.structureFolderId === null ? null : membership)
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const structure = await clientResult.data.structureRead("project/1")
+  const created = await clientResult.data.structureFolderCreate("project/1", { name: "images" })
+  const moved = await clientResult.data.assetStructureFolderMembershipSet("project/1", "asset 1", {
+    structureFolderId: folder.id,
+  })
+  const unassigned = await clientResult.data.assetStructureFolderMembershipSet("project/1", "asset 1", {
+    structureFolderId: null,
+  })
+  const invalid = await clientResult.data.structureFolderCreate("project/1", { name: "" })
+
+  expect(structure.success).toBe(true)
+  expect(created.success).toBe(true)
+  expect(moved.success).toBe(true)
+  expect(unassigned).toEqual({ success: true, data: null })
+  expect(invalid.success).toBe(false)
+  expect(requests).toHaveLength(4)
+  expect(requests[0]?.url).toBe("https://assets.example.test/api/v1/projects/project%2F1/structure")
+  expect(requests[1]?.url).toBe("https://assets.example.test/api/v1/projects/project%2F1/structure/folders")
+  expect(requests[2]?.url).toBe(
+    "https://assets.example.test/api/v1/projects/project%2F1/assets/asset%201/structure-membership",
+  )
+  expect(requests[3]?.url).toBe(requests[2]?.url)
+  expect(requests[1]?.method).toBe("POST")
+  expect(requests[2]?.method).toBe("PUT")
+  expect(requests[3]?.method).toBe("PUT")
 })

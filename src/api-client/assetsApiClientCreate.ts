@@ -11,6 +11,9 @@ import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { storageUploadIntentSchema } from "../storage/storageUploadIntentSchema.js"
+import { assetStructureFolderMembershipSchema } from "../structure/assetStructureFolderMembershipSchema.js"
+import { structureFolderCreateInputSchema } from "../structure/structureFolderCreateInputSchema.js"
+import { structureFolderSchema } from "../structure/structureFolderSchema.js"
 import { uploadSchema } from "../upload/uploadSchema.js"
 import { jobKindSchema } from "../workflow/jobKindSchema.js"
 import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
@@ -19,6 +22,7 @@ import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
 import { assetListResponseSchema } from "./assetListResponseSchema.js"
+import { assetStructureFolderMembershipSetRequestSchema } from "./assetStructureFolderMembershipSetRequestSchema.js"
 import { assetsApiResultOptionalRead } from "./assetsApiResultOptionalRead.js"
 import { auditEventListResponseSchema } from "./auditEventListResponseSchema.js"
 import { backupListResponseSchema } from "./backupListResponseSchema.js"
@@ -43,6 +47,7 @@ import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
 import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
 import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
+import { structureResponseSchema } from "./structureResponseSchema.js"
 import { uploadCompletionRequestSchema } from "./uploadCompletionRequestSchema.js"
 import { uploadCompletionResponseSchema } from "./uploadCompletionResponseSchema.js"
 import { uploadIntentRequestSchema } from "./uploadIntentRequestSchema.js"
@@ -583,6 +588,33 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientAssetMove",
     })
 
+  const structureRead = (projectId: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/structure`,
+      responseSchema: structureResponseSchema,
+      operation: "assetsApiClientStructureRead",
+    })
+
+  const structureFolderCreate = (projectId: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/structure/folders`,
+      method: "POST",
+      body: input,
+      bodySchema: structureFolderCreateInputSchema,
+      responseSchema: structureFolderSchema,
+      operation: "assetsApiClientStructureFolderCreate",
+    })
+
+  const assetStructureFolderMembershipSet = (projectId: string, assetId: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/structure-membership`,
+      method: "PUT",
+      body: input,
+      bodySchema: assetStructureFolderMembershipSetRequestSchema,
+      responseSchema: v.nullable(assetStructureFolderMembershipSchema),
+      operation: "assetsApiClientAssetStructureFolderMembershipSet",
+    })
+
   const assetDeleteRequest = (projectId: string, assetId: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/deletion-request`,
@@ -920,6 +952,9 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     assetMetadataSet,
     assetMetadataUnset,
     assetMove,
+    structureRead,
+    structureFolderCreate,
+    assetStructureFolderMembershipSet,
     assetDeleteRequest,
     deletionStatusRead,
     deletionStatusOptionalRead,
