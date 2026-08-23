@@ -31,7 +31,7 @@ Add a Structure view under `/assets` where logical folders can be created and as
 - [x] 3. Add the Structure tab/view, folder creation, three-level layout, DnD, and accessible move controls.
 - [x] 4. Change the List view request limit to 100.
 - [x] 5. Add regression tests and run formatting, typechecks, tests, builds, and browser validation.
-- [ ] 6. Review, create conventional commits with the commits skill, push, and deploy.
+- [x] 6. Review, create conventional commits with the commits skill, push, and deploy.
 
 ## Paths
 
