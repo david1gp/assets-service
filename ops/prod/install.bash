@@ -35,6 +35,8 @@ install -d -m 700 "$data_directory"
 chmod 700 "$data_directory"
 
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$HOME/.bun/bin/bun" "$HOME/.local/bin/node"
 set -a
 # shellcheck disable=SC1090
 source "$environment_file"
