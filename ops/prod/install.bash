@@ -43,7 +43,7 @@ export ASSETS_API_PORT="$PRODCTL_PORT_DEFAULT"
 export ASSETS_DATABASE_PATH="$database_path"
 export RCLONE_CONFIG="$rclone_config"
 
-bun install --frozen-lockfile
+bun install --frozen-lockfile --ignore-scripts
 bun run ops:migrate
 bun run build
 bun run vite:build
