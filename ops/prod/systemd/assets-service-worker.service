@@ -1,0 +1,23 @@
+[Unit]
+Description=assets-service production worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/current
+EnvironmentFile=%h/.config/assets-service/prodctl-ports.env
+EnvironmentFile=%h/.config/assets-service/assets-service.env
+Environment=PATH=%h/.local/bin:%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=RCLONE_CONFIG=%h/.config/rclone/rclone.conf
+ExecStart=/usr/bin/env bash %h/current/ops/prod/start-worker.bash
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

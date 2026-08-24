@@ -1,0 +1,6 @@
+{
+  "units": ["assets-service-api.service", "assets-service-worker.service"],
+  "health_path": "/api/v1/health/live",
+  "health_port": "default",
+  "install": ["bash ops/prod/install.bash"]
+}
