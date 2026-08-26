@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdir, rm } from "node:fs/promises"
 
+import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import type { FixtureServer } from "../src/fixture/fixtureServerCreate.js"
 import { fixtureServerCreate } from "../src/fixture/fixtureServerCreate.js"
+import { uiAssetPreviewSourceRead } from "../src/ui/pages/uiAssetPreviewSourceRead.js"
 
 const origin = "http://127.0.0.1:3021"
 const databasePath = `data/fixture-test-${crypto.randomUUID()}.sqlite`
@@ -36,6 +38,24 @@ describe("fixture server", () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: { assets: { class: string }[] } }
     expect(body.data.assets.map((asset) => asset.class).sort()).toEqual(["document", "font", "image", "video"])
+  })
+
+  test("includes representative image history needed for previews", async () => {
+    const response = await get(`/api/v1/projects/${server.seed.serviceProjectId}/assets?include=history,metadata`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { data: { assets: AssetListItem[] } }
+    const hero = body.data.assets.find((asset) => asset.id === "asset-hero")
+    expect(hero).toBeDefined()
+    if (hero === undefined) return
+
+    expect(hero.sourceHistory).toMatchObject([{ id: "source-asset-hero", mediaType: "image/png" }])
+    expect(hero.outputHistory).toHaveLength(2)
+    expect(
+      uiAssetPreviewSourceRead(hero, {
+        outputVersionUrlCreate: (versionId) => `/outputs/${versionId}`,
+        sourceRevisionPreviewUrlCreate: (revisionId) => `/sources/${revisionId}`,
+      }),
+    ).toMatchObject({ kind: "optimized", url: "/outputs/version-output-hero-small", width: 800, height: 450 })
   })
 
   test("serves every seeded original and output through fixture download routes", async () => {

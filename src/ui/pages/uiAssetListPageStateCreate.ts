@@ -14,6 +14,7 @@ import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.j
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 import { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
+import { uiAssetPreviewPreferencePersistenceCreate } from "./uiAssetPreviewPreferencePersistenceCreate.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
 export { uiAssetClassOptions } from "./uiAssetClassOptions.js"
@@ -48,6 +49,19 @@ export const uiAssetListPageStateCreate = () => {
       // tab. Rescheduling it with the new tab keeps the URL and the tab state
       // consistent because the latest scheduled replacement wins.
       filtersUrlReplace(parsed.output)
+    },
+  }
+
+  const showPreviewsState = createSignalObject(false)
+  const previewPreferencePersistence = uiAssetPreviewPreferencePersistenceCreate()
+  const hydratedPreviewPreference = previewPreferencePersistence.hydrate()
+  if (hydratedPreviewPreference.success && hydratedPreviewPreference.data !== undefined)
+    showPreviewsState.set(hydratedPreviewPreference.data)
+  const showPreviews: SignalObject<boolean> = {
+    get: showPreviewsState.get,
+    set: (value) => {
+      showPreviewsState.set(value)
+      void previewPreferencePersistence.persist(value)
     },
   }
 
@@ -132,6 +146,7 @@ export const uiAssetListPageStateCreate = () => {
       if (!client.success) return resultErrorCreate("uiAssetListPageRead", client.errorMessage)
       return client.data.assetListRead(projectId(), {
         limit: 100,
+        include: "history,metadata",
         ...(assetClass() === undefined ? {} : { class: assetClass() }),
         ...(folder() === undefined ? {} : { folder: folder() }),
         ...(search() === undefined ? {} : { search: search() }),
@@ -156,6 +171,7 @@ export const uiAssetListPageStateCreate = () => {
   return {
     projectId,
     tabSignal,
+    showPreviews,
     structure,
     query,
     searchDraft,

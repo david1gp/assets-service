@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises"
-
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 
 import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import { uiStructureTreeCreate } from "../src/ui/structure/uiStructureTreeCreate.js"
@@ -122,6 +121,7 @@ test("keeps the structure presentation and list request at the intended boundari
   )
   expect(pageState).toContain("assetListRead(projectId(), {")
   expect(pageState).toContain("limit: 100,")
+  expect(pageState).toContain('include: "history,metadata",')
 })
 
 test("associates each asset view tab with its hidden tabpanel", async () => {
@@ -137,6 +137,16 @@ test("associates each asset view tab with its hidden tabpanel", async () => {
   expect(page).toContain('role="tabpanel"')
   expect(page).toContain('hidden={state.tabSignal.get() !== "structure"}')
   expect(page).toContain('hidden={state.tabSignal.get() !== "list"}')
+})
+
+test("removes list preview images when previews are disabled", async () => {
+  const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
+
+  // Table1R mounts both responsive renderings, so the condition must stay
+  // reactive in each cell rather than capture the enabled state once.
+  expect(page).toContain("const preview = () => (showPreviews() ? previewSourceRead(asset) : null)")
+  expect(page).toContain("<Show when={preview()}>")
+  expect(page).not.toContain("const preview = showPreviews() ? previewSourceRead(asset) : null")
 })
 
 test("derives drop area values from the rendered chips and persists the move once on drag end", async () => {
@@ -172,7 +182,9 @@ test("applies the active URL filters to the structure asset request and cache ke
   const structureState = await readFile("src/ui/structure/uiAssetStructureStateCreate.ts", "utf8")
   const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
 
-  expect(structureState).toContain("assetsReadAll(input.projectId(), input.filters())")
+  expect(structureState).toContain("assetsReadAll(input.projectId(), {")
+  expect(structureState).toContain('include: "history,metadata",')
+  expect(structureState).toContain("...input.filters(),")
   expect(structureState).toContain('class=${filters.class ?? ""}')
   expect(structureState).toContain('folder=${filters.folder ?? ""}')
   expect(structureState).toContain('search=${filters.search ?? ""}')

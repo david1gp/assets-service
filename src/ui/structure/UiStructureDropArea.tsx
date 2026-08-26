@@ -1,14 +1,15 @@
 import { For, Show } from "solid-js"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { UiStructureAssetChip } from "./UiStructureAssetChip.jsx"
-import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 import { uiStructureDropZoneAttach } from "./uiStructureDropZoneAttach.js"
+import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 
 export type UiStructureDropAreaProps = {
   folderId: string | null
   label: string
   assets: AssetListItem[]
   projectId: string
+  showPreviews: () => boolean
   pendingAssetIds: ReadonlySet<string>
   folderOptions: UiStructureFolderOption[]
   assetMove: (assetId: string, folderId: string | null) => void
@@ -34,6 +35,7 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
           <UiStructureAssetChip
             asset={asset}
             projectId={p.projectId}
+            showPreviews={p.showPreviews}
             folderId={p.folderId}
             folderOptions={p.folderOptions}
             isPending={p.pendingAssetIds.has(asset.id)}

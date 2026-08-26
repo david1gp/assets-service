@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import * as v from "valibot"
 
+import { uiAssetPreviewPreferencePersistenceCreate } from "../src/ui/pages/uiAssetPreviewPreferencePersistenceCreate.js"
 import { uiQueryCreate } from "../src/ui/query/uiQueryCreate.js"
 import { uiSearchParamsReplace } from "../src/ui/search/uiSearchParamsReplace.js"
 import { uiSessionStore } from "../src/ui/session/uiSessionStore.js"
@@ -55,6 +56,21 @@ describe("uiLocalStorageWrite", () => {
   })
 })
 
+describe("uiAssetPreviewPreferencePersistenceCreate", () => {
+  test("defaults to an absent preference and persists only validated booleans", async () => {
+    const { storage, values } = storageCreate()
+    const preference = uiAssetPreviewPreferencePersistenceCreate({ storage, debounceMilliseconds: 5 })
+
+    expect(preference.hydrate()).toEqual({ success: true, data: undefined })
+    expect((await preference.persist(true)).success).toBe(true)
+    expect(preference.hydrate()).toEqual({ success: true, data: true })
+
+    const key = values.keys().next().value as string
+    values.set(key, JSON.stringify("invalid"))
+    expect(preference.hydrate().success).toBe(false)
+  })
+})
+
 describe("uiFormDraft", () => {
   test("scopes keys to the authenticated subject, entity, and form instance", () => {
     const previous = uiSessionStore.get()
@@ -64,6 +80,7 @@ describe("uiFormDraft", () => {
         principal: {
           subjectId: "subject/1",
           organizationId: "organization/1",
+          organizationAdmin: false,
           method: "human_session",
           grants: [{ projectId: "project-1", roles: ["assets.admin"] }],
           issuedAt: 0,

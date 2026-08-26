@@ -57,7 +57,10 @@ export const uiAssetStructureStateCreate = (input: {
       if (!client.success) return resultErrorCreate("uiAssetStructureRead", client.errorMessage)
       const structure = await client.data.structureRead(input.projectId())
       if (!structure.success) return structure
-      const assets = await client.data.assetsReadAll(input.projectId(), input.filters())
+      const assets = await client.data.assetsReadAll(input.projectId(), {
+        include: "history,metadata",
+        ...input.filters(),
+      })
       if (!assets.success) return assets
       const data = { ...structure.data, assets: [...assets.data] }
       membershipOverridesReconcile(data, sequence)

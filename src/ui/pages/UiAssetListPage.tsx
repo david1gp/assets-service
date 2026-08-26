@@ -7,11 +7,14 @@ import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { ToggleButton } from "#ui/interactive/toggle/ToggleButton.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
+import { Img } from "#ui/static/img/Img.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
+import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { UiLinkButton } from "../common/UiLinkButton.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
@@ -21,56 +24,89 @@ import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { UiAssetStructureView } from "../structure/UiAssetStructureView.jsx"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
-import { UiAssetStructureView } from "../structure/UiAssetStructureView.jsx"
 import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
+import { uiAssetPreviewSourceRead } from "./uiAssetPreviewSourceRead.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
-const columnsCreate = (projectId: () => string): TableColumnDef<AssetListItem>[] => [
-  {
-    id: "path",
-    name: "Path",
-    data: (asset) => uiAssetPathFormat(asset.folders, asset.filename),
-    cell: (asset) => (
-      <>
-        <A href={uiPaths.asset(projectId(), asset.id)} class="wrap-anywhere text-blue-700 underline dark:text-blue-300">
-          {uiAssetPathFormat(asset.folders, asset.filename)}
-        </A>
-        <Show when={asset.deletionStatus}>
-          {(status) => (
-            <UiStatusBadge class="ml-2" tone={uiDeletionStatusToneRead(status())}>
-              {uiDeletionStatusLabelRead(status())}
-            </UiStatusBadge>
-          )}
-        </Show>
-      </>
-    ),
-  },
-  {
-    id: "class",
-    name: "Class",
-    data: (asset) => asset.class,
-    cell: (asset) => <Badge variant="subtle">{asset.class}</Badge>,
-  },
-  {
-    id: "outputCount",
-    name: "Outputs",
-    data: (asset) => asset.outputCount,
-    cell: (asset) => asset.outputCount,
-  },
-  {
-    id: "updatedAt",
-    name: "Updated",
-    data: (asset) => asset.updatedAt,
-    cell: (asset) => <time datetime={asset.updatedAt}>{asset.updatedAt.slice(0, 10)}</time>,
-  },
-]
+const columnsCreate = (projectId: () => string, showPreviews: () => boolean): TableColumnDef<AssetListItem>[] => {
+  const client = uiApiClientRead()
+  const previewSourceRead = (asset: AssetListItem) => {
+    if (!client.success) return null
+    return uiAssetPreviewSourceRead(asset, {
+      outputVersionUrlCreate: (outputVersionId) =>
+        client.data.assetOutputVersionContentUrlCreate(projectId(), asset.id, outputVersionId),
+      sourceRevisionPreviewUrlCreate: (sourceRevisionId) =>
+        client.data.assetSourceRevisionContentUrlCreate(projectId(), asset.id, sourceRevisionId, "preview"),
+    })
+  }
+
+  return [
+    {
+      id: "path",
+      name: "Path",
+      data: (asset) => uiAssetPathFormat(asset.folders, asset.filename),
+      cell: (asset) => {
+        const preview = () => (showPreviews() ? previewSourceRead(asset) : null)
+        return (
+          <span class="flex items-center gap-3">
+            <Show when={preview()}>
+              {(source) => (
+                <Img
+                  class="h-12 w-12 shrink-0 rounded bg-gray-100 object-contain dark:bg-gray-800"
+                  src={source().url}
+                  alt={source().alt}
+                  width={source().kind === "optimized" ? source().width : undefined}
+                  height={source().kind === "optimized" ? source().height : undefined}
+                />
+              )}
+            </Show>
+            <span class="min-w-0">
+              <A
+                href={uiPaths.asset(projectId(), asset.id)}
+                class="wrap-anywhere text-blue-700 underline dark:text-blue-300"
+              >
+                {uiAssetPathFormat(asset.folders, asset.filename)}
+              </A>
+              <Show when={asset.deletionStatus}>
+                {(status) => (
+                  <UiStatusBadge class="ml-2" tone={uiDeletionStatusToneRead(status())}>
+                    {uiDeletionStatusLabelRead(status())}
+                  </UiStatusBadge>
+                )}
+              </Show>
+            </span>
+          </span>
+        )
+      },
+    },
+    {
+      id: "class",
+      name: "Class",
+      data: (asset) => asset.class,
+      cell: (asset) => <Badge variant="subtle">{asset.class}</Badge>,
+    },
+    {
+      id: "outputCount",
+      name: "Outputs",
+      data: (asset) => asset.outputCount,
+      cell: (asset) => asset.outputCount,
+    },
+    {
+      id: "updatedAt",
+      name: "Updated",
+      data: (asset) => asset.updatedAt,
+      cell: (asset) => <time datetime={asset.updatedAt}>{asset.updatedAt.slice(0, 10)}</time>,
+    },
+  ]
+}
 
 /** Flat inventory of every asset in one project with filters and pagination. */
 export function UiAssetListPage() {
   const state = uiAssetListPageStateCreate()
-  const columns = columnsCreate(state.projectId)
+  const columns = columnsCreate(state.projectId, state.showPreviews.get)
 
   return (
     <>
@@ -84,22 +120,30 @@ export function UiAssetListPage() {
         }
       />
 
-      <div role="tablist" aria-label="Asset views" class="mb-6 flex gap-2">
-        <For each={uiAssetViewTabs}>
-          {(value) => (
-            <button
-              type="button"
-              role="tab"
-              id={`asset-view-tab-${value}`}
-              aria-selected={state.tabSignal.get() === value}
-              aria-controls={`asset-view-panel-${value}`}
-              class="rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
-              onClick={() => state.tabSignal.set(value)}
-            >
-              {value}
-            </button>
-          )}
-        </For>
+      <div class="mb-6 flex flex-wrap items-center gap-2">
+        <div role="tablist" aria-label="Asset views" class="flex gap-2">
+          <For each={uiAssetViewTabs}>
+            {(value) => (
+              <button
+                type="button"
+                role="tab"
+                id={`asset-view-tab-${value}`}
+                aria-selected={state.tabSignal.get() === value}
+                aria-controls={`asset-view-panel-${value}`}
+                class="rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
+                onClick={() => state.tabSignal.set(value)}
+              >
+                {value}
+              </button>
+            )}
+          </For>
+        </div>
+        <ToggleButton
+          title={state.showPreviews.get() ? "Hide image previews" : "Show image previews"}
+          pressedSignal={state.showPreviews}
+        >
+          {state.showPreviews.get() ? "Hide previews" : "Show previews"}
+        </ToggleButton>
       </div>
 
       {/* The filters are shared by both views so switching tabs keeps the same asset set. */}
@@ -159,7 +203,11 @@ export function UiAssetListPage() {
         tabIndex={0}
       >
         <Show when={state.tabSignal.get() === "structure"}>
-          <UiAssetStructureView projectId={state.projectId()} state={state.structure} />
+          <UiAssetStructureView
+            projectId={state.projectId()}
+            state={state.structure}
+            showPreviews={state.showPreviews.get}
+          />
         </Show>
       </div>
 

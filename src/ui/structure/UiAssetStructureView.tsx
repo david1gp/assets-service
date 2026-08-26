@@ -15,6 +15,7 @@ import { uiStructureUnassignedOptionValue } from "./uiStructureFolderOptionsRead
 export type UiAssetStructureViewProps = {
   projectId: string
   state: ReturnType<typeof uiAssetStructureStateCreate>
+  showPreviews: () => boolean
 }
 
 /** Three-level logical folder board with drag-and-drop and select-based moves. */
@@ -58,6 +59,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                 <UiStructureSection
                   node={node}
                   projectId={p.projectId}
+                  showPreviews={p.showPreviews}
                   pendingAssetIds={p.state.pendingAssetIds()}
                   folderOptions={p.state.folderOptions()}
                   assetMove={p.state.assetMove}
@@ -72,6 +74,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                 label="Unassigned"
                 assets={p.state.tree().unassigned}
                 projectId={p.projectId}
+                showPreviews={p.showPreviews}
                 pendingAssetIds={p.state.pendingAssetIds()}
                 folderOptions={p.state.folderOptions()}
                 assetMove={p.state.assetMove}

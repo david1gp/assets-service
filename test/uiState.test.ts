@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
+import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import { uiAssetPathFormat } from "../src/ui/common/uiAssetPathFormat.js"
 import { uiByteSizeFormat } from "../src/ui/common/uiByteSizeFormat.js"
 import { uiAssetClassOptions } from "../src/ui/pages/uiAssetClassOptions.js"
+import { uiAssetPreviewSourceRead } from "../src/ui/pages/uiAssetPreviewSourceRead.js"
 import { uiSourceRevisionLatestImageRead } from "../src/ui/pages/uiSourceRevisionLatestImageRead.js"
 import { uiPaths } from "../src/ui/routing/uiPaths.js"
 import { uiSearchParamNumberRead } from "../src/ui/search/uiSearchParamNumberRead.js"
@@ -119,5 +121,63 @@ describe("uiSourceRevisionLatestImageRead", () => {
 
   test("returns null without source revisions", () => {
     expect(uiSourceRevisionLatestImageRead([])).toBeNull()
+  })
+})
+
+describe("uiAssetPreviewSourceRead", () => {
+  const assetCreate = (overrides: Record<string, unknown> = {}) =>
+    ({ class: "image", filename: "hero.jpg", ...overrides }) as unknown as AssetListItem
+  const options = {
+    outputVersionUrlCreate: (id: string) => `/outputs/${id}`,
+    sourceRevisionPreviewUrlCreate: (id: string) => `/sources/${id}`,
+  }
+
+  test("chooses the smallest current image output regardless of input order", () => {
+    const large = {
+      definition: { id: "large", kind: "image", key: "1600x900", width: 1600, height: 900 },
+      versions: [{ id: "large-version", current: true, mediaType: "image/webp", version: 1 }],
+    }
+    const small = {
+      definition: { id: "small", kind: "image", key: "800x450", width: 800, height: 450 },
+      versions: [{ id: "small-version", current: true, mediaType: "image/webp", version: 1 }],
+    }
+
+    expect(uiAssetPreviewSourceRead(assetCreate({ outputHistory: [large, small] }), options)).toMatchObject({
+      kind: "optimized",
+      url: "/outputs/small-version",
+      width: 800,
+      height: 450,
+    })
+  })
+
+  test("ignores unsuitable outputs and falls back to the latest original image", () => {
+    const asset = assetCreate({
+      outputHistory: [
+        {
+          definition: { id: "video", kind: "video", key: "source" },
+          versions: [{ id: "video-version", current: true, mediaType: "video/mp4", version: 1 }],
+        },
+        {
+          definition: { id: "stale", kind: "image", key: "small", width: 800, height: 450 },
+          versions: [{ id: "stale-version", current: false, mediaType: "image/webp", version: 1 }],
+        },
+      ],
+      sourceHistory: [
+        { id: "source-2", revision: 2, mediaType: "image/jpeg" },
+        { id: "source-1", revision: 1, mediaType: "image/jpeg" },
+      ],
+    })
+
+    expect(uiAssetPreviewSourceRead(asset, options)).toMatchObject({ kind: "original", url: "/sources/source-2" })
+  })
+
+  test("returns no source for non-image assets or without an image original", () => {
+    expect(uiAssetPreviewSourceRead(assetCreate({ class: "document" }), options)).toBeNull()
+    expect(
+      uiAssetPreviewSourceRead(
+        assetCreate({ sourceHistory: [{ id: "source-1", revision: 1, mediaType: "application/pdf" }] }),
+        options,
+      ),
+    ).toBeNull()
   })
 })

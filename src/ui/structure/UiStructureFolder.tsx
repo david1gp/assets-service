@@ -7,6 +7,7 @@ import type { UiStructureNode } from "./uiStructureNode.js"
 export type UiStructureFolderProps = {
   node: UiStructureNode
   projectId: string
+  showPreviews: () => boolean
   pendingAssetIds: ReadonlySet<string>
   folderOptions: UiStructureFolderOption[]
   assetMove: (assetId: string, folderId: string | null) => void
@@ -25,6 +26,7 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
         label={p.node.folder.name}
         assets={p.node.assets}
         projectId={p.projectId}
+        showPreviews={p.showPreviews}
         pendingAssetIds={p.pendingAssetIds}
         folderOptions={p.folderOptions}
         assetMove={p.assetMove}
@@ -43,6 +45,7 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
                   label={child.folder.name}
                   assets={child.assets}
                   projectId={p.projectId}
+                  showPreviews={p.showPreviews}
                   pendingAssetIds={p.pendingAssetIds}
                   folderOptions={p.folderOptions}
                   assetMove={p.assetMove}
