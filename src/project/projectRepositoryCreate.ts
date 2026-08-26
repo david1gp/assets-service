@@ -122,18 +122,22 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     return bindingRead(record.data)
   }
 
-  const projectsRead = (organizationId: string, zitadelProjectIds: readonly string[]): Result<readonly Project[]> => {
-    if (zitadelProjectIds.length === 0) return { success: true, data: [] }
+  const projectsRead = (
+    organizationId: string,
+    zitadelProjectIds: readonly string[],
+    organizationAdmin = false,
+  ): Result<readonly Project[]> => {
+    if (!organizationAdmin && zitadelProjectIds.length === 0) return { success: true, data: [] }
     try {
+      const projectFilter = organizationAdmin
+        ? undefined
+        : inArray(projectBindingTable.zitadelProjectId, [...zitadelProjectIds])
       const records = db
         .select({ project: projectTable })
         .from(projectTable)
         .innerJoin(projectBindingTable, eq(projectBindingTable.projectId, projectTable.id))
         .where(
-          and(
-            eq(projectTable.organizationId, organizationId),
-            inArray(projectBindingTable.zitadelProjectId, [...zitadelProjectIds]),
-          ),
+          and(eq(projectTable.organizationId, organizationId), ...(projectFilter === undefined ? [] : [projectFilter])),
         )
         .orderBy(asc(projectTable.name), asc(projectTable.id))
         .all()

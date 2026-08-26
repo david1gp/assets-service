@@ -94,6 +94,7 @@ export const servicePatPrincipalValidate = async (
   const validated = v.safeParse(authenticatedPrincipalSchema, {
     subjectId: user.output.user.id,
     organizationId: user.output.user.details.resourceOwner,
+    organizationAdmin: false,
     method: "service_account",
     grants,
     issuedAt: now,

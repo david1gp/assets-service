@@ -7,6 +7,14 @@ import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import type { ZitadelOidcClient } from "./zitadelOidcClient.js"
 import { type ZitadelOidcDiscovery, zitadelOidcDiscoverySchema } from "./zitadelOidcDiscoverySchema.js"
+import { zitadelMembershipSearchResponseSchema } from "./zitadelMembershipSearchResponseSchema.js"
+
+const organizationAdministratorRoles = new Set([
+  "ORG_OWNER",
+  "ORG_OWNER_VIEWER",
+  "ORG_PROJECT_MANAGER",
+  "ORG_PROJECT_MANAGER_VIEWER",
+])
 
 type ZitadelOidcClientOptions = {
   config: ZitadelAuthConfig
@@ -107,5 +115,44 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     return { success: true, data: parsed.output }
   }
 
-  return { discoveryRead, authorizationUrlCreate, authorizationCodeExchange }
+  const organizationMembershipRead = async (accessToken: string, organizationId: string): Promise<Result<boolean>> => {
+    const op = "zitadelOrganizationMembershipRead"
+    let membershipsUri: string
+    try {
+      const base = options.config.issuer.endsWith("/") ? options.config.issuer : `${options.config.issuer}/`
+      membershipsUri = new URL("auth/v1/memberships/me/_search", base).toString()
+    } catch (error) {
+      return resultErrorCreate(op, "The configured issuer URL was invalid", error)
+    }
+    let response: Response
+    try {
+      response = await fetcher(membershipsUri, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ queries: [{ orgQuery: { orgId: organizationId } }] }),
+      })
+    } catch (error) {
+      return resultErrorCreate(op, "Unable to reach the Zitadel membership endpoint", error, { retryable: true })
+    }
+    if (!response.ok)
+      return resultErrorCreate(op, "The Zitadel membership lookup failed", undefined, {
+        retryable: response.status === 429 || response.status >= 500,
+      })
+    const body = await responseBodyRead(response, op)
+    if (!body.success) return body
+    const parsed = v.safeParse(zitadelMembershipSearchResponseSchema, body.data)
+    if (!parsed.success) return resultErrorCreate(op, "The Zitadel membership response was invalid")
+    const organizationAdmin = parsed.output.result.some(
+      (membership) =>
+        membership.orgId === organizationId &&
+        membership.roles.some((role) => organizationAdministratorRoles.has(role)),
+    )
+    return { success: true, data: organizationAdmin }
+  }
+
+  return { discoveryRead, authorizationUrlCreate, authorizationCodeExchange, organizationMembershipRead }
 }

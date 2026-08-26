@@ -317,6 +317,7 @@ const optionsCreate = (role: "assets.uploader" | "assets.admin", received: Recei
           success: true as const,
           data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
         }),
+        organizationMembershipRead: async () => ({ success: true as const, data: false }),
       },
       jwksClient: { keysRead: async () => ({ success: true as const, data: [] }) },
       serviceBearer: undefined,
@@ -339,6 +340,7 @@ const sessionCreate = async (options: ApiAppOptions, role: "assets.uploader" | "
     principal: {
       subjectId: "actor-1",
       organizationId: "org-1",
+      organizationAdmin: false,
       method: "human_session",
       grants: [{ projectId: "zitadel-1", roles: [role] }],
       issuedAt: now - 60,

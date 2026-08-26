@@ -19,6 +19,7 @@ export const projectAuthorizationCheck = (
     return resultErrorCreate(op, "The organization grant was invalid")
   if (binding.serviceProjectId !== serviceProjectId)
     return resultErrorCreate(op, "The service project binding was invalid")
+  if (principal.method === "human_session" && principal.organizationAdmin) return { success: true, data: true }
   const grant = principal.grants.find((candidate) => candidate.projectId === binding.zitadelProjectId)
   if (!grant) return resultErrorCreate(op, "The Zitadel project grant was missing")
   if (requiredRole === "assets.admin" && !grant.roles.includes("assets.admin")) {

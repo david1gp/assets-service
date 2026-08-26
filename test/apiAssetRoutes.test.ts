@@ -229,6 +229,7 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
       success: true as const,
       data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
     }),
+    organizationMembershipRead: async () => ({ success: true as const, data: false }),
   }
   return {
     authentication: {
@@ -254,6 +255,7 @@ const sessionCookieRead = async (options: ApiAppOptions, role: "assets.uploader"
     principal: {
       subjectId: "human-1",
       organizationId: "org-1",
+      organizationAdmin: false,
       method: "human_session",
       grants: [{ projectId: "zitadel-1", roles: [role] }],
       issuedAt: now - 60,

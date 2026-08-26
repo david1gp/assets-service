@@ -8,6 +8,7 @@ import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
+import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
 
@@ -119,6 +120,53 @@ describe("projectRepository.projectSettingsWrite", () => {
     const { connection, repository } = await repositoryCreate(databasePath)
     try {
       expect(repository.projectSettingsWrite("missing", update)).toEqual({ success: true, data: null })
+    } finally {
+      databaseClose(connection)
+      await rm(databasePath, { force: true })
+      await rm(`${databasePath}-wal`, { force: true })
+      await rm(`${databasePath}-shm`, { force: true })
+    }
+  })
+
+  test("lists all projects in an organization only for an organization administrator", async () => {
+    const databasePath = databasePathCreate()
+    const { connection, repository } = await repositoryCreate(databasePath)
+    try {
+      databaseRecordInsert(connection.db, projectTable, {
+        id: "project-2",
+        organizationId: "org-1",
+        name: "Second project",
+        slug: "second-project",
+        defaultEnvironment: "development",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+      databaseRecordInsert(connection.db, projectBindingTable, {
+        id: "binding-1",
+        projectId: "project-1",
+        organizationId: "org-1",
+        zitadelProjectId: "zitadel-1",
+        serviceProjectId: "service-project-1",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+      databaseRecordInsert(connection.db, projectBindingTable, {
+        id: "binding-2",
+        projectId: "project-2",
+        organizationId: "org-1",
+        zitadelProjectId: "zitadel-2",
+        serviceProjectId: "service-project-2",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+
+      const regular = repository.projectsRead("org-1", ["zitadel-1"])
+      const administrator = repository.projectsRead("org-1", [], true)
+      expect(regular.success && regular.data.map((project) => project.id)).toEqual(["project-1"])
+      expect(administrator.success && administrator.data.map((project) => project.id)).toEqual([
+        "project-1",
+        "project-2",
+      ])
     } finally {
       databaseClose(connection)
       await rm(databasePath, { force: true })

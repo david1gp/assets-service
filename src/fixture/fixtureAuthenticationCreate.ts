@@ -48,6 +48,7 @@ export const fixtureAuthenticationCreate = (options: {
       principal: {
         subjectId: options.subjectId,
         organizationId: config.organizationId,
+        organizationAdmin: false,
         method: "human_session",
         grants: [{ projectId: options.projectId, roles: ["assets.uploader", "assets.admin"] }],
         issuedAt,
@@ -67,6 +68,8 @@ export const fixtureAuthenticationCreate = (options: {
       resultErrorCreate("fixtureAuthorizationUrlCreate", "The fixture server has no identity provider"),
     authorizationCodeExchange: async () =>
       resultErrorCreate("fixtureAuthorizationCodeExchange", "The fixture server has no identity provider"),
+    organizationMembershipRead: async () =>
+      resultErrorCreate("fixtureOrganizationMembershipRead", "The fixture server has no identity provider"),
   }
   const jwksClient = {
     keysRead: async () => resultErrorCreate("fixtureJwksKeysRead", "The fixture server has no identity provider"),

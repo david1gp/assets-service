@@ -429,6 +429,7 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     const projects = options.projectRepository.projectsRead(
       authentication.principal.organizationId,
       authentication.principal.grants.map((grant) => grant.projectId),
+      authentication.principal.method === "human_session" && authentication.principal.organizationAdmin,
     )
     if (!projects.success) return failureFromRepositoryCreate(context)
     const search = parsedQuery.output.search?.toLocaleLowerCase()

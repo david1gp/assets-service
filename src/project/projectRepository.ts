@@ -7,7 +7,11 @@ import type { ProjectSettings } from "./projectSettingsSchema.js"
 import type { ProjectSettingsUpdate } from "./projectSettingsUpdateSchema.js"
 
 export type ProjectRepository = {
-  projectsRead: (organizationId: string, zitadelProjectIds: readonly string[]) => Result<readonly Project[]>
+  projectsRead: (
+    organizationId: string,
+    zitadelProjectIds: readonly string[],
+    organizationAdmin?: boolean,
+  ) => Result<readonly Project[]>
   projectRead: (projectIdentifier: string) => Result<Project | null>
   projectBindingRead: (projectIdentifier: string) => Result<ProjectBinding | null>
   environmentsRead: (projectId: string) => Result<readonly Environment[]>

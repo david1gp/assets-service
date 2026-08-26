@@ -94,16 +94,38 @@ export const humanLoginCallback = async (
     organizationId: options.config.organizationId,
     defaultProjectId: options.config.projectId,
     method: "human_session",
-    requiredProjectId: options.config.projectId,
+    allowMissingOrganizationClaim: true,
     now: options.now,
     clockSkewSeconds: options.config.clockSkewSeconds,
   })
   if (!principal.success) return principal
 
+  const accessToken = await jwtTokenParse(token.data.access_token)
+  if (!accessToken.success) return accessToken
+  const organizationClaimPresent = [
+    accessToken.data.payload["urn:zitadel:iam:org:id"],
+    accessToken.data.payload["urn:zitadel:iam:user:resourceowner:id"],
+    accessToken.data.payload["urn:zitadel:iam:user:resourceowner"],
+    accessToken.data.payload.organization_id,
+    accessToken.data.payload.org_id,
+    accessToken.data.payload.organizationId,
+    accessToken.data.payload.orgId,
+  ].some((value) => typeof value === "string" && value.length > 0)
+  const organizationAdmin = await options.oidcClient.organizationMembershipRead(
+    token.data.access_token,
+    options.config.organizationId,
+  )
+  const hasConfiguredProjectGrant = principal.data.grants.some((grant) => grant.projectId === options.config.projectId)
+  if (!organizationAdmin.success && (!organizationClaimPresent || !hasConfiguredProjectGrant)) return organizationAdmin
+  const isOrganizationAdmin = organizationAdmin.success && organizationAdmin.data
+  if (!isOrganizationAdmin && (!organizationClaimPresent || !hasConfiguredProjectGrant)) {
+    return resultErrorCreate(op, "The JWT did not contain the required project grant")
+  }
+
   const now = Math.floor((options.now ?? (() => Date.now()))() / 1000)
   const expiresAt = Math.min(now + options.config.sessionTtlSeconds, principal.data.expiresAt)
   const session: AuthenticationSession = {
-    principal: { ...principal.data, expiresAt },
+    principal: { ...principal.data, organizationAdmin: isOrganizationAdmin, expiresAt },
     createdAt: now,
     expiresAt,
     rotateAt: Math.min(now + options.config.sessionRotationSeconds, expiresAt),

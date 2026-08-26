@@ -6,9 +6,45 @@ import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStat
 import { memorySessionStoreCreate } from "../src/authentication/memorySessionStoreCreate.js"
 import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.js"
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
+import type { ZitadelJwk } from "../src/infrastructure/zitadel/zitadelJwk.js"
+import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
 import type { ProjectRepository } from "../src/project/projectRepository.js"
 
 const now = 1_700_000_000
+
+const base64UrlEncode = (value: Uint8Array | string): string =>
+  Buffer.from(typeof value === "string" ? value : value).toString("base64url")
+
+const keyPairCreate = async () =>
+  crypto.subtle.generateKey(
+    { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  )
+
+const serviceTokenCreate = async (privateKey: CryptoKey): Promise<string> => {
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", kid: "key-1", typ: "JWT" }))
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      iss: authenticationConfig.issuer,
+      aud: [authenticationConfig.audience],
+      sub: "service-account-1",
+      iat: now - 60,
+      exp: now + 600,
+      "urn:zitadel:iam:org:id": "org-1",
+      client_id: "machine-client-1",
+      assets_project_grants: { "zitadel-1": ["assets.uploader"] },
+    }),
+  )
+  const signingInput = `${header}.${payload}`
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(signingInput))
+  return `${signingInput}.${base64UrlEncode(new Uint8Array(signature))}`
+}
+
+const jwkCreate = async (publicKey: CryptoKey): Promise<ZitadelJwk> => {
+  const jwk = await crypto.subtle.exportKey("jwk", publicKey)
+  return { ...(jwk as unknown as ZitadelJwk), kid: "key-1", alg: "RS256", use: "sig" }
+}
 
 const project = {
   id: "project-1",
@@ -103,6 +139,7 @@ const optionsCreate = (): ApiAppOptions => {
       success: true as const,
       data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
     }),
+    organizationMembershipRead: async () => ({ success: true as const, data: false }),
   }
   const jwksClient = { keysRead: async () => ({ success: true as const, data: [] }) }
   const options: ApiAppOptions = {
@@ -121,11 +158,16 @@ const optionsCreate = (): ApiAppOptions => {
   return options
 }
 
-const sessionCreate = async (options: ApiAppOptions, role: "assets.uploader" | "assets.admin" = "assets.uploader") => {
+const sessionCreate = async (
+  options: ApiAppOptions,
+  role: "assets.uploader" | "assets.admin" = "assets.uploader",
+  organizationAdmin = false,
+) => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "human-1",
       organizationId: "org-1",
+      organizationAdmin,
       method: "human_session",
       grants: [{ projectId: "zitadel-1", roles: [role] }],
       issuedAt: now - 60,
@@ -224,6 +266,108 @@ describe("HTTP API", () => {
     expect(adminSettings.status).toBe(200)
   })
 
+  test("passes organization-wide listing only for an organization administrator", async () => {
+    let requestedOrganizationAdmin: boolean | undefined
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
+        requestedOrganizationAdmin = organizationAdmin
+        return { success: true, data: [project] }
+      },
+    }
+    const app = apiAppCreate(options)
+    const administrator = await sessionCreate(options, "assets.uploader", true)
+    const administratorResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: administrator } }),
+    )
+    expect(administratorResponse.status).toBe(200)
+    expect(requestedOrganizationAdmin).toBe(true)
+
+    const regularOptions = optionsCreate()
+    regularOptions.projectRepository = {
+      ...regularOptions.projectRepository,
+      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
+        requestedOrganizationAdmin = organizationAdmin
+        return { success: true, data: [project] }
+      },
+    }
+    const regularApp = apiAppCreate(regularOptions)
+    const regular = await sessionCreate(regularOptions)
+    const regularResponse = await regularApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: regular } }),
+    )
+    expect(regularResponse.status).toBe(200)
+    expect(requestedOrganizationAdmin).toBe(false)
+  })
+
+  test("allows an organization administrator to access an ungranted same-organization project only", async () => {
+    const ungrantedProject = { ...project, id: "project-2", name: "Un granted" }
+    const ungrantedBinding = {
+      ...binding,
+      id: "binding-2",
+      projectId: ungrantedProject.id,
+      zitadelProjectId: "zitadel-2",
+      serviceProjectId: "project-service-2",
+    }
+    const optionsCreateProtected = () => {
+      const options = optionsCreate()
+      const repository = options.projectRepository
+      options.projectRepository = {
+        ...repository,
+        projectRead: (identifier) =>
+          identifier === ungrantedProject.id
+            ? { success: true, data: ungrantedProject }
+            : repository.projectRead(identifier),
+        projectBindingRead: (identifier) =>
+          identifier === ungrantedBinding.serviceProjectId
+            ? { success: true, data: ungrantedBinding }
+            : repository.projectBindingRead(identifier),
+      }
+      return options
+    }
+
+    const administratorOptions = optionsCreateProtected()
+    const administratorApp = apiAppCreate(administratorOptions)
+    const administratorCookie = await sessionCreate(administratorOptions, "assets.uploader", true)
+    const administratorResponse = await administratorApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service-2", {
+        headers: { cookie: administratorCookie },
+      }),
+    )
+    expect(administratorResponse.status).toBe(200)
+
+    const regularOptions = optionsCreateProtected()
+    const regularApp = apiAppCreate(regularOptions)
+    const regularCookie = await sessionCreate(regularOptions)
+    const regularResponse = await regularApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service-2", {
+        headers: { cookie: regularCookie },
+      }),
+    )
+    expect(regularResponse.status).toBe(403)
+
+    const keys = await keyPairCreate()
+    const serviceToken = await serviceTokenCreate(keys.privateKey)
+    const serviceOptions = optionsCreateProtected()
+    serviceOptions.authentication.serviceBearer = {
+      issuer: authenticationConfig.issuer,
+      audience: authenticationConfig.audience,
+      jwksUri: "https://zitadel.example.test/keys",
+      jwksClient: zitadelJwksClientMemoryCreate([await jwkCreate(keys.publicKey)]),
+      organizationId: "org-1",
+      serviceAccountClientId: "machine-client-1",
+      now: () => now * 1000,
+    }
+    const serviceApp = apiAppCreate(serviceOptions)
+    const serviceResponse = await serviceApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service-2", {
+        headers: { authorization: `Bearer ${serviceToken}` },
+      }),
+    )
+    expect(serviceResponse.status).toBe(403)
+  })
+
   test("isolates grants by organization and exact Zitadel project", async () => {
     const principals = [
       { organizationId: "org-1", projectId: "zitadel-other" },
@@ -236,6 +380,7 @@ describe("HTTP API", () => {
         principal: {
           subjectId: `human-isolation-${index}`,
           organizationId: value.organizationId,
+          organizationAdmin: false,
           method: "human_session",
           grants: [{ projectId: value.projectId, roles: ["assets.admin"] }],
           issuedAt: now - 60,
