@@ -56,6 +56,7 @@
     "ops:migrate": "bun run src/entrypoints/database-migrate.ts",
     "ops:doctor": "bun run src/entrypoints/doctor.ts",
     "ops:backup": "bash ./ops/backup.sh",
+    "ops:backup-migrate": "bash ./ops/backup-migrate.sh",
     "ops:restore": "bash ./ops/sqlite-restore.sh",
     "ops:reconcile": "bash ./ops/reconcile.sh",
     "ops:sqlite-snapshot": "bun run src/entrypoints/sqlite-snapshot.ts",

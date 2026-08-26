@@ -24,7 +24,6 @@ const requestCreate = (localSourcePath: string, bytes: Uint8Array) => ({
 
 test("rclone production adapter uses copyto and verifies size and checksum", async () => {
   const bytes = new Uint8Array([1, 2, 3, 4])
-  const backupDate = new Date("2026-08-19T12:34:56.000Z")
   const filePath = `${import.meta.dir}/rclone-source.bin`
   const file = Bun.file(filePath)
   await Bun.write(file, bytes)
@@ -40,16 +39,14 @@ test("rclone production adapter uses copyto and verifies size and checksum", asy
       { rcloneExecutable: "rclone", rcloneRemote: "gdrive_beta", rcloneBackupRoot: "backups", rcloneTimeoutMs: 1000 },
       runner,
     )
-    const result = await adapter(requestCreate(filePath, bytes), { backupDate })
+    const result = await adapter(requestCreate(filePath, bytes))
     expect(result.success).toBe(true)
     expect(commands.map((command) => command[0])).toEqual(["copyto", "size", "copyto"])
     expect(commands[0]).toContain("--immutable")
     expect(commands.flat()).not.toContain("sync")
     expect(commands.flat()).not.toContain("bisync")
     if (result.success) {
-      expect(result.data.remotePath).toBe(
-        "gdrive_beta:backups/20260819T123456000Z/adaptive/assets/website/home/revision-1/hero.png",
-      )
+      expect(result.data.remotePath).toBe("gdrive_beta:backups/adaptive/website/assets/home/revision-1_hero.png")
       expect(result.data.checkResult).toBe("verified")
     }
   } finally {
@@ -59,16 +56,15 @@ test("rclone production adapter uses copyto and verifies size and checksum", asy
 
 test("backupOriginal creates a verified receipt and reuses an existing one", async () => {
   const bytes = new Uint8Array([7, 8])
-  const backupDate = new Date("2026-08-19T12:34:56.000Z")
   const adapter = rcloneBackupAdapterFake({ completedAt: "2026-08-17T10:00:00.000Z" })
   const request = requestCreate("/tmp/source.png", bytes)
-  const first = await backupOriginal(request, adapter, { receiptId: "receipt-1", backupDate })
+  const first = await backupOriginal(request, adapter, { receiptId: "receipt-1" })
   expect(first.success).toBe(true)
   if (!first.success) return
   expect(first.data).toMatchObject({
     id: "receipt-1",
     sourceRevisionId: "revision-1",
-    remotePath: "gdrive_beta:backups/20260819T123456000Z/adaptive/assets/website/home/revision-1/hero.png",
+    remotePath: "gdrive_beta:backups/adaptive/website/assets/home/revision-1_hero.png",
     byteSize: 2,
     sha256: request.expectedSha256,
     checkResult: "verified",
@@ -79,7 +75,6 @@ test("backupOriginal creates a verified receipt and reuses an existing one", asy
     async () => rcloneErrorCreate("unexpected", "copy_failed", "should not run"),
     {
       existingReceipt: first.data,
-      backupDate,
     },
   )
   expect(second).toEqual(first)

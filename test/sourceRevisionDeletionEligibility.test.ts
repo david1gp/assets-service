@@ -169,7 +169,7 @@ test("source revision deletion eligibility proves every current safety condition
           projectId: "project-eligibility",
           sourceRevisionId,
           jobId: "job-eligibility-backup",
-          remotePath: "gdrive_beta:backups/eligibility/hero.jpg",
+          remotePath: "gdrive_beta:backups/eligibility/eligibility/assets/source-eligibility_hero.jpg",
           byteSize: 10,
           sha256: "a".repeat(64),
           checkResult: "verified",

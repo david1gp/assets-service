@@ -707,7 +707,7 @@ export const fixtureDatabaseSeed = (
         projectId: seed.projectId,
         sourceRevisionId: "source-asset-hero",
         jobId: "job-workflow-hero",
-        remotePath: "gdrive_beta:backups/contentoren/asset-hero/1/hero.png",
+        remotePath: "gdrive_beta:backups/fixture-organization/contentoren/assets/home/source-asset-hero_hero.png",
         byteSize: 12_000,
         sha256: hash("1"),
         checkResult: "verified",

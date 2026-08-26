@@ -13,18 +13,20 @@ const input = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-const backupDate = new Date("2026-08-19T12:34:56.000Z")
-
-test("rclone path is pinned to gdrive_beta and has a dated append-only hierarchy", () => {
-  expect(rcloneRemotePathCreate(input(), backupDate)).toEqual({
+test("rclone path is pinned to gdrive_beta and uses the canonical asset hierarchy", () => {
+  expect(rcloneRemotePathCreate(input())).toEqual({
     success: true,
-    data: "gdrive_beta:backups/20260819T123456000Z/adaptive/assets/website/home/hero/revision-1/hero.png",
+    data: "gdrive_beta:backups/adaptive/website/assets/home/hero/revision-1_hero.png",
   })
-  expect(rcloneRemotePathCreate(input({ remote: "beta_gdrive" }), backupDate).success).toBe(false)
+  expect(rcloneRemotePathCreate(input({ logicalFolders: [] }))).toEqual({
+    success: true,
+    data: "gdrive_beta:backups/adaptive/website/assets/revision-1_hero.png",
+  })
+  expect(rcloneRemotePathCreate(input({ remote: "beta_gdrive" })).success).toBe(false)
 })
 
 test("rclone path rejects traversal and alternate remote separators", () => {
-  expect(rcloneRemotePathCreate(input({ logicalFolders: ["../private"] }), backupDate).success).toBe(false)
-  expect(rcloneRemotePathCreate(input({ originalFilename: "nested/file.png" }), backupDate).success).toBe(false)
-  expect(rcloneRemotePathCreate(input({ organizationName: "other:remote" }), backupDate).success).toBe(false)
+  expect(rcloneRemotePathCreate(input({ logicalFolders: ["../private"] })).success).toBe(false)
+  expect(rcloneRemotePathCreate(input({ originalFilename: "nested/file.png" })).success).toBe(false)
+  expect(rcloneRemotePathCreate(input({ organizationName: "other:remote" })).success).toBe(false)
 })

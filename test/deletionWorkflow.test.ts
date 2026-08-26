@@ -176,7 +176,7 @@ const setup = async () => {
     projectId: "project-delete",
     sourceRevisionId: "source-delete",
     jobId: "job-backup-delete",
-    remotePath: "gdrive_beta:backups/delete/assets/delete/home/asset-delete/hero.png",
+    remotePath: "gdrive_beta:backups/delete/delete/assets/home/source-delete_hero.png",
     byteSize: 1,
     sha256: "a".repeat(64),
     checkResult: "verified",
@@ -288,7 +288,7 @@ const setup = async () => {
   await put("private-source", "catalogs/development/old.json")
 
   const backup = rcloneBackupAdapterFake({ completedAt: now })
-  backup.objects.set("gdrive_beta:backups/delete/assets/delete/home/asset-delete/hero.png", {
+  backup.objects.set("gdrive_beta:backups/delete/delete/assets/home/source-delete_hero.png", {
     byteSize: 1,
     sha256: "a".repeat(64),
   })

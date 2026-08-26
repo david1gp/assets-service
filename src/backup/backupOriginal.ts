@@ -29,23 +29,18 @@ export const backupOriginal = async (
     return { success: true, data: existing }
   }
 
-  const backupDate = options.backupDate ?? new Date()
-
-  const path = rcloneRemotePathCreate(
-    {
-      remote: "gdrive_beta",
-      backupRoot: "backups",
-      organizationName: request.organizationName,
-      projectName: request.projectName,
-      logicalFolders: request.logicalFolders,
-      sourceRevisionId: request.sourceRevisionId,
-      originalFilename: request.originalFilename,
-    },
-    backupDate,
-  )
+  const path = rcloneRemotePathCreate({
+    remote: "gdrive_beta",
+    backupRoot: "backups",
+    organizationName: request.organizationName,
+    projectName: request.projectName,
+    logicalFolders: request.logicalFolders,
+    sourceRevisionId: request.sourceRevisionId,
+    originalFilename: request.originalFilename,
+  })
   if (!path.success) return path
 
-  const result = await adapter(request, { ...options, backupDate })
+  const result = await adapter(request, options)
   if (!result.success) return result
   return backupReceiptCreate({
     id: options.receiptId ?? crypto.randomUUID(),

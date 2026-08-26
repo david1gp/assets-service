@@ -11,6 +11,7 @@ const artifactPaths = [
   "ops/systemd/assets-service-worker.service",
   "ops/deploy.sh",
   "ops/backup.sh",
+  "ops/backup-migrate.sh",
   "ops/migrate.sh",
   "ops/doctor.sh",
   "ops/reconcile.sh",
@@ -19,14 +20,13 @@ const artifactPaths = [
   "ops/deploy-contentoren.sh",
 ]
 
-const deploymentOperations = [
+const componentDeploymentOperations = [
   "frontend:build",
   "frontend:upload",
   "frontend:deploy",
   "backend:build",
   "backend:upload",
   "backend:deploy",
-  "deploy",
 ] as const
 
 const contentorenDeployScript = "/home/david/leo/contentoren-server/assets-service/scripts/deploy.sh"
@@ -42,9 +42,12 @@ test("production artifacts define separate API and worker processes with durable
   const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
     scripts?: Record<string, string>
   }
+  const backupMigrationScript = await readFile(join(root, "ops/backup-migrate.sh"), "utf8")
   expect(dockerfile).toContain("COPY package.json bun.lock ./")
   expect(dockerfile).toContain("bun install --frozen-lockfile --production")
   expect(packageJson.scripts?.["ops:reconcile"]).toBe("bash ./ops/reconcile.sh")
+  expect(packageJson.scripts?.["ops:backup-migrate"]).toBe("bash ./ops/backup-migrate.sh")
+  expect(backupMigrationScript).toContain("src/migration/backup-migrate.ts")
   expect(compose).toContain("api:")
   expect(compose).toContain("worker:")
   expect(compose).toContain("assets-service-data:/var/lib/assets-service")
@@ -56,14 +59,15 @@ test("production artifacts define separate API and worker processes with durable
   expect(systemdInstall).toContain('[[ "$line" == WorkingDirectory=* ]]')
 })
 
-test("package scripts expose the canonical split deployment command matrix", async () => {
+test("package scripts expose the component and aggregate deployment commands", async () => {
   const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
     scripts?: Record<string, string>
   }
 
-  for (const operation of deploymentOperations) {
+  for (const operation of componentDeploymentOperations) {
     expect(packageJson.scripts?.[operation]).toBe(`bash ./ops/deploy-contentoren.sh ${operation}`)
   }
+  expect(packageJson.scripts?.deploy).toBe("prodctl deploy")
 })
 
 test("the repository deployment adapter delegates to the Contentoren wrapper", async () => {
@@ -84,7 +88,7 @@ const contentorenWrapperTest = async () => {
   expect(wrapper).toMatch(/frontend_deploy\(\) \{\s+local_build vite:build\s+frontend_upload\s+\}/u)
   expect(wrapper).toMatch(/backend_deploy\(\) \{\s+local_build build\s+backend_upload\s+\}/u)
   expect(wrapper).toMatch(
-    /aggregate_deploy\(\) \{\s+backend_deploy\s+frontend_deploy\s+run_migrations\s+activate_services\s+apply_route\s+health_check\s+/u,
+    /aggregate_deploy\(\) \{\s+detect_prodctl_adoption\s+backend_deploy\s+frontend_deploy\s+run_migrations\s+activate_services\s+if \[\[ "\$PRODCTL_ADOPTED" == 0 \]\]; then\s+apply_legacy_route\s+else\s+log "Skipping legacy tunnel route; prodctl remains sole owner of \$API_HOSTNAME"\s+fi\s+health_check\s+/u,
   )
 
   const frontendUploadStart = wrapper.indexOf("frontend_upload() {")
@@ -124,6 +128,7 @@ test("service scripts are executable and systemd units stay separate", async () 
     "ops/start-worker.sh",
     "ops/deploy.sh",
     "ops/deploy-contentoren.sh",
+    "ops/backup-migrate.sh",
     "ops/doctor.sh",
   ]
   for (const path of scripts) {

@@ -77,7 +77,7 @@ const backup = {
   projectId: "project-1",
   sourceRevisionId: "source-1",
   jobId: "job-1",
-  remotePath: "gdrive_beta:backups/project-1/source-1/hero.jpg",
+  remotePath: "gdrive_beta:backups/org-1/example/assets/home/source-1_hero.jpg",
   byteSize: 10,
   sha256: "a".repeat(64),
   checkResult: "verified" as const,

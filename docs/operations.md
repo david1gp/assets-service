@@ -142,7 +142,8 @@ safe. Handlers reuse immutable objects, backup receipts, output versions, outbox
 ## Backups and recovery
 
 Every accepted source revision needs a verified append-only backup below
-`gdrive_beta:backups/{organization-slug}/assets/{project-slug}` before output publication. The worker uses `rclone
+`gdrive_beta:backups/{organization-slug}/{project-slug}/assets/{logical-folders}/{source-revision-id}_{original-filename}`
+before output publication. Omit the logical-folder segment when there are no logical folders. The worker uses `rclone
 copy` or `copyto`, never `sync` or `bisync`.
 
 ```bash
@@ -154,6 +155,130 @@ bash ops/doctor.sh
 
 Inspect `gdrive_beta`, R2, and the SQLite receipt before retrying a failed publication. A notification or cleanup
 failure does not undo a published catalog. Cleanup is retryable and must not regenerate output or allocate a version.
+
+### Backup remote-path migration
+
+Run this once against the production release that both treats receipt `remotePath` values as opaque and writes the new
+canonical paths. Deploy that compatibility/new-writer release first and confirm its normal health checks:
+
+```bash
+bun run deploy
+```
+
+Run the migration on the production host as the `assets-service` user from the deployed release. Load the actual
+production environment and rclone configuration; these values must not be replaced with development defaults:
+
+```bash
+sudo -iu assets-service
+```
+
+Run the remaining commands in that service-user shell:
+
+```bash
+cd /home/assets-service/current
+set -a
+source /home/assets-service/.config/assets-service/assets-service.env
+source /home/assets-service/.config/assets-service/prodctl-ports.env
+set +a
+export ASSETS_DATABASE_PATH=/home/assets-service/data/assets.sqlite
+export ASSETS_API_PORT="${PRODCTL_PORT_DEFAULT:?prodctl did not provide the default port}"
+export RCLONE_CONFIG=/home/assets-service/.config/rclone/rclone.conf
+test "$ASSETS_DATABASE_PATH" = /home/assets-service/data/assets.sqlite
+test "$ASSETS_API_PORT" = "$PRODCTL_PORT_DEFAULT"
+test "$ASSETS_RCLONE_REMOTE" = gdrive_beta
+test "$ASSETS_RCLONE_BACKUP_ROOT" = backups
+```
+
+The API is published at `https://assets-service.contentoren.de` and listens on `127.0.0.1:$PRODCTL_PORT_DEFAULT`; both the worker and
+migration CLI use `/home/assets-service/data/assets.sqlite` and the `gdrive_beta` remote with backup root `backups`.
+The deployment command applies the release's database migrations; the backup migration command never changes the
+database schema.
+
+Take and retain a verified SQLite snapshot while the API and worker are still running. The snapshot command requires
+these additional environment variables; use the production values and record the JSON `snapshotPath` and `receiptPath`
+it returns:
+
+```bash
+export ASSETS_OPERATIONS_PROJECT_ID=<project-id>
+export ASSETS_OPERATIONS_PREFIX=<operations-prefix>
+export ASSETS_SQLITE_REMOTE_OBJECT_KEY=<snapshot-object-key>
+bun run ops:sqlite-snapshot
+```
+
+After deployment and its health checks have completed, pause only the worker so the API remains available for the
+migration CLI:
+
+```bash
+systemctl --user stop assets-service-worker.service
+```
+
+The migration command is dry-run by default; use the explicit flag for the preflight. It inventories verified receipts,
+checks every canonical destination for existence, byte size, and SHA-256, and makes no copies or receipt changes. A
+missing destination is expected for a receipt whose path still needs migration; it is reported in `missingItems` and is
+still an automation gate. A missing destination for an already-canonical receipt, any mismatched destination, or any
+collision is an unresolved finding. Verification first runs `rclone size`, then downloads the complete remote object
+with `rclone copyto` to temporary disk and hashes every byte locally; it is not metadata-only. Allow for the corresponding
+temporary disk space and network transfer.
+
+The command writes JSON even when the report requires attention and returns exit 1 whenever work (`plannedReceiptIds`),
+skips, missing objects, or collisions remain. For the preflight, inspect the JSON despite that expected exit 1 and
+continue only when collisions are empty and every `missingItems` entry corresponds to planned work:
+
+```bash
+bun run ops:backup-migrate --dry-run
+```
+
+Execute the migration only after reviewing that report. The command copies with immutable semantics, verifies byte size
+and SHA-256, and compare-and-swaps each receipt path. Record the returned `runId`:
+
+```bash
+bun run ops:backup-migrate --execute
+```
+
+An interrupted execution is resumable; use the recorded run id and keep the worker paused:
+
+```bash
+bun run ops:backup-migrate --execute --resume <run-id>
+```
+
+The journal fingerprint is stable after receipt paths are swapped, so an interrupted running run can also continue
+without a run id; a blocked run never unblocks implicitly and requires its recorded `--resume` run id.
+
+Verification is a second read-only dry-run; there is no separate verify flag. It re-inventories the receipts and verifies
+every canonical destination again, including full-download byte-size and SHA-256 checks. Require
+`"status":"planned"`, `"plannedReceiptIds":[]`, `"collisions":[]`, `"missingItems":[]`, `"skippedItems":[]`,
+the expected `totalReceipts`, and exit 0 before resuming the worker. Check the worker is still paused immediately before
+this verification:
+
+```bash
+bun run ops:backup-migrate --dry-run
+```
+
+If verification fails, do not delete either object layout. For a database rollback, stop both services, restore the
+snapshot using the receipt produced above, and then start the API again. Set the exact paths from the saved snapshot
+receipt; the restore command refuses an open database or active WAL sidecars:
+
+```bash
+systemctl --user stop assets-service-api.service assets-service-worker.service
+export ASSETS_SQLITE_SNAPSHOT_PATH=<saved-snapshot-path>
+export ASSETS_SQLITE_RECEIPT_PATH=<saved-receipt-path>
+export ASSETS_SQLITE_RESTORE_TARGET="$ASSETS_DATABASE_PATH"
+bun run ops:sqlite-restore
+systemctl --user start assets-service-api.service
+```
+
+The snapshot restores the old receipt paths while both old and any copied new objects remain. Do not resume the worker
+until the successful migration or rollback state has been verified. Restoring the snapshot also discards unrelated
+SQLite changes made after the snapshot, so use that rollback only under the production maintenance decision. After
+either path is verified, resume the worker with:
+
+```bash
+systemctl --user start assets-service-worker.service
+```
+
+Old-object cleanup is intentionally delayed and is **not automated** by this command or the service. After the validation
+window, review old paths and perform any separately approved deletion operation; never treat migration completion as
+permission to delete them.
 
 ## Deterministic checks
 
