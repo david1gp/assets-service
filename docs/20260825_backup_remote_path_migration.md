@@ -29,9 +29,9 @@ Adopt `backups/{organization}/{project}/assets/{logical-folders}/{source-revisio
 - [x] 4. Update remaining fixtures/docs and run full verification.
 - [x] 5. Move temporary code under `src/migration/` and resolve production-safety audit findings.
 - [x] 6. Verify the finalized implementation and migration procedure.
-- [ ] 7. Deploy the compatible application release to production.
-- [ ] 8. Snapshot production, pause backup writes, dry-run and execute the migration.
-- [ ] 9. Verify production data and service health, then resume normal operation.
+- [x] 7. Deploy the compatible application release to production.
+- [x] 8. Snapshot production, pause backup writes, dry-run and execute the migration.
+- [x] 9. Verify production data and service health, then resume normal operation.
 
 ## Paths
 

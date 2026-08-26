@@ -169,7 +169,7 @@ Run the migration on the production host as the `assets-service` user from the d
 production environment and rclone configuration; these values must not be replaced with development defaults:
 
 ```bash
-sudo -iu assets-service
+sudo -u assets-service -H /bin/bash -lc 'exec /bin/bash'
 ```
 
 Run the remaining commands in that service-user shell:
@@ -180,6 +180,7 @@ set -a
 source /home/assets-service/.config/assets-service/assets-service.env
 source /home/assets-service/.config/assets-service/prodctl-ports.env
 set +a
+export PATH="/home/assets-service/.bun/bin:/home/assets-service/.local/bin:/usr/local/bin:/usr/bin:/bin"
 export ASSETS_DATABASE_PATH=/home/assets-service/data/assets.sqlite
 export ASSETS_API_PORT="${PRODCTL_PORT_DEFAULT:?prodctl did not provide the default port}"
 export RCLONE_CONFIG=/home/assets-service/.config/rclone/rclone.conf
