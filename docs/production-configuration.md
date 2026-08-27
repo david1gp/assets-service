@@ -23,15 +23,15 @@ Replace every `CHANGE_ME` value. Keep `.env`, the R2 secret key, the Zitadel ser
 | `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 S3 credentials. Grant only the required bucket access. |
 | `ASSETS_R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com`. |
 | `ASSETS_R2_BUCKET`, `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Service-level operational/fallback bucket settings. |
-| `ASSETS_R2_DEVELOPMENT_BUCKET`, `ASSETS_R2_PRODUCTION_BUCKET` | Optional service-level operational bucket overrides. |
-| `ASSETS_R2_PUBLIC_BASE_URL`, `ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL`, `ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL` | Optional service-level operational/fallback domains. |
+| `ASSETS_R2_PUBLIC_BASE_URL` | Service-level operational/fallback public domain. |
 | `ASSETS_RCLONE_REMOTE`, `ASSETS_RCLONE_BACKUP_ROOT` | Must remain `gdrive_beta` and `backups`. |
 | `ASSETS_FFPROBE_EXECUTABLE` | Usually `ffprobe`. The production image includes it. |
 
 Project environment R2 bucket names and public domains are configured in project settings through the API and resolved at
 runtime. They do not need startup allowlisting or project-specific entries in the service environment. `r2Prefix` is
 optional: use an empty value for a dedicated bucket and retain a non-empty value to namespace objects in a shared
-bucket. The environment R2 values above remain available for service-level operational tooling and fallbacks.
+bucket. The service-level R2 values above are used for operational tooling and local publication; they do not override
+project environment settings.
 `ASSETS_LEGACY_IMPORT_ROOTS` is an optional comma-separated list of absolute read-only import roots.
 
 ## R2 and rclone

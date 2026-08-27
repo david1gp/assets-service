@@ -11,6 +11,7 @@ Allow project environments to select R2 buckets at runtime without startup allow
 - `r2Prefix` remains compatible with existing data but may be empty for bucket-root storage.
 - Storage namespaces (`public`, `private/source`, `private/staging`) remain mandatory.
 - Existing non-empty prefixes and object locations are not migrated.
+- Environment-specific R2 bucket and public-domain fallback variables are removed; project environment settings are authoritative.
 
 ## Approach
 
@@ -24,7 +25,8 @@ Allow project environments to select R2 buckets at runtime without startup allow
 - [x] 2. Make `r2Prefix` optional at API, domain, and persistence boundaries.
 - [x] 3. Support prefix-free object key construction and deletion/reconciliation behavior.
 - [x] 4. Update project settings UI and operational documentation.
-- [ ] 5. Run focused and full verification, fixing only regressions caused by these changes.
+- [x] 5. Run focused and full verification, fixing only regressions caused by these changes.
+- [x] 6. Remove development/production R2 bucket and public-domain environment fallbacks and verify the cleanup.
 
 ## Paths
 
