@@ -36,6 +36,41 @@ dedicated bucket so objects use the bucket root, and retain a non-empty prefix w
 namespacing. The R2 doctor checks the service-level operational bucket and, when a probe key is configured, its public
 custom domain.
 
+### Remote project settings
+
+Use the remote CLI to administer the project-specific storage binding and public base URL. These settings are
+authoritative for the selected project environment; `ASSETS_R2_ENDPOINT`, credentials, and the service-level bucket
+settings above remain process configuration.
+
+```bash
+bun run assets settings read [--project <id-or-name>] [--environment <development|production>] [--json]
+
+bun run assets settings update [--project <id-or-name>] \
+  --environment <development|production> \
+  [--r2-bucket <bucket>] \
+  [--r2-prefix <prefix>] \
+  [--public-base-url <url>] \
+  [--json]
+```
+
+Settings read and update require authenticated `assets.admin` access to the selected project. `read` defaults to the
+project's default environment; `update` must name `development` or `production` explicitly and must provide at least
+one setting option. The CLI reads the complete settings document, merges only the supplied fields into the selected
+environment, and writes the complete document. Omitted fields and the other environment are preserved. An empty
+prefix is valid and clears an existing prefix; quote it as `--r2-prefix ""`.
+
+For separate development and production buckets, configure each environment independently at the bucket root:
+
+```bash
+bun run assets settings update --project my-site --environment development \
+  --r2-bucket my-site-assets-dev --r2-prefix "" \
+  --public-base-url https://dev-assets.example.com
+
+bun run assets settings update --project my-site --environment production \
+  --r2-bucket my-site-assets-prod --r2-prefix "" \
+  --public-base-url https://assets.example.com
+```
+
 ## Bulk project upload
 
 The remote CLI reads `<root>/assets.config.json` for `assets diff [root]` and `assets upload-all [root]`. `root` defaults

@@ -42,6 +42,43 @@ bun run assets lists --dir src/app/assets
 bun run assets lists --check --dir src/app/assets
 ```
 
+### Remote project settings
+
+Administrators can read or update the R2 binding and public base URL for one project environment through the remote
+service:
+
+```bash
+bun run assets settings read [--project <id-or-name>] [--environment <development|production>] [--json]
+
+bun run assets settings update [--project <id-or-name>] \
+  --environment <development|production> \
+  [--r2-bucket <bucket>] \
+  [--r2-prefix <prefix>] \
+  [--public-base-url <url>] \
+  [--json]
+```
+
+`read` uses the project's default environment when `--environment` is omitted. `update` requires an explicit
+`--environment` and at least one setting option. Both commands require authenticated access with the `assets.admin`
+role for the selected project. `--project` accepts a project ID or name; otherwise normal project resolution applies
+(`ASSETS_PROJECT`, saved CLI configuration, or the sole accessible project).
+
+Updates are targeted merges. The CLI first reads the complete project settings document, changes only the selected
+environment, and writes the complete document back. Omitted fields and all other environments remain unchanged. The
+R2 prefix is optional; pass an explicitly empty value to clear it: `--r2-prefix ""`.
+
+For dedicated buckets, leave the prefix empty so objects use each bucket's root:
+
+```bash
+bun run assets settings update --project my-site --environment development \
+  --r2-bucket my-site-assets-dev --r2-prefix "" \
+  --public-base-url https://dev-assets.example.com
+
+bun run assets settings update --project my-site --environment production \
+  --r2-bucket my-site-assets-prod --r2-prefix "" \
+  --public-base-url https://assets.example.com
+```
+
 ### Bulk project upload
 
 `assets diff [root]` and `assets upload-all [root]` default `root` to `.`. They scan the configured `image`, `video`,
