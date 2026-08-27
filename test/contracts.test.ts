@@ -23,30 +23,12 @@ test("serviceConfigRead validates environment contracts", () => {
     ASSETS_WORKER_ID: "worker-1",
   })
   expect(valid.success).toBe(true)
-  if (valid.success) expect(valid.data.environment).toBe("production")
   if (valid.success) {
-    const separate = serviceConfigRead({
-      ASSETS_ENVIRONMENT: "production",
-      ASSETS_API_HOST: "https://api.example.test",
-      ASSETS_API_PORT: "8787",
-      ASSETS_DATABASE_PATH: "./data/assets.sqlite",
-      CLOUDFLARE_ACCOUNT_ID: "account",
-      R2_ACCESS_KEY_ID: "access",
-      R2_SECRET_ACCESS_KEY: "secret",
-      ASSETS_R2_DEVELOPMENT_BUCKET: "assets-development",
-      ASSETS_R2_PRODUCTION_BUCKET: "assets-production",
-      ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL: "https://dev.assets.example.test",
-      ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL: "https://assets.example.test",
-      ASSETS_R2_ENDPOINT: "https://account.r2.cloudflarestorage.com",
-      ASSETS_WORKER_ID: "worker-1",
+    expect(valid.data.environment).toBe("production")
+    expect(serviceConfigR2BindingResolve(valid.data)).toMatchObject({
+      success: true,
+      data: { privateBucket: "assets", publicBucket: "assets", publicBaseUrl: "https://assets.example.test" },
     })
-    expect(separate.success).toBe(true)
-    if (separate.success) {
-      expect(serviceConfigR2BindingResolve(separate.data)).toMatchObject({
-        success: true,
-        data: { privateBucket: "assets-production", publicBucket: "assets-production" },
-      })
-    }
   }
 
   const invalid = serviceConfigRead({ ASSETS_ENVIRONMENT: "staging" })

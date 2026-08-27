@@ -11,17 +11,8 @@ export const serviceConfigR2BindingResolve = (
   const op = "serviceConfigR2BindingResolve"
   if (config.environment !== environment)
     return resultErrorCreate(op, "R2 binding environment did not match service configuration")
-  const environmentBucket = environment === "development" ? config.r2DevelopmentBucket : config.r2ProductionBucket
-  const environmentPublicBaseUrl =
-    environment === "development" ? config.r2DevelopmentPublicBaseUrl : config.r2ProductionPublicBaseUrl
-  const privateBucket = config.r2PrivateBucket ?? environmentBucket ?? config.r2Bucket
-  const publicBucket = config.r2PublicBucket ?? environmentBucket ?? config.r2Bucket
-  const publicBaseUrl = environmentPublicBaseUrl ?? config.r2PublicBaseUrl
-  if (environmentBucket !== undefined && environmentPublicBaseUrl === undefined) {
-    return resultErrorCreate(op, "An environment-specific R2 bucket requires an environment-specific public domain")
-  }
-  if (environmentPublicBaseUrl !== undefined && environmentBucket === undefined) {
-    return resultErrorCreate(op, "An environment-specific public domain requires an environment-specific R2 bucket")
-  }
+  const privateBucket = config.r2PrivateBucket ?? config.r2Bucket
+  const publicBucket = config.r2PublicBucket ?? config.r2Bucket
+  const publicBaseUrl = config.r2PublicBaseUrl
   return { success: true, data: { environment, privateBucket, publicBucket, publicBaseUrl } }
 }

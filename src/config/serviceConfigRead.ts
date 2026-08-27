@@ -6,16 +6,6 @@ import { type ServiceConfig, serviceConfigSchema } from "./serviceConfigSchema.j
 
 export const serviceConfigRead = (environment: NodeJS.ProcessEnv = process.env): Result<ServiceConfig> => {
   const environmentName = environment.ASSETS_ENVIRONMENT
-  const selectedBucket =
-    environment.ASSETS_R2_BUCKET ??
-    (environmentName === "development"
-      ? environment.ASSETS_R2_DEVELOPMENT_BUCKET
-      : environment.ASSETS_R2_PRODUCTION_BUCKET)
-  const selectedPublicBaseUrl =
-    environment.ASSETS_R2_PUBLIC_BASE_URL ??
-    (environmentName === "development"
-      ? environment.ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL
-      : environment.ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL)
   const parsed = v.safeParse(serviceConfigSchema, {
     environment: environmentName,
     apiHost: environment.ASSETS_API_HOST,
@@ -24,21 +14,11 @@ export const serviceConfigRead = (environment: NodeJS.ProcessEnv = process.env):
     r2AccountId: environment.CLOUDFLARE_ACCOUNT_ID,
     r2AccessKeyId: environment.R2_ACCESS_KEY_ID,
     r2SecretAccessKey: environment.R2_SECRET_ACCESS_KEY,
-    r2Bucket: selectedBucket,
+    r2Bucket: environment.ASSETS_R2_BUCKET,
     ...(environment.ASSETS_R2_PRIVATE_BUCKET ? { r2PrivateBucket: environment.ASSETS_R2_PRIVATE_BUCKET } : {}),
     ...(environment.ASSETS_R2_PUBLIC_BUCKET ? { r2PublicBucket: environment.ASSETS_R2_PUBLIC_BUCKET } : {}),
-    ...(environment.ASSETS_R2_DEVELOPMENT_BUCKET
-      ? { r2DevelopmentBucket: environment.ASSETS_R2_DEVELOPMENT_BUCKET }
-      : {}),
-    ...(environment.ASSETS_R2_PRODUCTION_BUCKET ? { r2ProductionBucket: environment.ASSETS_R2_PRODUCTION_BUCKET } : {}),
     r2Endpoint: environment.ASSETS_R2_ENDPOINT,
-    r2PublicBaseUrl: selectedPublicBaseUrl,
-    ...(environment.ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL
-      ? { r2DevelopmentPublicBaseUrl: environment.ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL }
-      : {}),
-    ...(environment.ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL
-      ? { r2ProductionPublicBaseUrl: environment.ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL }
-      : {}),
+    r2PublicBaseUrl: environment.ASSETS_R2_PUBLIC_BASE_URL,
     ...(environment.ASSETS_R2_CUSTOM_DOMAIN_PROBE_KEY
       ? { r2CustomDomainProbeKey: environment.ASSETS_R2_CUSTOM_DOMAIN_PROBE_KEY }
       : {}),

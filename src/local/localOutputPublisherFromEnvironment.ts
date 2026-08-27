@@ -17,10 +17,7 @@ export const localOutputPublisherFromEnvironment = (options: {
     options.env.R2_ACCESS_KEY_ID,
     options.env.R2_SECRET_ACCESS_KEY,
     options.env.ASSETS_R2_ENDPOINT,
-    options.env.ASSETS_R2_BUCKET ??
-      (options.env.ASSETS_ENVIRONMENT === "production"
-        ? options.env.ASSETS_R2_PRODUCTION_BUCKET
-        : options.env.ASSETS_R2_DEVELOPMENT_BUCKET),
+    options.env.ASSETS_R2_BUCKET,
   ]
   const configured = values.some((value) => value !== undefined)
   if (!configured) return { success: true, data: null }
@@ -33,17 +30,8 @@ export const localOutputPublisherFromEnvironment = (options: {
   const environment = v.safeParse(environmentNameSchema, options.env.ASSETS_ENVIRONMENT ?? "development")
   if (!environment.success) return resultErrorCreate("localOutputPublisherConfig", "ASSETS_ENVIRONMENT was invalid")
   const endpoint = options.env.ASSETS_R2_ENDPOINT
-  const bucket =
-    options.env.ASSETS_R2_BUCKET ??
-    (environment.output === "production"
-      ? options.env.ASSETS_R2_PRODUCTION_BUCKET
-      : options.env.ASSETS_R2_DEVELOPMENT_BUCKET)
-  const publicBaseUrl =
-    options.env.ASSETS_R2_PUBLIC_BASE_URL ??
-    (environment.output === "production"
-      ? options.env.ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL
-      : options.env.ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL) ??
-    "https://assets.invalid"
+  const bucket = options.env.ASSETS_R2_BUCKET
+  const publicBaseUrl = options.env.ASSETS_R2_PUBLIC_BASE_URL ?? "https://assets.invalid"
   const bindingValue: StorageBinding = {
     projectId: options.env.ASSETS_PROJECT ?? "assets-local",
     environment: environment.output,

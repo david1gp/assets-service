@@ -17,8 +17,6 @@ const localCliEnvironment = {
   R2_SECRET_ACCESS_KEY: undefined,
   ASSETS_R2_ENDPOINT: undefined,
   ASSETS_R2_BUCKET: undefined,
-  ASSETS_R2_DEVELOPMENT_BUCKET: undefined,
-  ASSETS_R2_PRODUCTION_BUCKET: undefined,
 }
 
 const cliRun = async (root: string, args: readonly string[]) => {
