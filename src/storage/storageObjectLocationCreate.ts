@@ -34,7 +34,11 @@ export const storageObjectLocationCreate = (
     return resultErrorCreate(op, "Storage object key must be a relative path without traversal")
   }
 
-  const objectKey = `${parsedBinding.output.prefix}/${namespaceRoots[parsedNamespace.output]}/${normalizedKey}`
+  const namespaceRoot = namespaceRoots[parsedNamespace.output]
+  const objectKey =
+    parsedBinding.output.prefix.length > 0
+      ? `${parsedBinding.output.prefix}/${namespaceRoot}/${normalizedKey}`
+      : `${namespaceRoot}/${normalizedKey}`
   return {
     success: true,
     data: {

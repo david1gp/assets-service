@@ -15,23 +15,30 @@ Replace every `CHANGE_ME` value. Keep `.env`, the R2 secret key, the Zitadel ser
 
 | Variable | Use |
 | --- | --- |
-| `ASSETS_ENVIRONMENT` | `development` or `production`. Production selects the production R2 bucket and domain. |
+| `ASSETS_ENVIRONMENT` | `development` or `production`. |
 | `ASSETS_API_HOST` | Public HTTPS API URL. Use the same host in the Zitadel redirect URI. |
 | `ASSETS_API_PORT` | Local listener, normally `8787`. |
 | `ASSETS_DATABASE_PATH` | SQLite file. In Compose use `/var/lib/assets-service/assets.sqlite`. |
 | `ASSETS_WORKER_ID` | Stable, unique worker name. |
 | `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 S3 credentials. Grant only the required bucket access. |
 | `ASSETS_R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com`. |
-| `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Buckets used for private source and public output objects. |
-| `ASSETS_R2_PRODUCTION_BUCKET`, `ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL` | Production environment binding. Set both or neither. |
+| `ASSETS_R2_BUCKET`, `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Service-level operational/fallback bucket settings. |
+| `ASSETS_R2_DEVELOPMENT_BUCKET`, `ASSETS_R2_PRODUCTION_BUCKET` | Optional service-level operational bucket overrides. |
+| `ASSETS_R2_PUBLIC_BASE_URL`, `ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL`, `ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL` | Optional service-level operational/fallback domains. |
 | `ASSETS_RCLONE_REMOTE`, `ASSETS_RCLONE_BACKUP_ROOT` | Must remain `gdrive_beta` and `backups`. |
 | `ASSETS_FFPROBE_EXECUTABLE` | Usually `ffprobe`. The production image includes it. |
 
-`ASSETS_R2_PUBLIC_BASE_URL` is the fallback domain. Environment-specific bucket and domain values take precedence. `ASSETS_LEGACY_IMPORT_ROOTS` is an optional comma-separated list of absolute read-only import roots.
+Project environment R2 bucket names and public domains are configured in project settings through the API and resolved at
+runtime. They do not need startup allowlisting or project-specific entries in the service environment. `r2Prefix` is
+optional: use an empty value for a dedicated bucket and retain a non-empty value to namespace objects in a shared
+bucket. The environment R2 values above remain available for service-level operational tooling and fallbacks.
+`ASSETS_LEGACY_IMPORT_ROOTS` is an optional comma-separated list of absolute read-only import roots.
 
 ## R2 and rclone
 
-Create the R2 buckets before starting the service. The API and worker use the R2 endpoint directly. The worker also uses a local rclone configuration with a remote named exactly `gdrive_beta`:
+Provision any service-level operational R2 bucket before starting the service. Project buckets and public domains are
+runtime-managed through project settings/API and do not require startup allowlisting. The API and worker use the R2
+endpoint directly. The worker also uses a local rclone configuration with a remote named exactly `gdrive_beta`:
 
 ```bash
 rclone config

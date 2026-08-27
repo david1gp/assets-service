@@ -18,10 +18,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
     service: "s3",
     region: "auto",
   })
-  const bucketAllowed = (bucket: string): boolean =>
-    (input.allowedBuckets?.includes(bucket) ?? false) ||
-    (input.allowedBuckets === undefined && (input.defaultBucket === undefined || bucket === input.defaultBucket))
-
   return {
     createSignedUploadIntent: async (intentInput) => {
       const op = "r2StorageAdapterCreate"
@@ -30,9 +26,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
       if (!Number.isInteger(intentInput.byteSize) || intentInput.byteSize < 0)
         return resultErrorCreate(op, "Upload byte size must be a non-negative integer")
-      if (!bucketAllowed(intentInput.location.bucket)) {
-        return resultErrorCreate(op, "Storage bucket is not configured for this adapter")
-      }
       try {
         const createdAt = intentInput.now ?? now()
         const expiresAt = new Date(createdAt.getTime() + intentInput.expiresInSeconds * 1000)
@@ -64,8 +57,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
     },
     headObject: async (location) => {
-      if (!bucketAllowed(location.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const response = await request("HEAD", location.bucket, location.objectKey)
       if (!response.success) return response
       if (response.data.status === 404) return { success: true, data: null }
@@ -93,8 +84,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
     },
     readObject: async (location) => {
-      if (!bucketAllowed(location.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const response = await request("GET", location.bucket, location.objectKey)
       if (!response.success) return response
       if (response.data.status === 404) return { success: true, data: null }
@@ -106,8 +95,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
     },
     readObjectStream: async (location) => {
-      if (!bucketAllowed(location.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const response = await request("GET", location.bucket, location.objectKey)
       if (!response.success) return response
       if (response.data.status === 404) return { success: true, data: null }
@@ -118,8 +105,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       const maxKeys = listInput.maxKeys ?? 1000
       if (!Number.isInteger(maxKeys) || maxKeys < 1 || maxKeys > 1000)
         return resultErrorCreate("r2StorageAdapterCreate", "Storage object list size is invalid")
-      if (!bucketAllowed(listInput.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const query = new URLSearchParams({ "list-type": "2", "max-keys": String(maxKeys) })
       if (listInput.prefix !== undefined) query.set("prefix", listInput.prefix)
       if (listInput.continuationToken !== undefined) query.set("continuation-token", listInput.continuationToken)
@@ -138,8 +123,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         const key = storagePublicObjectKeyValidate(putInput.location.key)
         if (!key.success) return key
       }
-      if (!bucketAllowed(putInput.location.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const actualSha256 = await hexDigest(putInput.bytes)
       if (putInput.sha256 !== undefined && putInput.sha256 !== actualSha256)
         return resultErrorCreate("r2StorageAdapterCreate", "Storage object checksum does not match the bytes")
@@ -196,8 +179,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         const key = storagePublicObjectKeyValidate(copyInput.destination.key)
         if (!key.success) return key
       }
-      if (!bucketAllowed(copyInput.source.bucket) || !bucketAllowed(copyInput.destination.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const source = await thisHead(copyInput.source.bucket, copyInput.source.objectKey)
       if (!source.success) return source
       if (source.data === null) return resultErrorCreate("r2StorageAdapterCreate", "Source object is missing")
@@ -252,8 +233,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       }
     },
     deleteObject: async (location) => {
-      if (!bucketAllowed(location.bucket))
-        return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const response = await request("DELETE", location.bucket, location.objectKey)
       if (!response.success) return response
       if (!response.data.ok && response.data.status !== 404)
@@ -261,7 +240,6 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       return { success: true, data: undefined }
     },
     probeCredentials: async (bucket) => {
-      if (!bucketAllowed(bucket)) return resultErrorCreate("r2StorageAdapterCreate", "Storage bucket is not configured")
       const response = await request("HEAD", bucket, "")
       if (!response.success) return response
       if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)

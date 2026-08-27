@@ -43,14 +43,6 @@ export const workerMain = async (): Promise<number> => {
     accessKeyId: config.data.r2AccessKeyId,
     secretAccessKey: config.data.r2SecretAccessKey,
     endpoint: config.data.r2Endpoint,
-    defaultBucket: config.data.r2Bucket,
-    allowedBuckets: [
-      config.data.r2Bucket,
-      config.data.r2PrivateBucket,
-      config.data.r2PublicBucket,
-      config.data.r2DevelopmentBucket,
-      config.data.r2ProductionBucket,
-    ].filter((bucket): bucket is string => bucket !== undefined),
   })
   const registered = assetWorkflowHandlersRegister(handlers, {
     db: connection.data.db,

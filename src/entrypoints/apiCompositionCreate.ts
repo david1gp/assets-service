@@ -41,19 +41,11 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     return stateStore
   }
   const projectRepository = projectRepositoryCreate(connection.data.db)
-  const allowedBuckets = [
-    config.service.r2Bucket,
-    config.service.r2PrivateBucket,
-    config.service.r2PublicBucket,
-    config.service.r2DevelopmentBucket,
-    config.service.r2ProductionBucket,
-  ].filter((bucket): bucket is string => bucket !== undefined)
   const storage = r2StorageAdapterCreate({
     accountId: config.service.r2AccountId,
     accessKeyId: config.service.r2AccessKeyId,
     secretAccessKey: config.service.r2SecretAccessKey,
     endpoint: config.service.r2Endpoint,
-    allowedBuckets,
   })
   const assetApiRepository = assetApiRepositoryCreate(connection.data.db)
   const uploadApiRepository = uploadApiRepositoryCreate(connection.data.db, storage)

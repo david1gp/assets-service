@@ -117,7 +117,10 @@ async function existingReceiptRead(input: SqliteSnapshotCreateInput): Promise<Re
     if (
       parsed.output.databasePath !== input.databasePath ||
       parsed.output.snapshotPath !== input.snapshotPath ||
-      parsed.output.remoteObjectKey !== `${input.binding.prefix}/private/source/${input.remoteObjectKey}`
+      parsed.output.remoteObjectKey !==
+        (input.binding.prefix.length > 0
+          ? `${input.binding.prefix}/private/source/${input.remoteObjectKey}`
+          : `private/source/${input.remoteObjectKey}`)
     )
       return { success: true, data: null }
     const snapshot = Bun.file(input.snapshotPath)
@@ -161,7 +164,7 @@ async function remoteSnapshotVerify(
   binding: StorageBinding,
   receipt: SqliteSnapshotReceipt,
 ): Promise<Result<null>> {
-  const keyPrefix = `${binding.prefix}/private/source/`
+  const keyPrefix = binding.prefix.length > 0 ? `${binding.prefix}/private/source/` : "private/source/"
   if (!receipt.remoteObjectKey.startsWith(keyPrefix))
     return resultErrorCreate(
       "sqliteSnapshotRemoteVerify",

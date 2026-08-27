@@ -395,7 +395,7 @@ function deletionLocationRead(
 function storageKeyRead(namespace: string, prefix: string, objectKey: string): string {
   const root =
     namespace === "private-staging" ? "private/staging" : namespace === "private-source" ? "private/source" : "public"
-  const fullPrefix = `${prefix}/${root}/`
+  const fullPrefix = prefix.length > 0 ? `${prefix}/${root}/` : `${root}/`
   return objectKey.startsWith(fullPrefix) ? objectKey.slice(fullPrefix.length) : objectKey
 }
 

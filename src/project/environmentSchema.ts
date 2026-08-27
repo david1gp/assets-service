@@ -9,7 +9,7 @@ export const environmentSchema = v.strictObject({
   projectId: idSchema,
   name: environmentNameSchema,
   r2Bucket: v.pipe(v.string(), v.minLength(1)),
-  r2Prefix: v.pipe(v.string(), v.minLength(1)),
+  r2Prefix: v.optional(v.string(), ""),
   publicBaseUrl: v.pipe(v.string(), v.url()),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,

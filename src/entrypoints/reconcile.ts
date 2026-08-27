@@ -25,14 +25,6 @@ export const reconcileMain = async (): Promise<number> => {
     accessKeyId: config.data.r2AccessKeyId,
     secretAccessKey: config.data.r2SecretAccessKey,
     endpoint: config.data.r2Endpoint,
-    defaultBucket: config.data.r2Bucket,
-    allowedBuckets: [
-      config.data.r2Bucket,
-      config.data.r2PrivateBucket,
-      config.data.r2PublicBucket,
-      config.data.r2DevelopmentBucket,
-      config.data.r2ProductionBucket,
-    ].filter((bucket): bucket is string => bucket !== undefined),
   })
   const service = cleanupServiceCreate({ db: opened.data.db, storage, databasePath: config.data.databasePath })
   const planPath = process.env.ASSETS_RECONCILIATION_PLAN_PATH ?? ""

@@ -56,6 +56,60 @@ describe("storage adapters", () => {
     })
   })
 
+  test("resolves a binding with an empty prefix", () => {
+    const binding = storageBindingResolve({ ...environment, r2Prefix: "" })
+    expect(binding).toMatchObject({ success: true, data: { prefix: "" } })
+  })
+
+  test("uses bucket-root namespace keys for empty-prefix storage operations", async () => {
+    const binding = storageBindingResolve({ ...environment, r2Prefix: "" })
+    expect(binding.success).toBe(true)
+    if (!binding.success) return
+    const staging = storageObjectLocationCreate(binding.data, "private-staging", "uploads/empty-prefix")
+    const source = storageObjectLocationCreate(binding.data, "private-source", "sources/empty-prefix/source.png")
+    const publicOutput = storageObjectLocationCreate(binding.data, "public-output", "images/empty-prefix/hero_v1.png")
+    expect(staging).toMatchObject({ success: true, data: { objectKey: "private/staging/uploads/empty-prefix" } })
+    expect(source).toMatchObject({
+      success: true,
+      data: { objectKey: "private/source/sources/empty-prefix/source.png" },
+    })
+    expect(publicOutput).toMatchObject({ success: true, data: { objectKey: "public/images/empty-prefix/hero_v1.png" } })
+    if (!staging.success || !source.success || !publicOutput.success) return
+
+    const adapter = memoryStorageAdapterCreate()
+    expect(
+      await storagePutImmutable(adapter, { location: staging.data, bytes: png, mediaType: "image/png" }),
+    ).toMatchObject({
+      success: true,
+    })
+    expect(
+      await storagePutImmutable(adapter, { location: source.data, bytes: png, mediaType: "image/png" }),
+    ).toMatchObject({
+      success: true,
+    })
+    expect(await adapter.readObject(source.data)).toEqual({ success: true, data: png })
+    expect(await storageCopyImmutable(adapter, { source: source.data, destination: publicOutput.data })).toMatchObject({
+      success: true,
+    })
+    expect(await adapter.listObjects?.({ bucket: binding.data.bucket })).toMatchObject({
+      success: true,
+      data: {
+        objects: [
+          { key: "private/source/sources/empty-prefix/source.png" },
+          { key: "private/staging/uploads/empty-prefix" },
+          { key: "public/images/empty-prefix/hero_v1.png" },
+        ],
+      },
+    })
+    await adapter.deleteObject(staging.data)
+    await adapter.deleteObject(source.data)
+    await adapter.deleteObject(publicOutput.data)
+    expect(await adapter.listObjects?.({ bucket: binding.data.bucket })).toMatchObject({
+      success: true,
+      data: { objects: [] },
+    })
+  })
+
   test("verifies size, checksum, and detected media type", async () => {
     const binding = storageBindingResolve(environment)
     if (!binding.success) return
@@ -168,14 +222,13 @@ describe("storage adapters", () => {
     })
   })
 
-  test("signs an exact R2 key and probes configured services", async () => {
+  test("signs runtime-selected R2 buckets and probes them", async () => {
     const requests: Request[] = []
     const adapter = r2StorageAdapterCreate({
       accountId: "account",
       accessKeyId: "access",
       secretAccessKey: "secret",
       endpoint: "https://account.r2.cloudflarestorage.com",
-      defaultBucket: "assets-development",
       now: () => new Date("2026-08-17T12:00:00.000Z"),
       fetchImplementation: async (request) => {
         const requestUrl = request instanceof Request ? request.url : request.toString()
@@ -185,10 +238,11 @@ describe("storage adapters", () => {
     })
     const binding = storageBindingResolve(environment)
     if (!binding.success) return
-    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/exact")
+    const runtimeBinding = { ...binding.data, bucket: "project-configured-bucket" }
+    const location = storageObjectLocationCreate(runtimeBinding, "private-staging", "uploads/exact")
     if (!location.success) return
     const intent = await storageUploadIntentCreate(adapter, {
-      binding: binding.data,
+      binding: runtimeBinding,
       uploadId: "exact",
       byteSize: png.byteLength,
       mediaType: "image/png",
@@ -196,9 +250,9 @@ describe("storage adapters", () => {
     })
     expect(intent).toMatchObject({ success: true, data: { method: "PUT", key: location.data.objectKey } })
     if (!intent.success) return
-    expect(new URL(intent.data.url).pathname).toBe(`/${environment.r2Bucket}/${location.data.objectKey}`)
+    expect(new URL(intent.data.url).pathname).toBe(`/project-configured-bucket/${location.data.objectKey}`)
     expect(new URL(intent.data.url).searchParams.get("X-Amz-Expires")).toBe("600")
-    expect((await adapter.probeCredentials(environment.r2Bucket)).success).toBe(true)
+    expect((await adapter.probeCredentials(runtimeBinding.bucket)).success).toBe(true)
     expect(requests).toHaveLength(1)
   })
 
@@ -210,7 +264,6 @@ describe("storage adapters", () => {
       accessKeyId: "access",
       secretAccessKey: "secret",
       endpoint: "https://account.r2.cloudflarestorage.com",
-      defaultBucket: "assets-development",
       now: () => new Date("2026-08-17T12:00:00.000Z"),
       fetchImplementation: async (_url, init) => {
         const method = init?.method ?? "GET"
@@ -250,7 +303,6 @@ describe("storage adapters", () => {
       accessKeyId: "access",
       secretAccessKey: "secret",
       endpoint: "https://account.r2.cloudflarestorage.com",
-      defaultBucket: "assets-development",
       now: () => new Date("2026-08-17T12:00:00.000Z"),
       fetchImplementation: async (_url, init) => {
         const method = init?.method ?? "GET"

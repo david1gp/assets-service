@@ -115,15 +115,20 @@ export function UiProjectSettingsPage() {
                         />
                       </div>
                       <div>
-                        <Label for={`settings-${environment.name}-prefix`}>Object key prefix</Label>
+                        <Label for={`settings-${environment.name}-prefix`}>Object key prefix (optional)</Label>
                         <Input
                           id={`settings-${environment.name}-prefix`}
                           value={environment.r2Prefix}
+                          placeholder="Leave empty for dedicated bucket"
+                          aria-describedby={`settings-${environment.name}-prefix-hint`}
                           disabled={state.isSaving()}
                           onInput={(event) =>
                             state.environmentSet(environment.name, "r2Prefix", event.currentTarget.value)
                           }
                         />
+                        <p id={`settings-${environment.name}-prefix-hint`} class="mt-1 text-xs text-muted-foreground">
+                          Leave empty for a dedicated bucket. Set a prefix only to namespace shared buckets.
+                        </p>
                       </div>
                       <div>
                         <Label for={`settings-${environment.name}-url`}>Public base URL</Label>

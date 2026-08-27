@@ -59,8 +59,6 @@ export const localOutputPublisherFromEnvironment = (options: {
     accessKeyId: options.env.R2_ACCESS_KEY_ID as string,
     secretAccessKey: options.env.R2_SECRET_ACCESS_KEY as string,
     endpoint: endpoint as string,
-    defaultBucket: binding.output.bucket,
-    allowedBuckets: [binding.output.bucket],
     fetchImplementation: options.fetcher,
   })
   return { success: true, data: localOutputPublisherCreate({ adapter, binding: binding.output }) }

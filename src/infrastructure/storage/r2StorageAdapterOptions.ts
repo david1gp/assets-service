@@ -3,8 +3,6 @@ export type R2StorageAdapterOptions = {
   accessKeyId: string
   secretAccessKey: string
   endpoint: string
-  defaultBucket?: string
-  allowedBuckets?: readonly string[]
   fetchImplementation?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>
   now?: () => Date
   timeoutMs?: number

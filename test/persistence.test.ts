@@ -107,6 +107,18 @@ describe("SQLite persistence", () => {
       })
       expect(environment.success).toBe(true)
 
+      const emptyPrefixEnvironment = databaseRecordInsert(opened.data.db, environmentTable, {
+        id: "environment-empty-prefix",
+        projectId: "project-1",
+        name: "production",
+        r2Bucket: "assets-prod",
+        r2Prefix: "",
+        publicBaseUrl: "https://assets.example.test",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+      expect(emptyPrefixEnvironment.success).toBe(true)
+
       const rolledBack = databaseTransactionRun(opened.data.db, (transaction) => {
         const inserted = databaseRecordInsert(transaction, organizationTable, {
           id: "org-rollback",

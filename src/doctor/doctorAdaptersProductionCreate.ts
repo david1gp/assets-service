@@ -36,11 +36,6 @@ export const doctorAdaptersProductionCreate = (options: DoctorAdaptersProduction
       accessKeyId: options.config.r2AccessKeyId,
       secretAccessKey: options.config.r2SecretAccessKey,
       endpoint: options.config.r2Endpoint,
-      defaultBucket: options.config.r2PrivateBucket ?? options.config.r2Bucket,
-      allowedBuckets: [
-        options.config.r2PrivateBucket ?? options.config.r2Bucket,
-        options.config.r2PublicBucket ?? options.config.r2PrivateBucket ?? options.config.r2Bucket,
-      ],
     })
   const adapters: DoctorCheckAdapters = {
     r2: r2DoctorCheckCreate({ config: options.config, adapter: storageAdapter }),

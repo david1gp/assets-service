@@ -6,7 +6,7 @@ export const storageBindingSchema = v.strictObject({
   projectId: v.pipe(v.string(), v.minLength(1)),
   environment: environmentNameSchema,
   bucket: v.pipe(v.string(), v.minLength(1)),
-  prefix: v.pipe(v.string(), v.minLength(1)),
+  prefix: v.optional(v.string(), ""),
   publicBaseUrl: v.pipe(v.string(), v.url()),
 })
 

@@ -16,11 +16,11 @@ export const storageBindingResolve = (
 
   const prefix = parsed.output.r2Prefix.replace(/^\/+|\/+$/g, "")
   if (
-    prefix.length === 0 ||
-    prefix.startsWith("/") ||
-    prefix.includes("\\") ||
-    /\p{Cc}/u.test(prefix) ||
-    prefix.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")
+    prefix.length > 0 &&
+    (prefix.startsWith("/") ||
+      prefix.includes("\\") ||
+      /\p{Cc}/u.test(prefix) ||
+      prefix.split("/").some((segment) => segment.length === 0 || segment === "." || segment === ".."))
   ) {
     return resultErrorCreate(op, "R2 prefix must be a relative, non-empty prefix")
   }

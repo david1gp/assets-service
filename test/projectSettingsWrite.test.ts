@@ -22,7 +22,7 @@ const update = {
     {
       name: "development" as const,
       r2Bucket: "assets-development",
-      r2Prefix: "renamed-service",
+      r2Prefix: "",
       publicBaseUrl: "https://dev.example.test",
     },
     {
@@ -87,6 +87,9 @@ describe("projectRepository.projectSettingsWrite", () => {
       ])
       const development = written.data.environments.find((environment) => environment.name === "development")
       expect(development?.r2Bucket).toBe("assets-development")
+      expect(development?.r2Prefix).toBe("")
+      const production = written.data.environments.find((environment) => environment.name === "production")
+      expect(production?.r2Prefix).toBe("renamed-service")
     } finally {
       databaseClose(connection)
       await rm(databasePath, { force: true })

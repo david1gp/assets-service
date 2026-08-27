@@ -8,6 +8,10 @@ between hosts. SQLite runs in WAL mode. Take snapshots with the service command 
 `serviceConfigRead` reads these variables. Secrets stay in the process environment or the service manager, never in
 CLI arguments, project data, or generated lists.
 
+Project environment R2 bucket names and public domains are runtime-managed through project settings and the API. They
+are not startup allowlist entries. Environment values for R2 below are service-level operational or fallback settings;
+the endpoint and credentials remain environment-configured.
+
 | Variable | Purpose |
 | --- | --- |
 | `ASSETS_ENVIRONMENT` | `development` or `production` |
@@ -17,11 +21,11 @@ CLI arguments, project data, or generated lists.
 | `CLOUDFLARE_ACCOUNT_ID` | R2 account identifier |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 credentials |
 | `ASSETS_R2_ENDPOINT` | S3-compatible R2 endpoint |
-| `ASSETS_R2_BUCKET` | Selected environment bucket |
-| `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Optional private/public bucket split |
-| `ASSETS_R2_DEVELOPMENT_BUCKET`, `ASSETS_R2_PRODUCTION_BUCKET` | Environment bucket overrides |
-| `ASSETS_R2_PUBLIC_BASE_URL` | Selected public custom domain |
-| `ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL`, `ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL` | Environment domain overrides |
+| `ASSETS_R2_BUCKET` | Service-level operational/fallback bucket |
+| `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Optional service-level operational private/public bucket split |
+| `ASSETS_R2_DEVELOPMENT_BUCKET`, `ASSETS_R2_PRODUCTION_BUCKET` | Optional service-level operational bucket overrides |
+| `ASSETS_R2_PUBLIC_BASE_URL` | Service-level operational/fallback public domain |
+| `ASSETS_R2_DEVELOPMENT_PUBLIC_BASE_URL`, `ASSETS_R2_PRODUCTION_PUBLIC_BASE_URL` | Optional service-level operational domain overrides |
 | `ASSETS_R2_CUSTOM_DOMAIN_PROBE_KEY` | Optional immutable object used by `doctor` |
 | `ASSETS_RCLONE_EXECUTABLE`, `ASSETS_RCLONE_TIMEOUT_MS` | rclone process settings |
 | `ASSETS_RCLONE_REMOTE`, `ASSETS_RCLONE_BACKUP_ROOT` | Must be `gdrive_beta` and `backups` |
@@ -29,8 +33,10 @@ CLI arguments, project data, or generated lists.
 | `ASSETS_LEGACY_IMPORT_ROOTS` | Comma-separated, explicitly allowed import roots |
 
 R2 uses separate private staging/source and public output namespaces. Public versioned and hash-named objects must keep
-`public, max-age=31536000, immutable`. Private objects use `no-store`. The R2 doctor checks the configured bucket and,
-when a probe key is configured, the public custom domain.
+`public, max-age=31536000, immutable`. Private objects use `no-store`. `r2Prefix` is optional: leave it empty for a
+dedicated bucket so objects use the bucket root, and retain a non-empty prefix when a shared bucket needs project
+namespacing. The R2 doctor checks the service-level operational bucket and, when a probe key is configured, its public
+custom domain.
 
 ## Bulk project upload
 

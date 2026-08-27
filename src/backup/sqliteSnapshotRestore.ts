@@ -1,8 +1,8 @@
 import { copyFile, mkdir, rename, rm } from "node:fs/promises"
 import { dirname } from "node:path"
 
-import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import { databaseOpenPathRegistry } from "../infrastructure/db/databaseOpenPathRegistry.js"
+import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import type { StorageBinding } from "../storage/storageBindingSchema.js"
@@ -36,7 +36,7 @@ export const sqliteSnapshotRestore = async (input: {
     if (!available) {
       if (input.storage === undefined || input.binding === undefined)
         return resultErrorCreate(op, "SQLite snapshot is missing and no private storage adapter was provided")
-      const keyPrefix = `${input.binding.prefix}/private/source/`
+      const keyPrefix = input.binding.prefix.length > 0 ? `${input.binding.prefix}/private/source/` : "private/source/"
       if (!input.receipt.remoteObjectKey.startsWith(keyPrefix))
         return resultErrorCreate(op, "SQLite receipt remote object is outside the configured private prefix")
       const remoteKey = input.receipt.remoteObjectKey.slice(keyPrefix.length)

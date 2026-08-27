@@ -32,10 +32,6 @@ export const sqliteRestoreMain = async (): Promise<number> => {
     accessKeyId: config.data.r2AccessKeyId,
     secretAccessKey: config.data.r2SecretAccessKey,
     endpoint: config.data.r2Endpoint,
-    defaultBucket: config.data.r2Bucket,
-    allowedBuckets: [config.data.r2Bucket, config.data.r2PrivateBucket].filter(
-      (bucket): bucket is string => bucket !== undefined,
-    ),
   })
   const restored = await sqliteSnapshotRestore({
     receipt: receipt.data,

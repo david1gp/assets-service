@@ -266,6 +266,52 @@ describe("HTTP API", () => {
     expect(adminSettings.status).toBe(200)
   })
 
+  test("normalizes omitted and empty R2 prefixes in settings input", async () => {
+    const options = optionsCreate()
+    const received: string[][] = []
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectSettingsWrite: (identifier, update) => {
+        received.push(update.environments.map((environment) => environment.r2Prefix))
+        return repository.projectSettingsWrite(identifier, update)
+      },
+    }
+    const app = apiAppCreate(options)
+    const cookie = await sessionCreate(options, "assets.admin")
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/settings", {
+        method: "PUT",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Example",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zitadel-1", serviceProjectId: "project-service" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets-development",
+              publicBaseUrl: "https://assets.example.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets-production",
+              r2Prefix: "",
+              publicBaseUrl: "https://assets.example.test",
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(received).toEqual([["", ""]])
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { environments: [{ r2Prefix: "" }, { r2Prefix: "" }] },
+    })
+  })
+
   test("passes organization-wide listing only for an organization administrator", async () => {
     let requestedOrganizationAdmin: boolean | undefined
     const options = optionsCreate()

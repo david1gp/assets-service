@@ -50,7 +50,7 @@ const imageMetadata = {
   aiProvenance: null,
 }
 
-const setup = async () => {
+const setup = async (r2Prefix = "projects/project-delete") => {
   const opened = databaseOpen(":memory:")
   if (!opened.success) throw new Error(opened.errorMessage)
   if (!databaseMigrate(opened.data).success) throw new Error("database migration failed")
@@ -72,7 +72,7 @@ const setup = async () => {
     projectId: "project-delete",
     name: "development",
     r2Bucket: "assets-delete",
-    r2Prefix: "projects/project-delete",
+    r2Prefix,
     publicBaseUrl: "https://assets.example.test",
     createdAt: now,
     updatedAt: now,
@@ -193,7 +193,7 @@ const setup = async () => {
     folder2: null,
     folder3: null,
     integrationNote: "Delete me",
-    stagingObjectKey: "projects/project-delete/private/staging/uploads/upload-delete",
+    stagingObjectKey: `${r2Prefix.length > 0 ? `${r2Prefix}/` : ""}private/staging/uploads/upload-delete`,
     byteSize: 1,
     mediaType: "image/png",
     sha256: "a".repeat(64),
@@ -391,6 +391,34 @@ describe("complete asset deletion", () => {
       expect(deletionOrder[0]).toBe("public-output:images/home/hero_default_v1.png")
       expect(deletionOrder[1]).toBe("private-source:catalogs/development/old.json")
       expect(fixture.backup.invocations.at(-1)?.args[0]).toBe("deletefile")
+    } finally {
+      databaseClose(fixture.opened)
+    }
+  })
+
+  test("deletes asset storage objects from a bucket root", async () => {
+    const fixture = await setup("")
+    const deletedObjectKeys: string[] = []
+    const storage: StorageAdapter = {
+      ...fixture.storageBase,
+      deleteObject: async (location) => {
+        deletedObjectKeys.push(location.objectKey)
+        return fixture.storageBase.deleteObject(location)
+      },
+    }
+    try {
+      await runDeletion(fixture, storage)
+      const state = deletionApiRepositoryCreate(fixture.db).deletionStateRead?.("project-delete", "asset-delete")
+      expect(state).toMatchObject({ success: true, data: { status: "succeeded", pendingRemoteObjects: [] } })
+      expect(deletedObjectKeys).toEqual(
+        expect.arrayContaining([
+          "public/images/home/hero_default_v1.png",
+          "private/source/sources/source-delete/hero.png",
+          "private/source/outputs/version-delete.png",
+          "private/staging/uploads/upload-delete",
+        ]),
+      )
+      expect(deletedObjectKeys.every((key) => !key.startsWith("/"))).toBe(true)
     } finally {
       databaseClose(fixture.opened)
     }

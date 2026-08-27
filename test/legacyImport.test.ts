@@ -3,13 +3,17 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
-import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
-import { backupReceiptTable } from "../src/infrastructure/db/schema/backupReceiptTable.js"
+import { rcloneBackupAdapterFake } from "../src/backup/rcloneBackupAdapterFake.js"
+import { legacyImportExecutorCreate } from "../src/import/legacyImportExecutorCreate.js"
+import { legacyImportPlanCreate } from "../src/import/legacyImportPlanCreate.js"
+import { legacyTransformParse } from "../src/import/legacyTransformParse.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
+import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { backupReceiptTable } from "../src/infrastructure/db/schema/backupReceiptTable.js"
+import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { legacyImportTable } from "../src/infrastructure/db/schema/legacyImportTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
@@ -17,10 +21,6 @@ import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDef
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
-import { rcloneBackupAdapterFake } from "../src/backup/rcloneBackupAdapterFake.js"
-import { legacyImportExecutorCreate } from "../src/import/legacyImportExecutorCreate.js"
-import { legacyImportPlanCreate } from "../src/import/legacyImportPlanCreate.js"
-import { legacyTransformParse } from "../src/import/legacyTransformParse.js"
 import { assetWorkflowHandlersRegister } from "../src/workflow/assetWorkflowHandlersRegister.js"
 import { jobHandlerRegistryCreate } from "../src/workflow/jobHandlerRegistryCreate.js"
 import { workflowEngineCreate } from "../src/workflow/workflowEngineCreate.js"
@@ -89,7 +89,7 @@ const fixtureCreate = async (root: string, conflicting = false): Promise<void> =
   )
 }
 
-const databaseCreate = () => {
+const databaseCreate = (r2Prefix = "project-1") => {
   const opened = databaseOpen(":memory:")
   if (!opened.success) throw new Error(opened.errorMessage)
   const migrated = databaseMigrate(opened.data)
@@ -116,7 +116,7 @@ const databaseCreate = () => {
       projectId: "project-1",
       name: "development",
       r2Bucket: "assets",
-      r2Prefix: "project-1",
+      r2Prefix,
       publicBaseUrl: "https://assets.example.test",
       createdAt: now,
       updatedAt: now,
@@ -201,6 +201,36 @@ describe("legacy import", () => {
       })
       expect(imported).toMatchObject({ success: true, data: { status: "queued", importedCount: 3 } })
       expect(connection.db.select().from(assetTable).all()).toHaveLength(3)
+    } finally {
+      databaseClose(connection)
+      await rm(fixtureRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("writes legacy import source data at bucket-root namespace keys", async () => {
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "assets-service-legacy-import-"))
+    const connection = databaseCreate("")
+    try {
+      await fixtureCreate(fixtureRoot)
+      const storage = memoryStorageAdapterCreate()
+      const executor = legacyImportExecutorCreate({
+        db: connection.db,
+        storage,
+        sourceRoot: fixtureRoot,
+        now: () => new Date(now),
+      })
+      expect(
+        await executor.legacyImportRequestCreate("project-1", "actor-1", {
+          root: fixtureRoot,
+          atomicity: "all_or_nothing",
+        }),
+      ).toMatchObject({ success: true, data: { status: "queued", importedCount: 4, conflicts: [] } })
+      const listed = await storage.listObjects?.({ bucket: "assets" })
+      expect(listed).toMatchObject({ success: true })
+      if (!listed?.success) return
+      expect(listed.data.objects).toHaveLength(9)
+      expect(listed.data.objects.every((object) => object.key.startsWith("private/source/"))).toBe(true)
+      expect(listed.data.objects.some((object) => object.key.startsWith("/"))).toBe(false)
     } finally {
       databaseClose(connection)
       await rm(fixtureRoot, { recursive: true, force: true })

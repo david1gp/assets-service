@@ -320,7 +320,7 @@ async function storageObjectsRead(
         do {
           const page = await storage.listObjects({
             bucket,
-            prefix: binding.data.prefix,
+            ...(binding.data.prefix.length > 0 ? { prefix: binding.data.prefix } : {}),
             continuationToken,
             maxKeys: 1000,
           })
@@ -375,5 +375,6 @@ function relativeObjectKeyRead(
 ): string {
   const root =
     namespace === "private-staging" ? "private/staging" : namespace === "private-source" ? "private/source" : "public"
-  return objectKey.startsWith(`${prefix}/${root}/`) ? objectKey.slice(`${prefix}/${root}/`.length) : objectKey
+  const fullPrefix = prefix.length > 0 ? `${prefix}/${root}/` : `${root}/`
+  return objectKey.startsWith(fullPrefix) ? objectKey.slice(fullPrefix.length) : objectKey
 }
