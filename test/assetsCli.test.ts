@@ -143,6 +143,42 @@ const apiProjectCreate = (input: { id: string; name: string; slug?: string }) =>
   updatedAt: "2026-08-17T00:00:00.000Z",
 })
 
+const apiProjectSettingsCreate = () => ({
+  project: apiProjectCreate({ id: "project-1", name: "Example project" }),
+  organization: null,
+  binding: {
+    id: "binding-1",
+    projectId: "project-1",
+    organizationId: "organization-1",
+    zitadelProjectId: "zitadel-1",
+    serviceProjectId: "service-project-1",
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  },
+  environments: [
+    {
+      id: "environment-development",
+      projectId: "project-1",
+      name: "development" as const,
+      r2Bucket: "assets-development",
+      r2Prefix: "development-prefix",
+      publicBaseUrl: "https://dev.assets.example.test",
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+    {
+      id: "environment-production",
+      projectId: "project-1",
+      name: "production" as const,
+      r2Bucket: "assets-production",
+      r2Prefix: "production-prefix",
+      publicBaseUrl: "https://assets.example.test",
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+  ],
+})
+
 const projectResolutionFetcherCreate = (
   projects: readonly ReturnType<typeof apiProjectCreate>[],
   projectsResponse?: Response,
@@ -209,6 +245,261 @@ test("diff help documents its root and all source directory controls", async () 
       },
       projectResolution: expect.stringContaining("package.json.name"),
     },
+  })
+})
+
+test("settings help documents read, update, and R2 options", async () => {
+  const output: string[] = []
+  const exitCode = await assetsCliMain(["settings", "read", "--help", "--json"], {
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(exitCode).toBe(0)
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: true,
+    data: {
+      commands: expect.arrayContaining([
+        "settings read [--project <id-or-name>] [--environment <development|production>]",
+        "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
+      ]),
+      options: expect.arrayContaining(["--r2-bucket", "--r2-prefix", "--public-base-url"]),
+    },
+  })
+})
+
+test("settings read returns only the selected environment binding", async () => {
+  const output: string[] = []
+  const requests: Request[] = []
+  const settings = apiProjectSettingsCreate()
+  const exitCode = await assetsCliMain(
+    ["settings", "read", "--project", "project-1", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher: async (input, init) => {
+        const request = new Request(input, init)
+        requests.push(request)
+        return envelopeResponseCreate(settings)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(requests.map((request) => ({ method: request.method, path: new URL(request.url).pathname }))).toEqual([
+    { method: "GET", path: "/api/v1/projects/project-1/settings" },
+  ])
+  expect(JSON.parse(output[0] ?? "")).toEqual({
+    ok: true,
+    data: {
+      environment: "production",
+      r2Bucket: "assets-production",
+      r2Prefix: "production-prefix",
+      publicBaseUrl: "https://assets.example.test",
+    },
+  })
+})
+
+test("settings read defaults to the project environment instead of the configured CLI environment", async () => {
+  const output: string[] = []
+  const requests: Request[] = []
+  const settings = apiProjectSettingsCreate()
+  const project = { ...settings.project, defaultEnvironment: "production" as const }
+  const exitCode = await assetsCliMain(["settings", "read", "--project", "project-1", "--json"], {
+    env: cliEnvironment,
+    fetcher: async (input, init) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      return request.url.endsWith("/settings")
+        ? envelopeResponseCreate({ ...settings, project })
+        : envelopeResponseCreate(project)
+    },
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(exitCode).toBe(0)
+  expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+    "/api/v1/projects/project-1",
+    "/api/v1/projects/project-1/settings",
+  ])
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: true,
+    data: {
+      environment: "production",
+      r2Bucket: "assets-production",
+    },
+  })
+})
+
+test("settings update reads and writes a complete merged settings document", async () => {
+  const output: string[] = []
+  const requests: Request[] = []
+  const settings = apiProjectSettingsCreate()
+  let updateBody: unknown
+  const exitCode = await assetsCliMain(
+    [
+      "settings",
+      "update",
+      "--project",
+      "project-1",
+      "--environment",
+      "production",
+      "--r2-bucket",
+      "assets-production-new",
+      "--r2-prefix",
+      "",
+      "--json",
+    ],
+    {
+      env: cliEnvironment,
+      fetcher: async (input, init) => {
+        const request = new Request(input, init)
+        requests.push(request)
+        if (request.method === "GET") return envelopeResponseCreate(settings)
+        const body = JSON.parse(await request.text()) as {
+          environments: Array<{ name: string; r2Bucket: string; r2Prefix: string; publicBaseUrl: string }>
+        }
+        updateBody = body
+        return envelopeResponseCreate({
+          ...settings,
+          environments: settings.environments.map((environment) => ({
+            ...environment,
+            ...(body.environments.find((candidate) => candidate.name === environment.name) ?? {}),
+          })),
+        })
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(requests.map((request) => request.method)).toEqual(["GET", "PUT"])
+  expect(updateBody).toEqual({
+    name: "Example project",
+    defaultEnvironment: "development",
+    binding: { zitadelProjectId: "zitadel-1", serviceProjectId: "service-project-1" },
+    environments: [
+      {
+        name: "development",
+        r2Bucket: "assets-development",
+        r2Prefix: "development-prefix",
+        publicBaseUrl: "https://dev.assets.example.test",
+      },
+      {
+        name: "production",
+        r2Bucket: "assets-production-new",
+        r2Prefix: "",
+        publicBaseUrl: "https://assets.example.test",
+      },
+    ],
+  })
+  expect(JSON.parse(output[0] ?? "")).toEqual({
+    ok: true,
+    data: {
+      environment: "production",
+      r2Bucket: "assets-production-new",
+      r2Prefix: "",
+      publicBaseUrl: "https://assets.example.test",
+    },
+  })
+})
+
+test("settings update requires an explicit environment and at least one field before reaching the API", async () => {
+  let requestCount = 0
+  const fetcher = async () => {
+    requestCount += 1
+    return envelopeResponseCreate(apiProjectSettingsCreate())
+  }
+  const run = async (args: string[]) => {
+    const output: string[] = []
+    const exitCode = await assetsCliMain([...args, "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+    return { exitCode, response: JSON.parse(output[0] ?? "") }
+  }
+
+  await expect(
+    run(["settings", "update", "--project", "project-1", "--r2-prefix", "new-prefix"]),
+  ).resolves.toMatchObject({
+    exitCode: 1,
+    response: { ok: false, error: { message: "Settings update requires --environment" } },
+  })
+  await expect(
+    run(["settings", "update", "--project", "project-1", "--environment", "production"]),
+  ).resolves.toMatchObject({
+    exitCode: 1,
+    response: { ok: false, error: { message: "Settings update requires at least one changed field" } },
+  })
+  expect(requestCount).toBe(0)
+})
+
+test("settings update validates merged fields and does not write invalid settings", async () => {
+  const output: string[] = []
+  const requests: Request[] = []
+  const settings = apiProjectSettingsCreate()
+  const exitCode = await assetsCliMain(
+    [
+      "settings",
+      "update",
+      "--project",
+      "project-1",
+      "--environment",
+      "production",
+      "--public-base-url",
+      "not-a-url",
+      "--json",
+    ],
+    {
+      env: cliEnvironment,
+      fetcher: async (input, init) => {
+        const request = new Request(input, init)
+        requests.push(request)
+        return envelopeResponseCreate(settings)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(requests.map((request) => request.method)).toEqual(["GET"])
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: false,
+    error: { code: "validation_failed", message: "The project settings update was invalid" },
+  })
+})
+
+test("settings read preserves remote API errors", async () => {
+  const output: string[] = []
+  const exitCode = await assetsCliMain(
+    ["settings", "read", "--project", "project-1", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error: { code: "service_unavailable", message: "Settings service unavailable", retryable: true },
+            requestId: "request-settings",
+          }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        ),
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(1)
+  expect(JSON.parse(output[0] ?? "")).toEqual({
+    error: { code: "service_unavailable", message: "Settings service unavailable", retryable: true },
+    ok: false,
+    requestId: "request-settings",
   })
 })
 

@@ -34,6 +34,8 @@ import type { Result } from "../schemas/resultSchema.js"
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import { packageVersion } from "../packageVersion.js"
+import type { ProjectSettings } from "../project/projectSettingsSchema.js"
+import { projectSettingsUpdateSchema, type ProjectSettingsUpdate } from "../project/projectSettingsUpdateSchema.js"
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 
@@ -51,6 +53,8 @@ type CliConfig = {
   project?: string
   environment?: string
 }
+
+type ProjectEnvironmentSelection = "configured" | "project-default"
 
 type CliSession = {
   accessToken: string
@@ -115,6 +119,9 @@ const optionNames = new Set([
   "poll-interval",
   "project",
   "quality",
+  "r2-bucket",
+  "r2-prefix",
+  "public-base-url",
   "search",
   "session",
   "status",
@@ -166,6 +173,8 @@ const commandHelp = {
     "show <asset-key>",
     "outputs list|add|remove|set <asset-key>",
     "metadata set|unset <asset-key>",
+    "settings read [--project <id-or-name>] [--environment <development|production>]",
+    "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
     "move <asset-key> --to <path>",
     "delete <asset-key>",
     "lists [--check] [--dir <directory>]",
@@ -227,6 +236,9 @@ const commandHelp = {
     "--check",
     "--write",
     "--version",
+    "--r2-bucket",
+    "--r2-prefix",
+    "--public-base-url",
   ],
   projectResolution:
     "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project.",
@@ -343,7 +355,7 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "outputs", "metadata"].includes(command) ? positionals.shift() : undefined
+  const subcommand = ["auth", "outputs", "metadata", "settings"].includes(command) ? positionals.shift() : undefined
   return {
     success: true,
     data: { command, ...(subcommand === undefined ? {} : { subcommand }), positionals, options, json },
@@ -572,6 +584,7 @@ const projectAndEnvironmentRead = async (
   parsed: ParsedCommand,
   config: CliConfig,
   projectRoot?: string,
+  environmentSelection: ProjectEnvironmentSelection = "configured",
 ): Promise<Result<{ projectId: string; environment?: string }>> => {
   let projectId = optionRead(parsed, "project") ?? config.project
   if (projectId === undefined) {
@@ -596,7 +609,8 @@ const projectAndEnvironmentRead = async (
       )
     }
   }
-  const selectedEnvironment = optionRead(parsed, "environment") ?? config.environment
+  const selectedEnvironment =
+    optionRead(parsed, "environment") ?? (environmentSelection === "configured" ? config.environment : undefined)
   if (selectedEnvironment !== undefined) {
     const valid = v.safeParse(environmentNameSchema, selectedEnvironment)
     if (!valid.success) return resultFailure("assetsCliEnvironmentRead", "The environment was invalid")
@@ -1240,6 +1254,77 @@ const uploadAllCommandRun = async (
   }
 }
 
+type ProjectSettingsEnvironmentOutput = {
+  environment: string
+  r2Bucket: string
+  r2Prefix: string
+  publicBaseUrl: string
+}
+
+type ProjectSettingsEnvironmentChanges = {
+  r2Bucket?: string
+  r2Prefix?: string
+  publicBaseUrl?: string
+}
+
+const projectSettingsEnvironmentRead = (
+  settings: ProjectSettings,
+  environmentName: string,
+  op: string,
+): Result<ProjectSettingsEnvironmentOutput> => {
+  const environment = settings.environments.find((candidate) => candidate.name === environmentName)
+  if (environment === undefined)
+    return resultFailure(op, `The ${environmentName} environment is not configured for this project`)
+  return {
+    success: true,
+    data: {
+      environment: environment.name,
+      r2Bucket: environment.r2Bucket,
+      r2Prefix: environment.r2Prefix,
+      publicBaseUrl: environment.publicBaseUrl,
+    },
+  }
+}
+
+const projectSettingsUpdateRead = (
+  settings: ProjectSettings,
+  environmentName: string,
+  changes: ProjectSettingsEnvironmentChanges,
+): Result<ProjectSettingsUpdate> => {
+  const selected = projectSettingsEnvironmentRead(settings, environmentName, "assetsCliSettingsUpdate")
+  if (!selected.success) return selected
+  const update = {
+    name: settings.project.name,
+    defaultEnvironment: settings.project.defaultEnvironment,
+    binding:
+      settings.binding === null
+        ? null
+        : {
+            zitadelProjectId: settings.binding.zitadelProjectId,
+            serviceProjectId: settings.binding.serviceProjectId,
+          },
+    environments: settings.environments.map((environment) => ({
+      name: environment.name,
+      r2Bucket:
+        environment.name === environmentName ? (changes.r2Bucket ?? environment.r2Bucket) : environment.r2Bucket,
+      r2Prefix:
+        environment.name === environmentName ? (changes.r2Prefix ?? environment.r2Prefix) : environment.r2Prefix,
+      publicBaseUrl:
+        environment.name === environmentName
+          ? (changes.publicBaseUrl ?? environment.publicBaseUrl)
+          : environment.publicBaseUrl,
+    })),
+  }
+  const parsed = v.safeParse(projectSettingsUpdateSchema, update)
+  if (!parsed.success)
+    return resultFailure(
+      "assetsCliSettingsUpdate",
+      "The project settings update was invalid",
+      v.summarize(parsed.issues),
+    )
+  return { success: true, data: parsed.output }
+}
+
 const commandRun = async (
   parsed: ParsedCommand,
   client: AssetsApiClient,
@@ -1310,6 +1395,51 @@ const commandRun = async (
       result: { success: true, data: { projectId: selected.data.projectId, environment, checks, ok } },
       exitCode: ok ? 0 : 1,
     }
+  }
+
+  if (parsed.command === "settings") {
+    if (parsed.positionals.length !== 0)
+      return { result: resultFailure("assetsCliSettings", "The settings command takes no positional arguments") }
+    if (parsed.subcommand === "read") {
+      const allowed = optionAllowed(parsed, [])
+      if (!allowed.success) return { result: allowed }
+      const selected = await projectAndEnvironmentRead(client, parsed, config, undefined, "project-default")
+      if (!selected.success) return { result: selected }
+      const environment = selected.data.environment
+      if (environment === undefined)
+        return { result: resultFailure("assetsCliSettingsRead", "Settings read requires an environment") }
+      const settings = await client.projectSettingsRead(selected.data.projectId)
+      if (!settings.success) return { result: settings }
+      return { result: projectSettingsEnvironmentRead(settings.data, environment, "assetsCliSettingsRead") }
+    }
+    if (parsed.subcommand === "update") {
+      const allowed = optionAllowed(parsed, ["r2-bucket", "r2-prefix", "public-base-url"])
+      if (!allowed.success) return { result: allowed }
+      const environment = optionRead(parsed, "environment")
+      if (environment === undefined)
+        return { result: resultFailure("assetsCliSettingsUpdate", "Settings update requires --environment") }
+      const changes = {
+        ...(optionRead(parsed, "r2-bucket") === undefined ? {} : { r2Bucket: optionRead(parsed, "r2-bucket") }),
+        ...(optionRead(parsed, "r2-prefix") === undefined ? {} : { r2Prefix: optionRead(parsed, "r2-prefix") }),
+        ...(optionRead(parsed, "public-base-url") === undefined
+          ? {}
+          : { publicBaseUrl: optionRead(parsed, "public-base-url") }),
+      }
+      if (Object.keys(changes).length === 0)
+        return {
+          result: resultFailure("assetsCliSettingsUpdate", "Settings update requires at least one changed field"),
+        }
+      const selected = await projectAndEnvironmentRead(client, parsed, config)
+      if (!selected.success) return { result: selected }
+      const settings = await client.projectSettingsRead(selected.data.projectId)
+      if (!settings.success) return { result: settings }
+      const update = projectSettingsUpdateRead(settings.data, environment, changes)
+      if (!update.success) return { result: update }
+      const written = await client.projectSettingsWrite(selected.data.projectId, update.data)
+      if (!written.success) return { result: written }
+      return { result: projectSettingsEnvironmentRead(written.data, environment, "assetsCliSettingsUpdate") }
+    }
+    return { result: resultFailure("assetsCliSettings", "Use settings read or update") }
   }
 
   if (
@@ -1665,7 +1795,7 @@ const structuredFailureRead = (result: Extract<Result<unknown>, { success: false
   const inferredCode =
     result.op === "assetsCliConfig" || result.op === "assetsCliSessionRead"
       ? "not_configured"
-      : /Parse|Validate|Target|Media|Command|Environment|Project|SourceConfiguration|RootScan|Preflight|Diff/u.test(
+      : /Parse|Validate|Target|Media|Command|Environment|Project|Settings|SourceConfiguration|RootScan|Preflight|Diff/u.test(
             result.op,
           ) || /invalid|requires|must be|missing|outside|did not match/u.test(result.errorMessage)
         ? "validation_failed"
