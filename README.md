@@ -2,7 +2,7 @@
 
 Process and serve site media from one Bun package. Images, video, fonts, and documents go in, sized and hashed files come out.
 
-The service exposes shared contracts for its API, worker, and two CLIs. Media processing and persistence are added behind those contracts.
+The service exposes shared contracts for its API, worker, and remote CLI. Media processing and persistence are added behind those contracts.
 
 ## Install
 
@@ -16,7 +16,6 @@ bun add @adaptive-ds/assets-service
 bun run api      # API process
 bun run worker   # worker process
 bun run assets   # remote CLI
-bun run assets-local # local CLI
 bun run ops:doctor # production integration checks
 bun run ops:migrate # apply SQLite migrations
 bun run ops:backup # create and verify an R2 SQLite snapshot
@@ -131,26 +130,7 @@ from the current working directory's `.env` file when running the CLI. If more t
 identity matches, use `--project <name>` or set `ASSETS_PROJECT`; if none are accessible, verify the API URL, token,
 and access.
 
-## Local CLI
-
-`assets-local` processes the configured project filesystem and never falls back to the remote CLI. It keeps state in
-`.assets-service/state.json` and writes immutable content-hash-named files below `public/`.
-
-```bash
-bun run assets-local --help
-bun run assets-local import .
-bun run assets-local process
-bun run assets-local lists --check
-bun run assets-local references --include src
-bun run assets-local upload ./card.png --path images/500x500_webp/card.png
-```
-
-Use `ASSETS_LOCAL_ROOT`, `ASSETS_LOCAL_STATE_FILE`, and `ASSETS_LOCAL_OUTPUT_DIR` to set
-the local defaults. `assets-local upload` requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `ASSETS_R2_ENDPOINT`, and an R2 bucket. It verifies the immutable output in R2 before
-removing the local source and generated binaries. `assets-local doctor` checks the same endpoint and bucket.
-
-Both CLIs generate `imageList.ts`, `videoList.ts`, and `fontList.ts`, including empty lists. `lists --check` compares
+The remote CLI generates `imageList.ts`, `videoList.ts`, `documentList.ts`, and `fontList.ts`, including empty lists. `lists --check` compares
 exact UTF-8/LF bytes and exits with code 1 when a file differs.
 
 ## Production

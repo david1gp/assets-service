@@ -327,10 +327,7 @@ credentials. Generated lists are UTF-8/LF files and `--check` returns exit code 
 
 ```bash
 bun run assets lists --check --dir src/app/assets
-bun run assets-local lists --check
-bun run assets-local references --include src
 ```
 
-Reference counts are local advisory data. The deletion workflow never reads them. Complete deletion removes current and
-historical service records, catalog entries, manifests, staging/source/output objects, backup objects, and receipts. A
-partial deletion keeps its progress record so a new worker can resume it.
+Complete deletion removes current and historical service records, catalog entries, manifests, staging/source/output
+objects, backup objects, and receipts. A partial deletion keeps its progress record so a new worker can resume it.

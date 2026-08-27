@@ -23,7 +23,7 @@ Add remote CLI commands that compare and upload project assets from `./images`, 
 
 ## Approach
 
-- Extend the document domain from schemas and SQLite constraints through ingestion, passthrough processing, publication, catalogs, generated lists, local fallback parity, and API contracts.
+- Extend the document domain from schemas and SQLite constraints through ingestion, passthrough processing, publication, catalogs, generated lists, and API contracts.
 - Link each output version to its source revision, preserve nullable lineage only for migrated legacy rows, and use a focused API query to compute local-deletion eligibility.
 - Add one shared project source configuration contract, then extract client-side tree scanning, local file fingerprinting, remote manifest loading, comparison, and cleanup guards into bounded CLI modules returning `Result` values.
 - Build both commands on the same comparison model so dry-run, diff, upload selection, JSON output, and deletion decisions cannot diverge.
@@ -33,7 +33,7 @@ Add remote CLI commands that compare and upload project assets from `./images`, 
 
 - [x] 1. Extend core schemas and SQLite constraints for the `document` asset class, with explicit passthrough output definitions and document MIME/extension validation.
 - [x] 2. Add byte-preserving document processing, workflow jobs, publication, and focused workflow tests.
-- [x] 3. Add document catalog entries, generated `documentList`, local fallback and legacy import parity, fixtures, and focused tests.
+- [x] 3. Add document catalog entries, generated `documentList`, legacy import parity, fixtures, and focused tests.
 - [x] 4. Add source-revision lineage to output versions and implement a read-only API/client contract that returns deletion eligibility for an exact current source revision.
 - [x] 5. Add shared project source configuration with the four default directories, per-class changed or disabled paths, CLI overrides, and overlap validation.
 - [x] 6. Implement deterministic configured-root scanning, path mapping, preflight validation, file fingerprinting, remote manifest loading with history, and diff classification as reusable CLI modules.
@@ -55,7 +55,6 @@ Add remote CLI commands that compare and upload project assets from `./images`, 
 - `src/workflow/`
 - `src/output/`
 - `src/catalog/`
-- `src/local/`
 - `src/infrastructure/db/schema/`
 - `drizzle/`
 - `test/assetsCli.test.ts`

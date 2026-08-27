@@ -7,7 +7,7 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 ## Decisions
 
 - Use Bun, TypeScript, Hono, Valibot, Drizzle SQLite/WAL, SolidJS, Vite, and Tailwind v4.
-- Keep API, worker, remote CLI, local CLI, and UI as separate entrypoints over shared contracts.
+- Keep API, worker, remote CLI, and UI as separate entrypoints over shared contracts.
 - Use immutable R2 objects, mandatory `gdrive_beta` backup receipts before publication, deterministic catalogs, and durable SQLite jobs.
 - Preserve image processing and generated-list semantics by reimplementing the required behavior without modifying or importing runtime code from `assets-optimizer`.
 - Keep integrations behind interfaces so tests use local/in-memory adapters and production uses R2, rclone, Zitadel, and Telegram.
@@ -29,7 +29,7 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 - [x] 5. Implement durable workflow/job leasing, ingestion, backup-before-publication, output generation, retries, dependencies, and recovery.
 - [x] 6. Implement HTTP API routes for projects, uploads, assets, outputs, metadata, moves, deletion, jobs, backups, catalogs, imports, and health.
 - [x] 7. Implement complete deletion, legacy import, Telegram outbox delivery, reconciliation, cleanup, and SQLite backup/restore.
-- [x] 8. Implement remote and local CLIs with deterministic envelopes, catalog generation/checking, and local static reference counting.
+- [x] 8. Implement the remote CLI with deterministic envelopes and catalog generation/checking.
 - [x] 9. Complete backend integration, fixture, authorization, idempotency, and failure-ordering tests; document configuration and operations.
 - [x] 10. Implement the SolidJS admin SPA, connect all required flows, and browser-verify responsive/accessibility states.
 - [x] 11. Run the full repository checks and close remaining cross-boundary defects.
@@ -38,7 +38,7 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 
 - `src/schemas`, `src/config`, `src/domain`, `src/infrastructure`
 - `src/asset`, `src/upload`, `src/output`, `src/metadata`, `src/catalog`, `src/project`, `src/import`
-- `src/processing`, `src/workflow`, `src/backup`, `src/notification`, `src/authentication`, `src/deletion`, `src/reference-analysis`
+- `src/processing`, `src/workflow`, `src/backup`, `src/notification`, `src/authentication`, `src/deletion`
 - `src/api`, `src/api-client`, `src/cli`, `src/entrypoints`, `src/ui`
 - `drizzle`, `ops`, `public`, `test`, `tests`
 
@@ -55,7 +55,7 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 - Durable resource-bounded jobs now cover verified ingestion, processing, backup-before-publication, immutable manifests, notification outbox events, cleanup, retries, and restart-safe idempotency.
 - The authenticated Hono API now exposes project-scoped auth, project, upload, asset, output, metadata, move, deletion-request, workflow, backup, catalog, import-request, audit, and health contracts.
 - Complete deletion, read-only legacy import, Telegram outbox delivery, safe reconciliation, and WAL-safe SQLite snapshot/restore operations are implemented and tested.
-- Remote and local CLIs now provide deterministic command semantics, generated-list checking, immutable local outputs, and static reference counts without fallback between modes.
+- The remote CLI now provides deterministic command semantics and generated-list checking.
 - Backend integration, authorization, idempotency, failure ordering, fixture coverage, and production operation documentation are complete.
 - The SolidJS admin SPA now covers login/session/logout, projects, editable project/environment binding settings, the flat asset inventory, direct upload with workflow status, asset detail with an atomic output-set editor and public/backup/workflow/deletion detail, jobs, backups, catalog, imports, audit, and not-found handling; the built SPA is served from the API origin behind an API-safe fallback.
 - A test-only seeded fixture server (`bun run fixture:server`, http://127.0.0.1:3021) serves the built SPA and a seeded API from one origin using an isolated database and a local session adapter; production authentication is unchanged.
