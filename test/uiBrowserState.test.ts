@@ -3,6 +3,7 @@ import { createRoot } from "solid-js"
 import * as v from "valibot"
 
 import { uiAssetPreviewPreferencePersistenceCreate } from "../src/ui/pages/uiAssetPreviewPreferencePersistenceCreate.js"
+import { uiAssetViewPreferencePersistenceCreate } from "../src/ui/pages/uiAssetViewPreferencePersistenceCreate.js"
 import { uiQueryCreate } from "../src/ui/query/uiQueryCreate.js"
 import { uiSearchParamsReplace } from "../src/ui/search/uiSearchParamsReplace.js"
 import { uiSessionStore } from "../src/ui/session/uiSessionStore.js"
@@ -64,6 +65,25 @@ describe("uiAssetPreviewPreferencePersistenceCreate", () => {
     expect(preference.hydrate()).toEqual({ success: true, data: undefined })
     expect((await preference.persist(true)).success).toBe(true)
     expect(preference.hydrate()).toEqual({ success: true, data: true })
+
+    const key = values.keys().next().value as string
+    values.set(key, JSON.stringify("invalid"))
+    expect(preference.hydrate().success).toBe(false)
+  })
+})
+
+describe("uiAssetViewPreferencePersistenceCreate", () => {
+  test("starts absent and persists only valid view modes", async () => {
+    const { storage, values } = storageCreate()
+    const preference = uiAssetViewPreferencePersistenceCreate({ storage, debounceMilliseconds: 5 })
+
+    expect(preference.hydrate()).toEqual({ success: true, data: undefined })
+    expect((await preference.persist("invalid" as never)).success).toBe(false)
+    expect(values.size).toBe(0)
+    expect((await preference.persist("structure")).success).toBe(true)
+    expect(preference.hydrate()).toEqual({ success: true, data: "structure" })
+    expect((await preference.persist("list")).success).toBe(true)
+    expect(preference.hydrate()).toEqual({ success: true, data: "list" })
 
     const key = values.keys().next().value as string
     values.set(key, JSON.stringify("invalid"))

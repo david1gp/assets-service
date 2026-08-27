@@ -1,3 +1,4 @@
+import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiFolderPlus } from "@adaptive-ds/mdi/mdiFolderPlus.js"
 import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
@@ -119,7 +120,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
             />
           </div>
           <div class="flex justify-end gap-2">
-            <ButtonIcon type="button" variant="outline" onClick={p.state.folderDialogClose}>
+            <ButtonIcon type="button" icon={mdiClose} variant="outline" onClick={p.state.folderDialogClose}>
               Cancel
             </ButtonIcon>
             <ButtonIcon

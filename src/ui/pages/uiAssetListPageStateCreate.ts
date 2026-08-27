@@ -15,6 +15,7 @@ import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 import { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
 import { uiAssetPreviewPreferencePersistenceCreate } from "./uiAssetPreviewPreferencePersistenceCreate.js"
+import { uiAssetViewPreferencePersistenceCreate } from "./uiAssetViewPreferencePersistenceCreate.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
 export { uiAssetClassOptions } from "./uiAssetClassOptions.js"
@@ -36,19 +37,20 @@ export const uiAssetListPageStateCreate = () => {
   const folder = createMemo(() => uiSearchParamSchemaRead(folderSchema, searchParams.folder))
   const search = createMemo(() => uiSearchParamSchemaRead(searchSchema, searchParams.search))
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
-  const tab = createMemo<UiAssetViewTab>(
-    () => uiSearchParamPicklistRead(uiAssetViewTabSchema, searchParams.tab) ?? "list",
-  )
-  const tabSignal: SignalObject<string> = {
-    get: tab,
+  const tabState = createSignalObject<UiAssetViewTab>("list")
+  const viewPreferencePersistence = uiAssetViewPreferencePersistenceCreate()
+  const hydratedViewPreference = viewPreferencePersistence.hydrate()
+  if (hydratedViewPreference.success && hydratedViewPreference.data !== undefined)
+    tabState.set(hydratedViewPreference.data)
+  const tab = tabState.get
+  const tabSignal: SignalObject<UiAssetViewTab> = {
+    get: tabState.get,
     set: (value) => {
       const parsed = v.safeParse(uiAssetViewTabSchema, value)
       if (!parsed.success) return
-      setSearchParams({ tab: parsed.output === "list" ? null : parsed.output, cursor: null }, { replace: true })
-      // A debounced filter replacement may still be scheduled with the previous
-      // tab. Rescheduling it with the new tab keeps the URL and the tab state
-      // consistent because the latest scheduled replacement wins.
-      filtersUrlReplace(parsed.output)
+      tabState.set(parsed.output)
+      void viewPreferencePersistence.persist(parsed.output)
+      setSearchParams({ cursor: null }, { replace: true })
     },
   }
 
@@ -94,20 +96,18 @@ export const uiAssetListPageStateCreate = () => {
     }
   }
 
-  const filtersUrlReplace = (nextTab?: UiAssetViewTab) => {
-    // The search string is read per call instead of from a snapshot so that tab
-    // changes and router updates that happened in between are preserved.
+  const filtersUrlReplace = () => {
+    // The search string is read per call instead of from a snapshot so that
+    // router updates that happened in between are preserved.
     const pending = new URLSearchParams(window.location.search)
-    const values = { ...filterUrlValuesRead(), tab: (nextTab ?? tab()) === "list" ? null : (nextTab ?? tab()) }
+    const values = filterUrlValuesRead()
     for (const [key, value] of Object.entries(values)) {
       if (value === null) pending.delete(key)
       else pending.set(key, value)
     }
     void uiSearchParamsReplace(pending).then((result) => {
       if (!result.success) return
-      // The router does not observe the raw history replacement, so the tab is
-      // re-asserted here to stop a stale router snapshot from dropping it.
-      setSearchParams({ ...filterUrlValuesRead(), tab: values.tab }, { replace: true })
+      setSearchParams(filterUrlValuesRead(), { replace: true })
     })
   }
 

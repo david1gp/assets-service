@@ -1,5 +1,7 @@
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
+import { mdiEye } from "@adaptive-ds/mdi/mdiEye.js"
+import { mdiEyeOff } from "@adaptive-ds/mdi/mdiEyeOff.js"
 import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
 import { For, Show } from "solid-js"
@@ -10,6 +12,7 @@ import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { ToggleButton } from "#ui/interactive/toggle/ToggleButton.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
 import { Img } from "#ui/static/img/Img.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
@@ -29,6 +32,7 @@ import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
 import { uiAssetPreviewSourceRead } from "./uiAssetPreviewSourceRead.js"
+import { uiAssetViewTabIconRead } from "./uiAssetViewTabIconRead.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
 const columnsCreate = (projectId: () => string, showPreviews: () => boolean): TableColumnDef<AssetListItem>[] => {
@@ -130,9 +134,10 @@ export function UiAssetListPage() {
                 id={`asset-view-tab-${value}`}
                 aria-selected={state.tabSignal.get() === value}
                 aria-controls={`asset-view-panel-${value}`}
-                class="rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
+                class="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
                 onClick={() => state.tabSignal.set(value)}
               >
+                <Icon class="size-5" path={uiAssetViewTabIconRead(value)} />
                 {value}
               </button>
             )}
@@ -142,6 +147,7 @@ export function UiAssetListPage() {
           title={state.showPreviews.get() ? "Hide image previews" : "Show image previews"}
           pressedSignal={state.showPreviews}
         >
+          <Icon class="mr-2 size-5" path={state.showPreviews.get() ? mdiEyeOff : mdiEye} />
           {state.showPreviews.get() ? "Hide previews" : "Show previews"}
         </ToggleButton>
       </div>

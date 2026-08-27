@@ -192,14 +192,25 @@ test("applies the active URL filters to the structure asset request and cache ke
   expect(pageState).toContain("...(search() === undefined ? {} : { search: search() }),")
 })
 
-test("keeps the selected tab in every filter URL replacement", async () => {
+test("persists the selected view mode independently from URL filter replacements", async () => {
   const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
 
-  // A snapshot taken once would drop tab changes made while a debounced filter
-  // replacement is still pending.
+  expect(pageState).toContain(
+    'import { uiAssetViewPreferencePersistenceCreate } from "./uiAssetViewPreferencePersistenceCreate.js"',
+  )
+  expect(pageState).toContain('const tabState = createSignalObject<UiAssetViewTab>("list")')
+  expect(pageState).toContain("const hydratedViewPreference = viewPreferencePersistence.hydrate()")
+  expect(pageState).toContain("tabState.set(hydratedViewPreference.data)")
+  expect(pageState).toContain("void viewPreferencePersistence.persist(parsed.output)")
+  expect(pageState).toContain("setSearchParams({ cursor: null }, { replace: true })")
+  expect(pageState).not.toContain("searchParams.tab")
+  expect(pageState).not.toContain("tab:")
   expect(pageState).not.toContain("let pendingFilterSearchParams")
   expect(pageState).toContain("const pending = new URLSearchParams(window.location.search)")
-  expect(pageState).toContain('tab: (nextTab ?? tab()) === "list" ? null : (nextTab ?? tab())')
-  expect(pageState).toContain("setSearchParams({ ...filterUrlValuesRead(), tab: values.tab }, { replace: true })")
-  expect(pageState).toContain("filtersUrlReplace(parsed.output)")
+  expect(pageState).toContain("const values = filterUrlValuesRead()")
+  expect(pageState).toContain("setSearchParams(filterUrlValuesRead(), { replace: true })")
+  expect(pageState).toContain("search: searchValue ?? null")
+  expect(pageState).toContain("folder: folderValue ?? null")
+  expect(pageState).toContain("class: classValue ?? null")
+  expect(pageState).toContain("cursor: null")
 })
