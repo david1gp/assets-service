@@ -10,7 +10,6 @@ import { assetSourcePathCreate } from "../src/asset/assetSourcePathCreate.js"
 import { foldersDatabaseColumnsCreate } from "../src/asset/foldersDatabaseColumnsCreate.js"
 import { foldersDatabaseColumnsRead } from "../src/asset/foldersDatabaseColumnsRead.js"
 import { outputKeySchema } from "../src/output/outputKeySchema.js"
-import { outputLocalObjectKeyCreate } from "../src/output/outputLocalObjectKeyCreate.js"
 import { outputRemoteObjectKeyCreate } from "../src/output/outputRemoteObjectKeyCreate.js"
 import { outputVersionDecisionCreate } from "../src/output/outputVersionDecisionCreate.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
@@ -48,19 +47,6 @@ describe("asset invariants", () => {
         extension: "webp",
       }),
     ).toBe("images/home/hero_1920x1080_webp_v3.webp")
-
-    const sha256 = contentSha256Create(new TextEncoder().encode("asset"))
-    expect(sha256).toBe("d59386e0ae435e292fbe0ebcdb954b75ed5fb3922091277cb19f798fc5d50718")
-    expect(
-      outputLocalObjectKeyCreate({
-        assetClass: "image",
-        folders,
-        basename: "hero",
-        outputKey: "1920x1080_webp",
-        sha256,
-        extension: "webp",
-      }),
-    ).toBe(`images/home/hero_1920x1080_webp_${sha256.slice(0, 8)}.webp`)
   })
 
   test("reuses exact bytes and rejects checksum-size collisions", () => {

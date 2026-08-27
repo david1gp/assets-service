@@ -52,7 +52,6 @@
     "api": "bun run src/entrypoints/api.ts",
     "worker": "bun run src/entrypoints/worker.ts",
     "assets": "bun run src/entrypoints/assets-cli.ts",
-    "assets-local": "bun run src/entrypoints/assets-local-cli.ts",
     "ops:migrate": "bun run src/entrypoints/database-migrate.ts",
     "ops:doctor": "bun run src/entrypoints/doctor.ts",
     "ops:backup": "bash ./ops/backup.sh",
@@ -66,7 +65,7 @@
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "typecheck:ui": "tsc -p ./tsconfig.ui.json --noEmit",
     "tsc": "tsc -p ./tsconfig.json --noEmit",
-    "build": "bun run clean && bun run typecheck && tsc -p ./tsconfig.lib.json && chmod +x dist/entrypoints/assets-cli.js dist/entrypoints/assets-local-cli.js",
+    "build": "bun run clean && bun run typecheck && tsc -p ./tsconfig.lib.json && chmod +x dist/entrypoints/assets-cli.js",
     "check": "bun run format:check && bun run typecheck && bun run typecheck:ui && bun test && bun run build && bun run vite:build",
     "release": "bash ./ops/release.sh",
     "frontend:build": "bash ./ops/deploy-contentoren.sh frontend:build",
@@ -137,8 +136,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "assets": "./dist/entrypoints/assets-cli.js",
-    "assets-local": "./dist/entrypoints/assets-local-cli.js"
+    "assets": "./dist/entrypoints/assets-cli.js"
   },
   "files": [
     "dist",
