@@ -1,6 +1,6 @@
 {
   "name": "@adaptive-ds/assets-service",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "HTTP service for storing, transforming, and serving images, video, fonts, and documents for Adaptive DS sites.",
   "keywords": [
     "assets",
