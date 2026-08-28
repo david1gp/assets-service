@@ -50,7 +50,7 @@ export const fixtureAuthenticationCreate = (options: {
         organizationId: config.organizationId,
         organizationAdmin: false,
         method: "human_session",
-        grants: [{ projectId: options.projectId, roles: ["assets.uploader", "assets.admin"] }],
+        grants: [{ projectId: options.projectId, roles: ["contributor", "admin"] }],
         issuedAt,
         expiresAt: issuedAt + config.sessionTtlSeconds,
       },

@@ -15,7 +15,7 @@ export const projectGrantTable = sqliteTable(
       .notNull()
       .references(() => organizationTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
     subjectId: text("subject_id").notNull(),
-    role: text("role", { enum: ["assets.uploader", "assets.admin"] }).notNull(),
+    role: text("role", { enum: ["contributor", "admin"] }).notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -23,6 +23,6 @@ export const projectGrantTable = sqliteTable(
     uniqueIndex("project_grants_subject_role_unique").on(table.projectId, table.subjectId, table.role),
     index("project_grants_organization_index").on(table.organizationId),
     index("project_grants_subject_index").on(table.subjectId),
-    check("project_grants_role_check", sql`${table.role} IN ('assets.uploader', 'assets.admin')`),
+    check("project_grants_role_check", sql`${table.role} IN ('contributor', 'admin')`),
   ],
 )

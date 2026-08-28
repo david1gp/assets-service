@@ -282,7 +282,7 @@ const deletionRepositoryCreate = (received?: Received): DeletionApiRepository =>
   },
 })
 
-const optionsCreate = (role: "assets.uploader" | "assets.admin", received: Received): ApiAppOptions => {
+const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAppOptions => {
   const authenticationConfig = {
     issuer: "https://zitadel.example.test",
     clientId: "human-client-1",
@@ -335,7 +335,7 @@ const optionsCreate = (role: "assets.uploader" | "assets.admin", received: Recei
   }
 }
 
-const sessionCreate = async (options: ApiAppOptions, role: "assets.uploader" | "assets.admin") => {
+const sessionCreate = async (options: ApiAppOptions, role: "contributor" | "admin") => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "actor-1",
@@ -363,7 +363,7 @@ const requestCreate = (path: string, cookie: string, init: RequestInit = {}) =>
 
 describe("task 6 API routes", () => {
   test("requires authentication across every protected API resource family", async () => {
-    const app = apiAppCreate(optionsCreate("assets.uploader", {}))
+    const app = apiAppCreate(optionsCreate("contributor", {}))
     const requests: Array<[string, RequestInit?]> = [
       ["/api/v1/projects"],
       ["/api/v1/projects/project-service"],
@@ -408,9 +408,9 @@ describe("task 6 API routes", () => {
 
   test("protects workflow actions, paginates status reads, and isolates projects", async () => {
     const received = {}
-    const uploaderOptions = optionsCreate("assets.uploader", received)
+    const uploaderOptions = optionsCreate("contributor", received)
     const uploaderApp = apiAppCreate(uploaderOptions)
-    const uploader = await sessionCreate(uploaderOptions, "assets.uploader")
+    const uploader = await sessionCreate(uploaderOptions, "contributor")
     const list = await uploaderApp.fetch(requestCreate("/api/v1/projects/project-service/workflows?limit=1", uploader))
     const denied = await uploaderApp.fetch(
       requestCreate("/api/v1/projects/project-service/jobs/job-1/retry", uploader, { method: "POST" }),
@@ -426,9 +426,9 @@ describe("task 6 API routes", () => {
   })
 
   test("rejects uploader access to every admin mutation boundary", async () => {
-    const options = optionsCreate("assets.uploader", {})
+    const options = optionsCreate("contributor", {})
     const app = apiAppCreate(options)
-    const uploader = await sessionCreate(options, "assets.uploader")
+    const uploader = await sessionCreate(options, "contributor")
     const requests: Array<[string, RequestInit]> = [
       ["/api/v1/projects/project-service/settings", {}],
       ["/api/v1/projects/project-service/environments/development/settings", {}],
@@ -450,9 +450,9 @@ describe("task 6 API routes", () => {
 
   test("uses the task 7 import boundary and exposes readiness aliases", async () => {
     const received: { projectId?: string; actorId?: string } = {}
-    const options = optionsCreate("assets.admin", received)
+    const options = optionsCreate("admin", received)
     const app = apiAppCreate(options)
-    const admin = await sessionCreate(options, "assets.admin")
+    const admin = await sessionCreate(options, "admin")
     const imported = await app.fetch(
       requestCreate("/api/v1/projects/project-service/imports", admin, {
         method: "POST",
@@ -469,9 +469,9 @@ describe("task 6 API routes", () => {
 
   test("exposes repository-backed backup, catalog, upload, deletion, and audit reads", async () => {
     const received: { projectId?: string; actorId?: string } = {}
-    const options = optionsCreate("assets.admin", received)
+    const options = optionsCreate("admin", received)
     const app = apiAppCreate(options)
-    const admin = await sessionCreate(options, "assets.admin")
+    const admin = await sessionCreate(options, "admin")
     const paths = [
       "/api/v1/projects/project-service/backups?limit=1",
       "/api/v1/projects/project-service/source-revisions/source-1/backup-status",
@@ -489,16 +489,16 @@ describe("task 6 API routes", () => {
 
     expect(responses.map((response) => response.status)).toEqual(paths.map(() => 200))
     const deniedAudit = await app.fetch(
-      requestCreate("/api/v1/projects/project-service/audit-events", await sessionCreate(options, "assets.uploader")),
+      requestCreate("/api/v1/projects/project-service/audit-events", await sessionCreate(options, "contributor")),
     )
     expect(deniedAudit.status).toBe(403)
   })
 
   test("validates and scopes the eligibility environment", async () => {
     const received: Received = {}
-    const options = optionsCreate("assets.uploader", received)
+    const options = optionsCreate("contributor", received)
     const app = apiAppCreate(options)
-    const uploader = await sessionCreate(options, "assets.uploader")
+    const uploader = await sessionCreate(options, "contributor")
 
     const valid = await app.fetch(
       requestCreate(

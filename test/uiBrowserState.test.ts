@@ -102,7 +102,7 @@ describe("uiFormDraft", () => {
           organizationId: "organization/1",
           organizationAdmin: false,
           method: "human_session",
-          grants: [{ projectId: "project-1", roles: ["assets.admin"] }],
+          grants: [{ projectId: "project-1", roles: ["admin"] }],
           issuedAt: 0,
           expiresAt: 1,
         },

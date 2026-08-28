@@ -58,7 +58,7 @@ bun run assets settings update [--project <id-or-name>] \
 ```
 
 `read` uses the project's default environment when `--environment` is omitted. `update` requires an explicit
-`--environment` and at least one setting option. Both commands require authenticated access with the `assets.admin`
+`--environment` and at least one setting option. Both commands require authenticated access with the `admin`
 role for the selected project. `--project` accepts a project ID or name; otherwise normal project resolution applies
 (`ASSETS_PROJECT`, saved CLI configuration, or the sole accessible project).
 

@@ -78,9 +78,14 @@ export const servicePatPrincipalValidate = async (
     if (grant.state !== undefined && grant.state !== "USER_GRANT_STATE_ACTIVE") continue
     if (grant.orgId !== undefined && grant.orgId !== options.organizationId) continue
     const roleKeys = [...(grant.roleKeys ?? []), ...(grant.roles ?? [])]
+    const mappedRoleKeys = roleKeys.map((role) => {
+      if (role === "assets.uploader") return "contributor"
+      if (role === "assets.admin") return "admin"
+      return role
+    })
     const roles = [
       ...new Set(
-        roleKeys.filter((role): role is "assets.admin" | "assets.uploader" => v.is(authenticationRoleSchema, role)),
+        mappedRoleKeys.filter((role): role is "admin" | "contributor" => v.is(authenticationRoleSchema, role)),
       ),
     ].sort()
     if (roles.length === 0) continue

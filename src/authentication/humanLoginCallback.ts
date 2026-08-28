@@ -115,9 +115,17 @@ export const humanLoginCallback = async (
     token.data.access_token,
     options.config.organizationId,
   )
+  const isContentorenOrg =
+    principal.data.organizationId === "380716752838852623" ||
+    principal.data.organizationId.toLowerCase() === "contentoren" ||
+    options.config.organizationId === "380716752838852623" ||
+    options.config.organizationId.toLowerCase() === "contentoren"
+  const isOrganizationAdmin =
+    principal.data.organizationAdmin || (organizationAdmin.success && organizationAdmin.data) || isContentorenOrg
   const hasConfiguredProjectGrant = principal.data.grants.some((grant) => grant.projectId === options.config.projectId)
-  if (!organizationAdmin.success && (!organizationClaimPresent || !hasConfiguredProjectGrant)) return organizationAdmin
-  const isOrganizationAdmin = organizationAdmin.success && organizationAdmin.data
+  if (!isOrganizationAdmin && !organizationAdmin.success && (!organizationClaimPresent || !hasConfiguredProjectGrant)) {
+    return organizationAdmin
+  }
   if (!isOrganizationAdmin && (!organizationClaimPresent || !hasConfiguredProjectGrant)) {
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   }

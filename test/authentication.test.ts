@@ -146,7 +146,7 @@ describe("Zitadel authentication contracts", () => {
       new Request("https://assets.example.test", { headers: { authorization: `Bearer ${standardRoleToken}` } }),
       options,
     )
-    expect(standardRole).toMatchObject({ success: true, data: { grants: [{ roles: ["assets.admin"] }] } })
+    expect(standardRole).toMatchObject({ success: true, data: { grants: [{ roles: ["admin"] }] } })
   })
 
   test("validates a Zitadel personal access token through the user and grant endpoints", async () => {
@@ -198,7 +198,7 @@ describe("Zitadel authentication contracts", () => {
         method: "service_account",
         subjectId: "machine-user-1",
         organizationAdmin: false,
-        grants: [{ projectId: "zitadel-project-1", roles: ["assets.admin"] }],
+        grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
       },
     })
     expect(requested).toEqual([
@@ -368,18 +368,16 @@ describe("Zitadel authentication contracts", () => {
       createdAt: "2026-08-17T00:00:00.000Z",
       updatedAt: "2026-08-17T00:00:00.000Z",
     }
-    expect(projectAuthorizationCheck(principal.data, binding, "assets.uploader", "service-project-1").success).toBe(
-      true,
-    )
-    expect(projectAuthorizationCheck(principal.data, binding, "assets.admin", "service-project-1").success).toBe(false)
-    expect(projectAuthorizationCheck(principal.data, binding, "assets.uploader", "other-service-project").success).toBe(
+    expect(projectAuthorizationCheck(principal.data, binding, "contributor", "service-project-1").success).toBe(true)
+    expect(projectAuthorizationCheck(principal.data, binding, "admin", "service-project-1").success).toBe(false)
+    expect(projectAuthorizationCheck(principal.data, binding, "contributor", "other-service-project").success).toBe(
       false,
     )
 
     const boundary = protectedRequestBoundaryCreate({
       authenticationRead: async () => ({ success: true as const, data: { principal: principal.data } }),
       authorizationCheck: async () =>
-        projectAuthorizationCheck(principal.data, binding, "assets.uploader", "service-project-1"),
+        projectAuthorizationCheck(principal.data, binding, "contributor", "service-project-1"),
     })
     const response = await boundary(
       new Request("https://assets.example.test/projects/service-project-1"),
@@ -752,7 +750,7 @@ describe("Zitadel authentication contracts", () => {
       data: {
         organizationId: "org-1",
         organizationAdmin: false,
-        grants: [{ projectId: "zitadel-project-1", roles: ["assets.uploader"] }],
+        grants: [{ projectId: "zitadel-project-1", roles: ["contributor"] }],
       },
     })
     if (!principal.success) return
@@ -768,13 +766,13 @@ describe("Zitadel authentication contracts", () => {
     }
     const otherOrganizationBinding = { ...sameOrganizationBinding, organizationId: "org-2" }
     expect(
-      projectAuthorizationCheck(principal.data, sameOrganizationBinding, "assets.uploader", "service-project-1"),
+      projectAuthorizationCheck(principal.data, sameOrganizationBinding, "contributor", "service-project-1"),
     ).toEqual({ success: true, data: true })
     expect(
-      projectAuthorizationCheck(principal.data, sameOrganizationBinding, "assets.admin", "service-project-1").success,
+      projectAuthorizationCheck(principal.data, sameOrganizationBinding, "admin", "service-project-1").success,
     ).toBe(false)
     expect(
-      projectAuthorizationCheck(principal.data, otherOrganizationBinding, "assets.admin", "service-project-1").success,
+      projectAuthorizationCheck(principal.data, otherOrganizationBinding, "admin", "service-project-1").success,
     ).toBe(false)
   })
 
@@ -812,32 +810,24 @@ describe("Zitadel authentication contracts", () => {
       ...principal.data,
       method: "human_session" as const,
       organizationAdmin: true,
-      grants: [{ projectId: "zitadel-project-1", roles: ["assets.uploader" as const] }],
+      grants: [{ projectId: "zitadel-project-1", roles: ["contributor" as const] }],
     }
     const regularUser = { ...organizationAdmin, organizationAdmin: false }
 
-    expect(
-      projectAuthorizationCheck(organizationAdmin, ungrantedBinding, "assets.admin", binding.serviceProjectId),
-    ).toEqual({
+    expect(projectAuthorizationCheck(organizationAdmin, ungrantedBinding, "admin", binding.serviceProjectId)).toEqual({
       success: true,
       data: true,
     })
     expect(
-      projectAuthorizationCheck(
-        organizationAdmin,
-        wrongOrganizationBinding,
-        "assets.uploader",
-        binding.serviceProjectId,
-      ).success,
+      projectAuthorizationCheck(organizationAdmin, wrongOrganizationBinding, "contributor", binding.serviceProjectId)
+        .success,
     ).toBe(false)
-    expect(projectAuthorizationCheck(regularUser, binding, "assets.uploader", binding.serviceProjectId).success).toBe(
-      true,
-    )
+    expect(projectAuthorizationCheck(regularUser, binding, "contributor", binding.serviceProjectId).success).toBe(true)
     expect(
-      projectAuthorizationCheck(regularUser, ungrantedBinding, "assets.uploader", binding.serviceProjectId).success,
+      projectAuthorizationCheck(regularUser, ungrantedBinding, "contributor", binding.serviceProjectId).success,
     ).toBe(false)
     expect(
-      projectAuthorizationCheck(principal.data, ungrantedBinding, "assets.uploader", binding.serviceProjectId).success,
+      projectAuthorizationCheck(principal.data, ungrantedBinding, "contributor", binding.serviceProjectId).success,
     ).toBe(false)
   })
 
@@ -851,7 +841,7 @@ describe("Zitadel authentication contracts", () => {
       redirectUris: ["https://assets.example.test/auth/callback"],
       postLogoutRedirectUris: ["https://assets.example.test/"],
     })
-    expect(provisioned).toMatchObject({ success: true, data: { roleKeys: ["assets.uploader", "assets.admin"] } })
+    expect(provisioned).toMatchObject({ success: true, data: { roleKeys: ["contributor", "admin"] } })
 
     const grants = zitadelGrantAdapterMemoryCreate()
     const provisionedWithGrant = await zitadelProvisioningAdapterMemoryCreate({
@@ -869,7 +859,7 @@ describe("Zitadel authentication contracts", () => {
           projectId: "zitadel-project-1",
           subjectId: "machine-client-1",
           subjectType: "service_account",
-          roles: ["assets.admin"],
+          roles: ["admin"],
         },
       ],
     })
@@ -919,7 +909,7 @@ describe("Zitadel authentication contracts", () => {
           organizationId: "org-1",
           organizationAdmin: false,
           method: "human_session" as const,
-          grants: [{ projectId: "project-1", roles: ["assets.uploader"] }],
+          grants: [{ projectId: "project-1", roles: ["contributor"] }],
           issuedAt: now,
           expiresAt: now + 3600,
         },
@@ -947,5 +937,39 @@ describe("Zitadel authentication contracts", () => {
       await rm(`${databasePath}-wal`, { force: true })
       await rm(`${databasePath}-shm`, { force: true })
     }
+  })
+
+  test("makes users of Org Contentoren admins by default and maps legacy roles", async () => {
+    const keys = await keyPairCreate()
+    const jwk = await jwkCreate(keys.publicKey)
+    const token = await tokenCreate(
+      keys.privateKey,
+      tokenClaimsCreate({
+        sub: "contentoren-user-1",
+        "urn:zitadel:iam:org:id": "380716752838852623",
+        assets_project_grants: { "zitadel-project-1": ["assets.uploader"], "zitadel-project-2": ["assets.admin"] },
+      }),
+    )
+    const principal = await jwtPrincipalValidate(token, {
+      issuer: "https://zitadel.example.test",
+      audience: "assets-api",
+      jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+      jwksClient: zitadelJwksClientMemoryCreate([jwk]),
+      organizationId: "380716752838852623",
+      method: "human_session",
+      allowMissingOrganizationClaim: true,
+      now: () => nowSeconds * 1000,
+    })
+    expect(principal).toMatchObject({
+      success: true,
+      data: {
+        organizationId: "380716752838852623",
+        organizationAdmin: true,
+        grants: [
+          { projectId: "zitadel-project-1", roles: ["contributor"] },
+          { projectId: "zitadel-project-2", roles: ["admin"] },
+        ],
+      },
+    })
   })
 })

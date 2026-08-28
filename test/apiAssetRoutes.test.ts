@@ -250,7 +250,7 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   }
 }
 
-const sessionCookieRead = async (options: ApiAppOptions, role: "assets.uploader" | "assets.admin") => {
+const sessionCookieRead = async (options: ApiAppOptions, role: "contributor" | "admin") => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "human-1",
@@ -280,7 +280,7 @@ describe("asset API routes", () => {
   test("keeps asset reads project-scoped and exposes upload and history operations", async () => {
     const options = optionsCreate()
     const app = apiAppCreate(options)
-    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const cookie = await sessionCookieRead(options, "contributor")
     const list = await app.fetch(requestCreate("/api/v1/projects/project-service/assets", cookie))
     const includedList = await app.fetch(
       requestCreate("/api/v1/projects/project-service/assets?include=metadata,history&folder=home", cookie),
@@ -328,7 +328,7 @@ describe("asset API routes", () => {
   test("keeps uploader reads separate from administrator mutations", async () => {
     const options = optionsCreate()
     const app = apiAppCreate(options)
-    const uploader = await sessionCookieRead(options, "assets.uploader")
+    const uploader = await sessionCookieRead(options, "contributor")
     const denied = await app.fetch(
       requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs", uploader, {
         method: "POST",
@@ -339,7 +339,7 @@ describe("asset API routes", () => {
 
     const adminOptions = optionsCreate()
     const adminApp = apiAppCreate(adminOptions)
-    const admin = await sessionCookieRead(adminOptions, "assets.admin")
+    const admin = await sessionCookieRead(adminOptions, "admin")
     const added = await adminApp.fetch(
       requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs", admin, {
         method: "POST",
@@ -450,7 +450,7 @@ describe("asset API routes", () => {
     const options = optionsCreate("structure-uploader")
     structureRepositoryConfigure(options)
     const app = apiAppCreate(options)
-    const uploader = await sessionCookieRead(options, "assets.uploader")
+    const uploader = await sessionCookieRead(options, "contributor")
     const structure = await app.fetch(requestCreate("/api/v1/projects/project-service/structure", uploader))
     const denied = await app.fetch(
       requestCreate("/api/v1/projects/project-service/structure/folders", uploader, {
@@ -461,7 +461,7 @@ describe("asset API routes", () => {
     const adminOptions = optionsCreate("structure-admin")
     structureRepositoryConfigure(adminOptions)
     const adminApp = apiAppCreate(adminOptions)
-    const admin = await sessionCookieRead(adminOptions, "assets.admin")
+    const admin = await sessionCookieRead(adminOptions, "admin")
     const created = await adminApp.fetch(
       requestCreate("/api/v1/projects/project-service/structure/folders", admin, {
         method: "POST",
@@ -524,7 +524,7 @@ describe("asset API routes", () => {
   test("returns validation envelopes and deterministic method headers", async () => {
     const options = optionsCreate()
     const app = apiAppCreate(options)
-    const admin = await sessionCookieRead(options, "assets.admin")
+    const admin = await sessionCookieRead(options, "admin")
     const invalid = await app.fetch(
       requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs", admin, { method: "POST", body: "{}" }),
     )
@@ -550,7 +550,7 @@ describe("asset API routes", () => {
         "https://assets.example.test/api/v1/projects/project-service/assets/asset-1/source-revisions/source-1/content",
       ),
     )
-    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const cookie = await sessionCookieRead(options, "contributor")
     const invalidAsset = await app.fetch(
       requestCreate("/api/v1/projects/project-service/assets/not valid/source-revisions/source-1/content", cookie),
     )
@@ -652,7 +652,7 @@ describe("asset API routes", () => {
         "https://assets.example.test/api/v1/projects/project-service/assets/asset-1/outputs/version-output-1/content",
       ),
     )
-    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const cookie = await sessionCookieRead(options, "contributor")
     const invalidVersion = await app.fetch(
       requestCreate("/api/v1/projects/project-service/assets/asset-1/outputs/not valid/content", cookie),
     )
@@ -718,7 +718,7 @@ describe("asset API routes", () => {
       assetRead: () => ({ success: true, data: { ...detail, sourceHistory: [legacySource] } }),
     }
     const app = apiAppCreate(options)
-    const cookie = await sessionCookieRead(options, "assets.uploader")
+    const cookie = await sessionCookieRead(options, "contributor")
     const location = storageObjectLocationCreate(
       {
         projectId: "project-1",

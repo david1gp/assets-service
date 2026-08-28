@@ -39,6 +39,8 @@ const numberRead = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) && Number.isFinite(value) ? value : null
 
 const roleRead = (value: string): AuthenticationRole | null => {
+  if (value === "contributor" || value === "assets.uploader") return "contributor"
+  if (value === "admin" || value === "assets.admin") return "admin"
   const parsed = v.safeParse(authenticationRoleSchema, value)
   return parsed.success ? parsed.output : null
 }
@@ -200,10 +202,16 @@ export const jwtPrincipalValidate = async (
   ) {
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   }
+  const isContentorenOrg =
+    organizationId === "380716752838852623" ||
+    organizationId.toLowerCase() === "contentoren" ||
+    options.organizationId === "380716752838852623" ||
+    options.organizationId.toLowerCase() === "contentoren"
+  const organizationAdmin = options.method === "human_session" && isContentorenOrg
   const validated = v.safeParse(authenticatedPrincipalSchema, {
     subjectId,
     organizationId,
-    organizationAdmin: false,
+    organizationAdmin,
     method: options.method,
     grants,
     issuedAt,

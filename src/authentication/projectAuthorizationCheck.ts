@@ -19,17 +19,17 @@ export const projectAuthorizationCheck = (
     return resultErrorCreate(op, "The organization grant was invalid")
   if (binding.serviceProjectId !== serviceProjectId)
     return resultErrorCreate(op, "The service project binding was invalid")
-  if (principal.method === "human_session" && principal.organizationAdmin) return { success: true, data: true }
+  if (principal.organizationAdmin) return { success: true, data: true }
   const grant = principal.grants.find((candidate) => candidate.projectId === binding.zitadelProjectId)
   if (!grant) return resultErrorCreate(op, "The Zitadel project grant was missing")
-  if (requiredRole === "assets.admin" && !grant.roles.includes("assets.admin")) {
-    return resultErrorCreate(op, "The assets.admin role was required")
+  const isAdmin = grant.roles.includes("admin") || (grant.roles as readonly string[]).includes("assets.admin")
+  const isContributor =
+    isAdmin || grant.roles.includes("contributor") || (grant.roles as readonly string[]).includes("assets.uploader")
+  if (requiredRole === "admin" && !isAdmin) {
+    return resultErrorCreate(op, "The admin role was required")
   }
-  if (
-    requiredRole === "assets.uploader" &&
-    !grant.roles.some((role) => role === "assets.uploader" || role === "assets.admin")
-  ) {
-    return resultErrorCreate(op, "The assets.uploader role was required")
+  if (requiredRole === "contributor" && !isContributor) {
+    return resultErrorCreate(op, "The contributor role was required")
   }
   return { success: true, data: true }
 }

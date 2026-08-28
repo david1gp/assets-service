@@ -248,11 +248,11 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
   const authenticationMiddleware = apiAuthenticationMiddlewareCreate(options.authentication)
   const uploaderMiddleware = apiProjectRoleMiddlewareCreate({
     projectRepository: options.projectRepository,
-    requiredRole: "assets.uploader",
+    requiredRole: "contributor",
   })
   const adminMiddleware = apiProjectRoleMiddlewareCreate({
     projectRepository: options.projectRepository,
-    requiredRole: "assets.admin",
+    requiredRole: "admin",
   })
 
   const metadataUnsetHandle = (
@@ -580,7 +580,9 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         (candidate) => candidate.projectId === binding?.zitadelProjectId,
       )
       const uploaderId =
-        grant?.roles.includes("assets.uploader") && !grant.roles.includes("assets.admin")
+        !authentication?.principal.organizationAdmin &&
+        grant?.roles.includes("contributor") &&
+        !grant.roles.includes("admin")
           ? authentication?.principal.subjectId
           : undefined
       const intent = await options.uploadApiRepository.uploadIntentCreate(

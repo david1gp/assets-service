@@ -33,7 +33,7 @@ export const zitadelProvisioningAdapterMemoryCreate = (
         organizationId: parsed.output.organizationId,
         projectId: parsed.output.projectId,
         applicationId: applicationIdCreate(parsed.output),
-        roleKeys: ["assets.uploader", "assets.admin"],
+        roleKeys: ["contributor", "admin"],
       })
       if (!result.success)
         return resultErrorCreate("zitadelProvisioningAdapterMemoryCreate", "The provisioning result was invalid")

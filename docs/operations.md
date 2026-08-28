@@ -53,7 +53,7 @@ bun run assets settings update [--project <id-or-name>] \
   [--json]
 ```
 
-Settings read and update require authenticated `assets.admin` access to the selected project. `read` defaults to the
+Settings read and update require authenticated `admin` access to the selected project. `read` defaults to the
 project's default environment; `update` must name `development` or `production` explicitly and must provide at least
 one setting option. The CLI reads the complete settings document, merges only the supplied fields into the selected
 environment, and writes the complete document. Omitted fields and the other environment are preserved. An empty

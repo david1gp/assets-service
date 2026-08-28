@@ -33,7 +33,7 @@ const serviceTokenCreate = async (privateKey: CryptoKey): Promise<string> => {
       exp: now + 600,
       "urn:zitadel:iam:org:id": "org-1",
       client_id: "machine-client-1",
-      assets_project_grants: { "zitadel-1": ["assets.uploader"] },
+      assets_project_grants: { "zitadel-1": ["contributor"] },
     }),
   )
   const signingInput = `${header}.${payload}`
@@ -160,7 +160,7 @@ const optionsCreate = (): ApiAppOptions => {
 
 const sessionCreate = async (
   options: ApiAppOptions,
-  role: "assets.uploader" | "assets.admin" = "assets.uploader",
+  role: "contributor" | "admin" = "contributor",
   organizationAdmin = false,
 ) => {
   const session: AuthenticationSession = {
@@ -257,7 +257,7 @@ describe("HTTP API", () => {
 
     const adminOptions = optionsCreate()
     const adminApp = apiAppCreate(adminOptions)
-    const adminCookie = await sessionCreate(adminOptions, "assets.admin")
+    const adminCookie = await sessionCreate(adminOptions, "admin")
     const adminSettings = await adminApp.fetch(
       new Request("https://assets.example.test/api/v1/projects/project-service/settings", {
         headers: { cookie: adminCookie },
@@ -278,7 +278,7 @@ describe("HTTP API", () => {
       },
     }
     const app = apiAppCreate(options)
-    const cookie = await sessionCreate(options, "assets.admin")
+    const cookie = await sessionCreate(options, "admin")
     const response = await app.fetch(
       new Request("https://assets.example.test/api/v1/projects/project-service/settings", {
         method: "PUT",
@@ -323,7 +323,7 @@ describe("HTTP API", () => {
       },
     }
     const app = apiAppCreate(options)
-    const administrator = await sessionCreate(options, "assets.uploader", true)
+    const administrator = await sessionCreate(options, "contributor", true)
     const administratorResponse = await app.fetch(
       new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: administrator } }),
     )
@@ -375,7 +375,7 @@ describe("HTTP API", () => {
 
     const administratorOptions = optionsCreateProtected()
     const administratorApp = apiAppCreate(administratorOptions)
-    const administratorCookie = await sessionCreate(administratorOptions, "assets.uploader", true)
+    const administratorCookie = await sessionCreate(administratorOptions, "contributor", true)
     const administratorResponse = await administratorApp.fetch(
       new Request("https://assets.example.test/api/v1/projects/project-service-2", {
         headers: { cookie: administratorCookie },
@@ -428,7 +428,7 @@ describe("HTTP API", () => {
           organizationId: value.organizationId,
           organizationAdmin: false,
           method: "human_session",
-          grants: [{ projectId: value.projectId, roles: ["assets.admin"] }],
+          grants: [{ projectId: value.projectId, roles: ["admin"] }],
           issuedAt: now - 60,
           expiresAt: now + 600,
         },
