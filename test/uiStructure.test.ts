@@ -119,9 +119,7 @@ test("keeps the structure presentation and list request at the intended boundari
   expect(view).toContain("Page 2+")
   // The filter form is rendered once outside the tab branches so it applies to both views.
   expect(page).toContain("The filters are shared by both views")
-  expect(page.indexOf('<CardWrapper class="mb-6 p-4 sm:p-5">')).toBeLessThan(
-    page.indexOf('<Show when={state.tabSignal.get() === "structure"}>'),
-  )
+  expect(page.indexOf("<form")).toBeLessThan(page.indexOf('<Show when={state.tabSignal.get() === "structure"}>'))
   expect(pageState).toContain("assetListRead(projectId(), {")
   expect(pageState).toContain("limit: 100,")
   expect(pageState).toContain('include: "history,metadata",')

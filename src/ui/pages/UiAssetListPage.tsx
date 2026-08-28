@@ -12,7 +12,6 @@ import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
 import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
-import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { Button } from "#ui/interactive/button/Button.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
@@ -190,7 +189,7 @@ export function UiAssetListPage() {
         }
       />
 
-      {/* Toolbar: View switcher & preview toggle */}
+      {/* Controls: View switcher, display options & search/filters */}
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <div role="tablist" aria-label="Asset views" class={tablistClass}>
@@ -255,152 +254,129 @@ export function UiAssetListPage() {
             </ToggleButton>
           </Show>
         </div>
-      </div>
 
-      {/* The filters are shared by both views so switching tabs keeps the same asset set. */}
-      <CardWrapper class="mb-6 p-4 sm:p-5">
+        {/* The filters are shared by both views so switching tabs keeps the same asset set. */}
         <form
-          class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          class="flex flex-wrap items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault()
             state.applyFilters()
           }}
         >
-          <div>
-            <Label
-              for="asset-search"
-              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
-            >
-              Search
-            </Label>
-            <div class="mt-1">
-              <InputS
-                id="asset-search"
-                type="search"
-                maxLength={255}
-                valueSignal={state.searchDraft}
-                placeholder="Filename..."
-              />
-            </div>
+          <div class="w-44 sm:w-52">
+            <InputS
+              id="asset-search"
+              type="search"
+              maxLength={255}
+              valueSignal={state.searchDraft}
+              placeholder="Filename..."
+              aria-label="Search filename"
+              class="text-xs"
+            />
           </div>
           <Show when={state.showFolders.get()}>
-            <div>
-              <Label
-                for="asset-folder"
-                class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
-              >
-                Folder
-              </Label>
-              <div class="mt-1">
-                <SelectSingleNative
-                  id="asset-folder"
-                  valueSignal={state.folderDraft}
-                  getOptions={state.folderOptions}
-                  valueText={(value) => (value === "" ? "All folders" : value)}
-                />
-              </div>
-            </div>
-          </Show>
-          <div>
-            <Label
-              for="asset-class"
-              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
-            >
-              Class
-            </Label>
-            <div class="mt-1">
+            <div class="w-36 sm:w-44">
               <SelectSingleNative
-                id="asset-class"
-                valueSignal={state.classDraft}
-                getOptions={() => [...uiAssetClassOptions]}
-                valueText={(value) =>
-                  value === "all" ? "All classes" : value.charAt(0).toUpperCase() + value.slice(1)
-                }
+                id="asset-folder"
+                aria-label="Folder"
+                valueSignal={state.folderDraft}
+                getOptions={state.folderOptions}
+                valueText={(value) => (value === "" ? "All folders" : value)}
+                class="py-2 text-xs"
               />
             </div>
+          </Show>
+          <div class="w-32 sm:w-36">
+            <SelectSingleNative
+              id="asset-class"
+              aria-label="Class"
+              valueSignal={state.classDraft}
+              getOptions={() => [...uiAssetClassOptions]}
+              valueText={(value) => (value === "all" ? "All classes" : value.charAt(0).toUpperCase() + value.slice(1))}
+              class="py-2 text-xs"
+            />
           </div>
-          <div class="flex items-end gap-2">
-            <ButtonIcon type="submit" icon={mdiMagnify} class="flex-1">
-              Apply
-            </ButtonIcon>
-            <ButtonIcon
-              type="button"
-              icon={mdiClose}
-              variant="outline"
-              disabled={!state.hasFilters()}
-              onClick={state.clearFilters}
-            >
-              Clear
-            </ButtonIcon>
-          </div>
+          <ButtonIcon type="submit" icon={mdiMagnify} class="text-xs">
+            Apply
+          </ButtonIcon>
+          <ButtonIcon
+            type="button"
+            icon={mdiClose}
+            variant="outline"
+            disabled={!state.hasFilters()}
+            onClick={state.clearFilters}
+            class="text-xs"
+          >
+            Clear
+          </ButtonIcon>
         </form>
+      </div>
 
-        <Show when={state.hasFilters()}>
-          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800/80">
-            <span class="text-xs font-medium text-slate-500 dark:text-slate-400">Active filters:</span>
-            <Show when={state.search()}>
-              {(searchTerm) => (
-                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                  <span>search: "{searchTerm()}"</span>
-                  <ButtonIcon
-                    type="button"
-                    title="Remove search filter"
-                    aria-label="Remove search filter"
-                    icon={mdiClose}
-                    size="none"
-                    iconClass="size-3 mr-0"
-                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    onClick={state.clearSearch}
-                  />
-                </span>
-              )}
-            </Show>
-            <Show when={state.folder()}>
-              {(folderTerm) => (
-                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                  <span>folder: "{folderTerm()}"</span>
-                  <ButtonIcon
-                    type="button"
-                    title="Remove folder filter"
-                    aria-label="Remove folder filter"
-                    icon={mdiClose}
-                    size="none"
-                    iconClass="size-3 mr-0"
-                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    onClick={state.clearFolder}
-                  />
-                </span>
-              )}
-            </Show>
-            <Show when={state.assetClass()}>
-              {(classTerm) => (
-                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                  <span>class: {classTerm()}</span>
-                  <ButtonIcon
-                    type="button"
-                    title="Remove class filter"
-                    aria-label="Remove class filter"
-                    icon={mdiClose}
-                    size="none"
-                    iconClass="size-3 mr-0"
-                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    onClick={state.clearClass}
-                  />
-                </span>
-              )}
-            </Show>
-            <Button
-              type="button"
-              variant="link"
-              size="none"
-              class="text-xs text-slate-500 hover:text-slate-900 underline dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
-              onClick={state.clearFilters}
-            >
-              Clear all
-            </Button>
-          </div>
-        </Show>
-      </CardWrapper>
+      <Show when={state.hasFilters()}>
+        <div class="-mt-3 mb-6 flex flex-wrap items-center gap-2">
+          <span class="text-xs font-medium text-slate-500 dark:text-slate-400">Active filters:</span>
+          <Show when={state.search()}>
+            {(searchTerm) => (
+              <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                <span>search: "{searchTerm()}"</span>
+                <ButtonIcon
+                  type="button"
+                  title="Remove search filter"
+                  aria-label="Remove search filter"
+                  icon={mdiClose}
+                  size="none"
+                  iconClass="size-3 mr-0"
+                  class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  onClick={state.clearSearch}
+                />
+              </span>
+            )}
+          </Show>
+          <Show when={state.folder()}>
+            {(folderTerm) => (
+              <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                <span>folder: "{folderTerm()}"</span>
+                <ButtonIcon
+                  type="button"
+                  title="Remove folder filter"
+                  aria-label="Remove folder filter"
+                  icon={mdiClose}
+                  size="none"
+                  iconClass="size-3 mr-0"
+                  class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  onClick={state.clearFolder}
+                />
+              </span>
+            )}
+          </Show>
+          <Show when={state.assetClass()}>
+            {(classTerm) => (
+              <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                <span>class: {classTerm()}</span>
+                <ButtonIcon
+                  type="button"
+                  title="Remove class filter"
+                  aria-label="Remove class filter"
+                  icon={mdiClose}
+                  size="none"
+                  iconClass="size-3 mr-0"
+                  class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  onClick={state.clearClass}
+                />
+              </span>
+            )}
+          </Show>
+          <Button
+            type="button"
+            variant="link"
+            size="none"
+            class="text-xs text-slate-500 hover:text-slate-900 underline dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
+            onClick={state.clearFilters}
+          >
+            Clear all
+          </Button>
+        </div>
+      </Show>
 
       {/* Structure view panel */}
       <div

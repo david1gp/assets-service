@@ -77,7 +77,7 @@ test("builds the shared assignment options and sends unassigned as null", () => 
 test("replaces the free-text folder filter with a flat folder select", async () => {
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 
-  expect(page).toContain('<SelectSingleNative\n                  id="asset-folder"')
+  expect(page).toContain('<SelectSingleNative\n                id="asset-folder"')
   expect(page).toContain("getOptions={state.folderOptions}")
   expect(page).toContain('valueText={(value) => (value === "" ? "All folders" : value)}')
   expect(page).not.toContain('<InputS id="asset-folder"')
