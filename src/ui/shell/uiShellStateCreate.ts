@@ -1,13 +1,15 @@
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
-import { createMemo, onMount } from "solid-js"
+import { createMemo, onCleanup, onMount } from "solid-js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiRouteIsKnown } from "../routing/uiRouteIsKnown.js"
 import { uiSessionLogout } from "../session/uiSessionLogout.js"
 import { uiSessionRefresh } from "../session/uiSessionRefresh.js"
 import { uiSessionStore } from "../session/uiSessionStore.js"
-import { uiNavigationLinksRead } from "./uiNavigationLinksRead.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
+import { uiNavigationActiveCheck } from "./uiNavigationActiveCheck.js"
+import { uiNavigationLinksRead } from "./uiNavigationLinksRead.js"
+import { uiProjectIdFromPathnameRead } from "./uiProjectIdFromPathnameRead.js"
 
 /** Holds shell-local navigation, session, and menu state. */
 export const uiShellStateCreate = () => {
@@ -19,12 +21,20 @@ export const uiShellStateCreate = () => {
 
   onMount(() => {
     if (uiSessionStore.get().status === "unknown") void uiSessionRefresh()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && menuOpen.get()) {
+        menuOpen.set(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    onCleanup(() => window.removeEventListener("keydown", handleKeyDown))
   })
 
   const session = createMemo(() => uiSessionStore.get())
-  const projectId = createMemo(() => params.projectId ?? "")
+  const projectId = createMemo(() => params.projectId || (uiProjectIdFromPathnameRead(location.pathname) ?? ""))
   const links = createMemo(() => (projectId() === "" ? [] : uiNavigationLinksRead(projectId())))
-  const isCurrent = (href: string) => location.pathname === href
+  const isCurrent = (href: string) => uiNavigationActiveCheck(location.pathname, href)
   const isKnownRoute = createMemo(() => uiRouteIsKnown(location.pathname))
 
   const logout = async () => {
