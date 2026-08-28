@@ -14,7 +14,11 @@ export const serviceConfigRead = (environment: NodeJS.ProcessEnv = process.env):
     r2AccountId: environment.CLOUDFLARE_ACCOUNT_ID,
     r2AccessKeyId: environment.R2_ACCESS_KEY_ID,
     r2SecretAccessKey: environment.R2_SECRET_ACCESS_KEY,
-    r2Bucket: environment.ASSETS_R2_BUCKET,
+    r2Bucket:
+      environment.ASSETS_R2_BUCKET ??
+      environment.ASSETS_R2_PRIVATE_BUCKET ??
+      environment.ASSETS_R2_PUBLIC_BUCKET ??
+      environment.ASSETS_R2_PRODUCTION_BUCKET,
     ...(environment.ASSETS_R2_PRIVATE_BUCKET ? { r2PrivateBucket: environment.ASSETS_R2_PRIVATE_BUCKET } : {}),
     ...(environment.ASSETS_R2_PUBLIC_BUCKET ? { r2PublicBucket: environment.ASSETS_R2_PUBLIC_BUCKET } : {}),
     r2Endpoint: environment.ASSETS_R2_ENDPOINT,
