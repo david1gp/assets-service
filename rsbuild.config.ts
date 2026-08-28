@@ -1,15 +1,17 @@
-import { resolve } from "node:path"
 import { defineConfig } from "@rsbuild/core"
 import { pluginBabel } from "@rsbuild/plugin-babel"
 import { pluginSolid } from "@rsbuild/plugin-solid"
 import { pluginTailwindcss } from "@rsbuild/plugin-tailwindcss"
 
-const solidUiRoot = resolve(import.meta.dirname, "ui")
+const apiTarget = process.env.ASSETS_UI_API_URL ?? "https://assets-server.david-siewert.de"
 
 export default defineConfig({
   server: {
     port: 3010,
     strictPort: true,
+    proxy: {
+      "/api": { target: apiTarget, changeOrigin: true },
+    },
   },
   html: {
     template: "./index.html",
@@ -17,11 +19,6 @@ export default defineConfig({
   source: {
     entry: {
       index: "./src/ui/main.tsx",
-    },
-  },
-  resolve: {
-    alias: {
-      "#ui": solidUiRoot,
     },
   },
   plugins: [pluginBabel({ include: /\.(?:jsx|tsx)$/ }), pluginSolid(), pluginTailwindcss()],

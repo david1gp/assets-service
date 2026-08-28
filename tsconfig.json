@@ -5,11 +5,6 @@
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": false,
     "resolveJsonModule": true,
-    "paths": {
-      "#ui/*.js": ["./ui/*.ts"],
-      "#ui/*.jsx": ["./ui/*.tsx"],
-      "#ui/*": ["./ui/*"]
-    },
     "noEmit": true,
     //
     // dom
