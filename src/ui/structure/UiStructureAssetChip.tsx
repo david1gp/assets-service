@@ -34,9 +34,9 @@ export type UiStructureAssetChipProps = {
  */
 export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
   const client = uiApiClientRead()
-  const label = () => uiAssetPathFormat(p.asset.folders, p.asset.filename)
+  const label = () => (p.showFolders() ? uiAssetPathFormat(p.asset.folders, p.asset.filename) : p.asset.filename)
   const selectId = `structure-move-${p.asset.id}`
-  const hasFolders = () => p.asset.folders.length > 0
+  const hasFolders = () => p.showFolders() && p.asset.folders.length > 0
   const preview = () => {
     if (!p.showPreviews() || !client.success) return null
     return uiAssetPreviewSourceRead(p.asset, {

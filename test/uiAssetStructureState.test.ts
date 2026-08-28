@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test"
 
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
+import type { AssetListQuery } from "../src/api-client/assetListQuerySchema.js"
 import type { AssetStructureFolderMembership } from "../src/structure/assetStructureFolderMembershipSchema.js"
 import type { StructureFolder } from "../src/structure/structureFolderSchema.js"
 
@@ -19,16 +20,21 @@ type MoveCall = {
 
 const moveCalls: MoveCall[] = []
 const folderCreateCalls: Array<{ name: string; parentId: string | null; resolve: () => void }> = []
+const assetListCalls: Array<Record<string, unknown>> = []
 let serverMemberships: AssetStructureFolderMembership[] = []
 let serverAssets: AssetListItem[] = []
 let serverFolders: StructureFolder[] = []
+let serverNextCursor: string | null = null
 
 mock.module("../src/ui/client/uiApiClientRead.js", () => ({
   uiApiClientRead: () => ({
     success: true,
     data: {
       structureRead: async () => ({ success: true, data: { folders: serverFolders, memberships: serverMemberships } }),
-      assetsReadAll: async () => ({ success: true, data: serverAssets }),
+      assetListRead: async (_projectId: string, query: Record<string, unknown>) => {
+        assetListCalls.push(query)
+        return { success: true, data: { assets: serverAssets, page: { limit: 100, nextCursor: serverNextCursor } } }
+      },
       assetStructureFolderMembershipSet: (
         _projectId: string,
         assetId: string,
@@ -52,8 +58,13 @@ mock.module("../src/ui/client/uiApiClientRead.js", () => ({
 const { createRoot } = await import("solid-js")
 const { uiAssetStructureStateCreate } = await import("../src/ui/structure/uiAssetStructureStateCreate.js")
 
-const stateCreate = (isActive = false) => {
+const stateCreate = (
+  isActive = false,
+  options: { cursor?: number; filters?: Pick<AssetListQuery, "class" | "folder" | "search"> } = {},
+) => {
   const dialogOpen = createSignalObject(false)
+  const cursor = createSignalObject<number | undefined>(options.cursor)
+  const cursorChanges: Array<string | null> = []
   let dispose = () => {}
   const state = createRoot((disposeRoot) => {
     dispose = disposeRoot
@@ -61,12 +72,14 @@ const stateCreate = (isActive = false) => {
       projectId: () => "project-1",
       // Inactive keeps the read out of the way for mutation-only tests.
       isActive: () => isActive,
-      filters: () => ({}),
+      filters: () => options.filters ?? {},
+      cursor: cursor.get,
+      cursorSet: (nextCursor) => cursorChanges.push(nextCursor),
       isFolderDialogOpen: dialogOpen.get,
       folderDialogOpenSet: dialogOpen.set,
     })
   })
-  return { state, dialogOpen, dispose }
+  return { state, dialogOpen, dispose, cursorChanges }
 }
 
 const flush = async () => {
@@ -78,9 +91,11 @@ const flush = async () => {
 const reset = () => {
   moveCalls.length = 0
   folderCreateCalls.length = 0
+  assetListCalls.length = 0
   serverMemberships = []
   serverAssets = []
   serverFolders = []
+  serverNextCursor = null
 }
 
 const membershipCreate = (assetId: string, structureFolderId: string): AssetStructureFolderMembership => ({
@@ -274,6 +289,36 @@ test("reads the authoritative and optimistic membership for list assignments", a
   await flush()
 
   expect(state.assetFolderIdRead("asset-a")).toBe("folder-server")
+  dispose()
+})
+
+test("loads one filtered asset page and navigates with its response cursor", async () => {
+  reset()
+  serverAssets = [assetCreate("asset-a")]
+  serverNextCursor = "100"
+  const { state, cursorChanges, dispose } = stateCreate(true, {
+    cursor: 100,
+    filters: { class: "image", folder: "images", search: "hero" },
+  })
+  await flush()
+
+  expect(assetListCalls).toHaveLength(1)
+  expect(assetListCalls[0]).toEqual({
+    limit: 100,
+    include: "history,metadata",
+    class: "image",
+    folder: "images",
+    search: "hero",
+    cursor: 100,
+  })
+  expect(state.tree().unassigned).toEqual(serverAssets)
+  expect(state.nextCursor()).toBe("100")
+  expect(state.isFirstPage()).toBe(false)
+
+  state.goToNextPage()
+  state.goToFirstPage()
+  expect(cursorChanges).toEqual(["100", null])
+
   dispose()
 })
 

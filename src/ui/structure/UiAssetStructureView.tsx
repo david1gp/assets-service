@@ -10,6 +10,7 @@ import { Badge } from "#ui/static/badge/Badge.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import { UiDialog } from "../common/UiDialog.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
+import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { UiStructureDropArea } from "./UiStructureDropArea.jsx"
 import { UiStructureSection } from "./UiStructureSection.jsx"
@@ -67,31 +68,27 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
       </Show>
 
       <UiQueryView query={p.state.query} loadingItem="the structure">
-        {() => (
-          <Show
-            when={p.showFolders()}
-            fallback={
-              <section aria-label="Assets" class="flex flex-col gap-3">
-                <UiStructureDropArea
-                  folderId={null}
-                  label="Assets"
-                  assets={uiStructureTreeAssetsRead(p.state.tree())}
-                  projectId={p.projectId}
-                  showPreviews={p.showPreviews}
-                  pendingAssetIds={p.state.pendingAssetIds()}
-                  folderOptions={p.state.folderOptions()}
-                  showFolders={p.showFolders}
-                  showFolderAssignment={p.showFolderAssignment}
-                  assetMove={p.state.assetMove}
-                />
-              </section>
-            }
-          >
-            <div class="flex flex-col gap-8">
-              <For each={p.state.tree().roots}>
-                {(node) => (
-                  <UiStructureSection
-                    node={node}
+        {(data) => (
+          <div class="flex flex-col gap-4">
+            <div class="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400">
+              <span>
+                Showing{" "}
+                <strong class="font-semibold text-slate-700 dark:text-slate-200">{data?.assets.length ?? 0}</strong>{" "}
+                {data?.assets.length === 1 ? "asset" : "assets"}
+              </span>
+              <Show when={!p.state.isFirstPage()}>
+                <span class="font-mono">Page 2+</span>
+              </Show>
+            </div>
+
+            <Show
+              when={p.showFolders()}
+              fallback={
+                <section aria-label="Assets" class="flex flex-col gap-3">
+                  <UiStructureDropArea
+                    folderId={null}
+                    label="Assets"
+                    assets={uiStructureTreeAssetsRead(p.state.tree())}
                     projectId={p.projectId}
                     showPreviews={p.showPreviews}
                     pendingAssetIds={p.state.pendingAssetIds()}
@@ -100,34 +97,58 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                     showFolderAssignment={p.showFolderAssignment}
                     assetMove={p.state.assetMove}
                   />
-                )}
-              </For>
+                </section>
+              }
+            >
+              <div class="flex flex-col gap-8">
+                <For each={p.state.tree().roots}>
+                  {(node) => (
+                    <UiStructureSection
+                      node={node}
+                      projectId={p.projectId}
+                      showPreviews={p.showPreviews}
+                      pendingAssetIds={p.state.pendingAssetIds()}
+                      folderOptions={p.state.folderOptions()}
+                      showFolders={p.showFolders}
+                      showFolderAssignment={p.showFolderAssignment}
+                      assetMove={p.state.assetMove}
+                    />
+                  )}
+                </For>
 
-              <section aria-label="Unassigned" class="flex flex-col gap-3">
-                <div class="flex items-center justify-between gap-3">
-                  <h2 class="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
-                    <Icon path={mdiFolderOffOutline} class="size-5 text-slate-500 dark:text-slate-400" />
-                    <span>Unassigned</span>
-                  </h2>
-                  <Badge variant="subtle" class="font-mono text-xs">
-                    {p.state.tree().unassigned.length} {p.state.tree().unassigned.length === 1 ? "asset" : "assets"}
-                  </Badge>
-                </div>
-                <UiStructureDropArea
-                  folderId={null}
-                  label="Unassigned"
-                  assets={p.state.tree().unassigned}
-                  projectId={p.projectId}
-                  showPreviews={p.showPreviews}
-                  pendingAssetIds={p.state.pendingAssetIds()}
-                  folderOptions={p.state.folderOptions()}
-                  showFolders={p.showFolders}
-                  showFolderAssignment={p.showFolderAssignment}
-                  assetMove={p.state.assetMove}
-                />
-              </section>
-            </div>
-          </Show>
+                <section aria-label="Unassigned" class="flex flex-col gap-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <h2 class="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+                      <Icon path={mdiFolderOffOutline} class="size-5 text-slate-500 dark:text-slate-400" />
+                      <span>Unassigned</span>
+                    </h2>
+                    <Badge variant="subtle" class="font-mono text-xs">
+                      {p.state.tree().unassigned.length} {p.state.tree().unassigned.length === 1 ? "asset" : "assets"}
+                    </Badge>
+                  </div>
+                  <UiStructureDropArea
+                    folderId={null}
+                    label="Unassigned"
+                    assets={p.state.tree().unassigned}
+                    projectId={p.projectId}
+                    showPreviews={p.showPreviews}
+                    pendingAssetIds={p.state.pendingAssetIds()}
+                    folderOptions={p.state.folderOptions()}
+                    showFolders={p.showFolders}
+                    showFolderAssignment={p.showFolderAssignment}
+                    assetMove={p.state.assetMove}
+                  />
+                </section>
+              </div>
+            </Show>
+
+            <UiPager
+              isFirstPage={p.state.isFirstPage()}
+              nextCursor={p.state.nextCursor()}
+              onFirstPage={p.state.goToFirstPage}
+              onNextPage={p.state.goToNextPage}
+            />
+          </div>
         )}
       </UiQueryView>
 

@@ -21,6 +21,8 @@ export const uiAssetStructureStateCreate = (input: {
   isActive: () => boolean
   /** Active URL filters, shared with the list view so both show the same assets. */
   filters: () => Pick<AssetListQuery, "class" | "folder" | "search">
+  cursor: () => number | undefined
+  cursorSet: (cursor: string | null) => void
 
   isFolderDialogOpen: () => boolean
   folderDialogOpenSet: (open: boolean) => void
@@ -57,12 +59,14 @@ export const uiAssetStructureStateCreate = (input: {
       if (!client.success) return resultErrorCreate("uiAssetStructureRead", client.errorMessage)
       const structure = await client.data.structureRead(input.projectId())
       if (!structure.success) return structure
-      const assets = await client.data.assetsReadAll(input.projectId(), {
+      const assets = await client.data.assetListRead(input.projectId(), {
+        limit: 100,
         include: "history,metadata",
         ...input.filters(),
+        ...(input.cursor() === undefined ? {} : { cursor: input.cursor() }),
       })
       if (!assets.success) return assets
-      const data = { ...structure.data, assets: [...assets.data] }
+      const data = { ...structure.data, assets: [...assets.data.assets], page: assets.data.page }
       membershipOverridesReconcile(data, sequence)
       return { success: true, data }
     },
@@ -73,7 +77,7 @@ export const uiAssetStructureStateCreate = (input: {
         return uiQueryCacheKeyCreate(
           "asset-structure",
           input.projectId(),
-          `class=${filters.class ?? ""}&folder=${filters.folder ?? ""}&search=${filters.search ?? ""}`,
+          `class=${filters.class ?? ""}&folder=${filters.folder ?? ""}&search=${filters.search ?? ""}&cursor=${input.cursor() ?? ""}`,
         )
       },
       cacheSchema: v.nullable(uiAssetStructureSchema),
@@ -215,5 +219,9 @@ export const uiAssetStructureStateCreate = (input: {
     folderDialogClose: () => input.folderDialogOpenSet(false),
     assetMove,
     folderCreate: () => void folderCreate(),
+    nextCursor: () => query.data()?.page.nextCursor ?? null,
+    isFirstPage: () => input.cursor() === undefined,
+    goToNextPage: () => input.cursorSet(query.data()?.page.nextCursor ?? null),
+    goToFirstPage: () => input.cursorSet(null),
   }
 }

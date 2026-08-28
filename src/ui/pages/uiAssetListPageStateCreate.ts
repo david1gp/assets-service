@@ -14,9 +14,9 @@ import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.j
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 import { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
-import { uiStructureFolderFilterOptionsRead } from "../structure/uiStructureFolderFilterOptionsRead.js"
-import { uiStructureFolderPathsStateCreate } from "../structure/uiStructureFolderPathsStateCreate.js"
 import { uiAssetDisplayOptionCreate } from "./uiAssetDisplayOptionCreate.js"
+import { uiAssetFolderFilterOptionsRead } from "./uiAssetFolderFilterOptionsRead.js"
+import { uiAssetFolderPathsStateCreate } from "./uiAssetFolderPathsStateCreate.js"
 import { uiAssetPreviewPreferencePersistenceCreate } from "./uiAssetPreviewPreferencePersistenceCreate.js"
 import { uiAssetViewPreferencePersistenceCreate } from "./uiAssetViewPreferencePersistenceCreate.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
@@ -141,11 +141,10 @@ export const uiAssetListPageStateCreate = () => {
   const showFolders = uiAssetDisplayOptionCreate(uiAssetFolderPreferenceKey, true, (enabled) => {
     if (!enabled) folderClear()
   })
+  if (!showFolders.get() && folder() !== undefined) folderClear()
   const showFolderAssignment = uiAssetDisplayOptionCreate(uiAssetFolderAssignmentPreferenceKey, true)
-  const folderPaths = uiStructureFolderPathsStateCreate({ projectId, isEnabled: showFolders.get })
-  const folderOptions = createMemo(() =>
-    uiStructureFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get()),
-  )
+  const folderPaths = uiAssetFolderPathsStateCreate({ projectId, isEnabled: showFolders.get })
+  const folderOptions = createMemo(() => uiAssetFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get()))
 
   const structure = uiAssetStructureStateCreate({
     projectId,
@@ -157,6 +156,8 @@ export const uiAssetListPageStateCreate = () => {
       ...(folder() === undefined ? {} : { folder: folder() }),
       ...(search() === undefined ? {} : { search: search() }),
     }),
+    cursor,
+    cursorSet: (nextCursor) => setSearchParams({ cursor: nextCursor }),
     isFolderDialogOpen: () =>
       uiSearchParamPicklistRead(uiAssetFolderDialogSchema, searchParams.folderDialog) === "folder",
     folderDialogOpenSet: (open) => setSearchParams({ folderDialog: open ? "folder" : null }),

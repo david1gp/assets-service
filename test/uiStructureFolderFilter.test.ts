@@ -1,55 +1,55 @@
 import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 
-import type { StructureFolder } from "../src/structure/structureFolderSchema.js"
-import {
-  uiStructureFolderFilterAllValue,
-  uiStructureFolderFilterOptionsRead,
-} from "../src/ui/structure/uiStructureFolderFilterOptionsRead.js"
-import { uiStructureFolderPathsRead } from "../src/ui/structure/uiStructureFolderPathsRead.js"
+import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import { uiStructureAssetFolderSelectStateCreate } from "../src/ui/structure/uiStructureAssetFolderSelectStateCreate.js"
+import {
+  uiAssetFolderFilterAllValue,
+  uiAssetFolderFilterOptionsRead,
+} from "../src/ui/pages/uiAssetFolderFilterOptionsRead.js"
+import { uiAssetFolderPathsRead } from "../src/ui/pages/uiAssetFolderPathsRead.js"
 
-const folderCreate = (id: string, name: string, parentId: string | null, depth: 1 | 2 | 3): StructureFolder => ({
-  id,
-  projectId: "project-1",
-  parentId,
-  name,
-  depth,
-  createdAt: "2026-08-28T00:00:00.000Z",
-  updatedAt: "2026-08-28T00:00:00.000Z",
-})
+const assetCreate = (id: string, folders: string[]): AssetListItem =>
+  ({
+    id,
+    projectId: "project-1",
+    class: "image",
+    folders,
+    filename: `${id}.jpg`,
+    basename: id,
+    currentSourceRevisionId: `source-${id}`,
+    sourcePath: `/${folders.join("/")}/${id}.jpg`,
+    outputCount: 0,
+    createdAt: "2026-08-28T00:00:00.000Z",
+    updatedAt: "2026-08-28T00:00:00.000Z",
+  }) as AssetListItem
 
-test("flattens nested folders into sorted full paths", () => {
-  const paths = uiStructureFolderPathsRead([
-    folderCreate("grand", "small", "child", 3),
-    folderCreate("child", "logos", "root-b", 2),
-    folderCreate("root-b", "brand", null, 1),
-    folderCreate("root-a", "archive", null, 1),
+test("flattens canonical asset folders and parent paths into sorted full paths", () => {
+  const paths = uiAssetFolderPathsRead([
+    assetCreate("small", ["brand", "logos", "small"]),
+    assetCreate("logo", ["brand", "logos"]),
+    assetCreate("archive", ["archive"]),
   ])
 
   expect(paths).toEqual(["archive", "brand", "brand/logos", "brand/logos/small"])
 })
 
 test("offers an all-folders entry ahead of every folder path", () => {
-  const options = uiStructureFolderFilterOptionsRead(["brand", "brand/logos"], uiStructureFolderFilterAllValue)
+  const options = uiAssetFolderFilterOptionsRead(["brand", "brand/logos"], uiAssetFolderFilterAllValue)
 
   expect(options).toEqual(["", "brand", "brand/logos"])
 })
 
 test("keeps a stale folder filter selectable so it stays representable and clearable", () => {
-  const options = uiStructureFolderFilterOptionsRead(["brand"], "removed/folder")
+  const options = uiAssetFolderFilterOptionsRead(["brand"], "removed/folder")
 
   expect(options).toEqual(["", "brand", "removed/folder"])
   // Clearing back to the all-folders entry must always remain reachable.
-  expect(options[0]).toBe(uiStructureFolderFilterAllValue)
+  expect(options[0]).toBe(uiAssetFolderFilterAllValue)
 })
 
 test("does not duplicate a folder filter that still exists", () => {
-  expect(uiStructureFolderFilterOptionsRead(["brand", "brand/logos"], "brand/logos")).toEqual([
-    "",
-    "brand",
-    "brand/logos",
-  ])
+  expect(uiAssetFolderFilterOptionsRead(["brand", "brand/logos"], "brand/logos")).toEqual(["", "brand", "brand/logos"])
 })
 
 test("builds the shared assignment options and sends unassigned as null", () => {
@@ -108,12 +108,27 @@ test("adds list assignment controls only when the shared assignment option is vi
   expect(structureState).toContain("assetFolderIdRead")
 })
 
+test("omits list folder columns and prefixes when folders are hidden while retaining asset links", async () => {
+  const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
+
+  expect(page).toContain("showFolders: () => boolean")
+  expect(page).toContain(
+    "data: (asset) => (showFolders() ? uiAssetPathFormat(asset.folders, asset.filename) : asset.filename)",
+  )
+  expect(page).toContain("const hasFolders = () => showFolders() && asset.folders.length > 0")
+  expect(page).toContain("if (showFolders()) {")
+  expect(page).toContain('id: "structureFolder"')
+  expect(page.indexOf('id: "structureFolder"')).toBeGreaterThan(page.indexOf("if (showFolders()) {"))
+  expect(page).toContain("href={uiPaths.asset(projectId(), asset.id)}")
+})
+
 test("drops the active folder filter when folders get hidden", async () => {
   const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
 
   expect(pageState).toContain("if (!enabled) folderClear()")
+  expect(pageState).toContain("if (!showFolders.get() && folder() !== undefined) folderClear()")
   expect(pageState).toContain("isFolderAssignmentVisible: () => showFolders.get() && showFolderAssignment.get()")
-  expect(pageState).toContain("uiStructureFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get())")
+  expect(pageState).toContain("uiAssetFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get())")
 })
 
 test("hides folder sections, creation, and assignment selects in the structure view", async () => {
@@ -124,4 +139,8 @@ test("hides folder sections, creation, and assignment selects in the structure v
   expect(view).toContain("uiStructureTreeAssetsRead(p.state.tree())")
   expect(chip).toContain("<Show when={p.showFolderAssignment()}>")
   expect(chip).toContain("<Show when={p.showFolders()}>")
+  expect(chip).toContain("const hasFolders = () => p.showFolders() && p.asset.folders.length > 0")
+  expect(chip).toContain(
+    "const label = () => (p.showFolders() ? uiAssetPathFormat(p.asset.folders, p.asset.filename) : p.asset.filename)",
+  )
 })

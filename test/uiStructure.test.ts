@@ -114,6 +114,9 @@ test("keeps the structure presentation and list request at the intended boundari
   expect(folder).toContain("rounded-lg border border-slate-200")
   expect(dropArea).toContain("Drop assets here")
   expect(dropArea).toContain("aria-label={`Assets in ${p.label}`}")
+  expect(view).toContain("<UiPager")
+  expect(view).toContain("Showing")
+  expect(view).toContain("Page 2+")
   // The filter form is rendered once outside the tab branches so it applies to both views.
   expect(page).toContain("The filters are shared by both views")
   expect(page.indexOf('<CardWrapper class="mb-6 p-4 sm:p-5">')).toBeLessThan(
@@ -182,13 +185,20 @@ test("applies the active URL filters to the structure asset request and cache ke
   const structureState = await readFile("src/ui/structure/uiAssetStructureStateCreate.ts", "utf8")
   const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
 
-  expect(structureState).toContain("assetsReadAll(input.projectId(), {")
+  expect(structureState).toContain("assetListRead(input.projectId(), {")
+  expect(structureState).not.toContain("assetsReadAll(input.projectId(), {")
+  expect(structureState).toContain("limit: 100,")
   expect(structureState).toContain('include: "history,metadata",')
   expect(structureState).toContain("...input.filters(),")
+  expect(structureState).toContain("...(input.cursor() === undefined ? {} : { cursor: input.cursor() }),")
+  expect(structureState).toContain("page: assets.data.page")
   expect(structureState).toContain('class=${filters.class ?? ""}')
   expect(structureState).toContain('folder=${filters.folder ?? ""}')
   expect(structureState).toContain('search=${filters.search ?? ""}')
+  expect(structureState).toContain('cursor=${input.cursor() ?? ""}')
   expect(pageState).toContain("filters: () => ({")
+  expect(pageState).toContain("cursor,")
+  expect(pageState).toContain("cursorSet: (nextCursor) => setSearchParams({ cursor: nextCursor }),")
   expect(pageState).toContain("...(search() === undefined ? {} : { search: search() }),")
 })
 

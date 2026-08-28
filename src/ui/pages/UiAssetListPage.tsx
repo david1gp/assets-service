@@ -47,6 +47,7 @@ import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 const columnsCreate = (
   projectId: () => string,
   showPreviews: () => boolean,
+  showFolders: () => boolean,
   showFolderAssignment: () => boolean,
   structure: ReturnType<typeof uiAssetStructureStateCreate>,
 ): TableColumnDef<AssetListItem>[] => {
@@ -61,14 +62,14 @@ const columnsCreate = (
     })
   }
 
-  return [
+  const columns: TableColumnDef<AssetListItem>[] = [
     {
       id: "path",
       name: "Asset",
-      data: (asset) => uiAssetPathFormat(asset.folders, asset.filename),
+      data: (asset) => (showFolders() ? uiAssetPathFormat(asset.folders, asset.filename) : asset.filename),
       cell: (asset) => {
         const preview = () => (showPreviews() ? previewSourceRead(asset) : null)
-        const hasFolders = () => asset.folders.length > 0
+        const hasFolders = () => showFolders() && asset.folders.length > 0
         return (
           <div class="flex items-center gap-3 min-w-0">
             <Show when={preview()}>
@@ -138,7 +139,10 @@ const columnsCreate = (
         </time>
       ),
     },
-    {
+  ]
+
+  if (showFolders()) {
+    columns.push({
       id: "structureFolder",
       name: "Folder",
       cell: (asset) => (
@@ -154,19 +158,23 @@ const columnsCreate = (
           />
         </Show>
       ),
-    },
-  ]
+    })
+  }
+
+  return columns
 }
 
 /** Flat inventory of every asset in one project with filters and pagination. */
 export function UiAssetListPage() {
   const state = uiAssetListPageStateCreate()
-  const columns = columnsCreate(
-    state.projectId,
-    state.showPreviews.get,
-    state.isFolderAssignmentVisible,
-    state.structure,
-  )
+  const columns = () =>
+    columnsCreate(
+      state.projectId,
+      state.showPreviews.get,
+      state.showFolders.get,
+      state.isFolderAssignmentVisible,
+      state.structure,
+    )
   const tablistClass =
     "inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/80 p-1 text-slate-600 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400"
 
@@ -477,7 +485,7 @@ export function UiAssetListPage() {
                   <CardWrapper class="overflow-hidden border border-slate-200 bg-white p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                     <Table1R
                       rows={[...(data?.assets ?? [])]}
-                      columns={columns}
+                      columns={columns()}
                       desktopClasses={uiTableDesktopClassesRead()}
                       mobileClasses={uiTableMobileClassesRead()}
                     />

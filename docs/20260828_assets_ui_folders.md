@@ -25,9 +25,9 @@ Use the synced solid-ui library consistently and improve `/assets` folder filter
 
 - [x] 1. Sync `ui`, remove duplicate resolver aliases, confirm AGENTS.md guidance, and migrate remaining basic controls to library components.
 - [x] 2. Add flat nested-folder select filtering and shared show/hide folders plus assignment-select display options.
-- [ ] 3. Add per-entry folder assignment controls to list mode using existing membership semantics.
-- [ ] 4. Add first/next cursor pagination to structure mode.
-- [ ] 5. Run focused/full verification and browser-check `/assets` interactions.
+- [x] 3. Add per-entry folder assignment controls to list mode using existing membership semantics.
+- [x] 4. Add first/next cursor pagination to structure mode.
+- [x] 5. Run focused/full verification and browser-check `/assets` interactions.
 
 ## Paths
 
