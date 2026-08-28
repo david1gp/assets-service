@@ -2,7 +2,6 @@ import { mdiDragVertical } from "@adaptive-ds/mdi/mdiDragVertical.js"
 import { mdiFileOutline } from "@adaptive-ds/mdi/mdiFileOutline.js"
 import { A } from "@solidjs/router"
 import { Show } from "solid-js"
-import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import { Img } from "#ui/static/img/Img.jsx"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
@@ -13,7 +12,8 @@ import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
 import { uiAssetPreviewSourceRead } from "../pages/uiAssetPreviewSourceRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
-import { type UiStructureFolderOption, uiStructureUnassignedOptionValue } from "./uiStructureFolderOptionsRead.js"
+import { UiStructureAssetFolderSelect } from "./UiStructureAssetFolderSelect.jsx"
+import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 
 export type UiStructureAssetChipProps = {
   asset: AssetListItem
@@ -35,7 +35,7 @@ export type UiStructureAssetChipProps = {
 export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
   const client = uiApiClientRead()
   const label = () => uiAssetPathFormat(p.asset.folders, p.asset.filename)
-  const selectId = () => `structure-move-${p.asset.id}`
+  const selectId = `structure-move-${p.asset.id}`
   const hasFolders = () => p.asset.folders.length > 0
   const preview = () => {
     if (!p.showPreviews() || !client.success) return null
@@ -46,12 +46,6 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
         client.data.assetSourceRevisionContentUrlCreate(p.projectId, p.asset.id, sourceRevisionId, "preview"),
     })
   }
-  const optionValues = () => [uiStructureUnassignedOptionValue, ...p.folderOptions.map((option) => option.id)]
-  const optionText = (value: string) =>
-    value === uiStructureUnassignedOptionValue
-      ? "Unassigned"
-      : (p.folderOptions.find((option) => option.id === value)?.path ?? value)
-
   return (
     <li
       data-asset-id={p.asset.id}
@@ -116,19 +110,14 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
       </div>
 
       <Show when={p.showFolderAssignment()}>
-        <label class="sr-only" for={selectId()}>
-          Structure folder of {label()}
-        </label>
-        <SelectSingleNative
-          id={selectId()}
-          class="!w-28 shrink-0 p-1 text-xs sm:!w-36 md:!w-40"
-          disabled={p.isPending}
-          valueSignal={{
-            get: () => p.folderId ?? uiStructureUnassignedOptionValue,
-            set: (value) => p.assetMove(p.asset.id, value === uiStructureUnassignedOptionValue ? null : value),
-          }}
-          getOptions={optionValues}
-          valueText={optionText}
+        <UiStructureAssetFolderSelect
+          assetId={p.asset.id}
+          assetLabel={label()}
+          selectId={selectId}
+          folderId={() => p.folderId}
+          folderOptions={() => p.folderOptions}
+          isDisabled={() => p.isPending}
+          assetMove={p.assetMove}
         />
       </Show>
     </li>

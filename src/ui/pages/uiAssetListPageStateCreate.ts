@@ -72,19 +72,6 @@ export const uiAssetListPageStateCreate = () => {
     },
   }
 
-  const structure = uiAssetStructureStateCreate({
-    projectId,
-    isActive: () => tab() === "structure",
-    filters: () => ({
-      ...(assetClass() === undefined ? {} : { class: assetClass() }),
-      ...(folder() === undefined ? {} : { folder: folder() }),
-      ...(search() === undefined ? {} : { search: search() }),
-    }),
-    isFolderDialogOpen: () =>
-      uiSearchParamPicklistRead(uiAssetFolderDialogSchema, searchParams.folderDialog) === "folder",
-    folderDialogOpenSet: (open) => setSearchParams({ folderDialog: open ? "folder" : null }),
-  })
-
   const searchDraftState = createSignalObject(search() ?? "")
   const folderDraftState = createSignalObject(folder() ?? "")
   const classDraftState = createSignalObject<string>(assetClass() ?? "all")
@@ -159,6 +146,21 @@ export const uiAssetListPageStateCreate = () => {
   const folderOptions = createMemo(() =>
     uiStructureFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get()),
   )
+
+  const structure = uiAssetStructureStateCreate({
+    projectId,
+    // Keep the membership snapshot warm in list mode while assignment controls
+    // are visible. Both tabs then read and reconcile the same structure cache.
+    isActive: () => tab() === "structure" || (showFolders.get() && showFolderAssignment.get()),
+    filters: () => ({
+      ...(assetClass() === undefined ? {} : { class: assetClass() }),
+      ...(folder() === undefined ? {} : { folder: folder() }),
+      ...(search() === undefined ? {} : { search: search() }),
+    }),
+    isFolderDialogOpen: () =>
+      uiSearchParamPicklistRead(uiAssetFolderDialogSchema, searchParams.folderDialog) === "folder",
+    folderDialogOpenSet: (open) => setSearchParams({ folderDialog: open ? "folder" : null }),
+  })
 
   const query = uiQueryCreate<AssetListResponse | null>(
     async () => {

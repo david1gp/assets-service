@@ -255,6 +255,28 @@ test("retains a pending optimistic membership when a reload returns older server
   dispose()
 })
 
+test("reads the authoritative and optimistic membership for list assignments", async () => {
+  reset()
+  serverAssets = [assetCreate("asset-a")]
+  serverFolders = [folderCreate("folder-server"), folderCreate("folder-optimistic")]
+  serverMemberships = [membershipCreate("asset-a", "folder-server")]
+  const { state, dispose } = stateCreate(true)
+  await flush()
+
+  expect(state.isReady()).toBe(true)
+  expect(state.assetFolderIdRead("asset-a")).toBe("folder-server")
+  expect(state.assetFolderIdRead("asset-unassigned")).toBe(null)
+
+  state.assetMove("asset-a", "folder-optimistic")
+  expect(state.assetFolderIdRead("asset-a")).toBe("folder-optimistic")
+
+  moveCalls[0]?.resolve({ success: false, errorMessage: "boom" })
+  await flush()
+
+  expect(state.assetFolderIdRead("asset-a")).toBe("folder-server")
+  dispose()
+})
+
 test("submits folder creation once while a request is still pending", async () => {
   reset()
   const { state, dispose } = stateCreate()

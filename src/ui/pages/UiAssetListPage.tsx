@@ -34,7 +34,9 @@ import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { UiStructureAssetFolderSelect } from "../structure/UiStructureAssetFolderSelect.jsx"
 import { UiAssetStructureView } from "../structure/UiAssetStructureView.jsx"
+import type { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 import { uiAssetClassOptions, uiAssetListPageStateCreate } from "./uiAssetListPageStateCreate.js"
@@ -42,7 +44,12 @@ import { uiAssetPreviewSourceRead } from "./uiAssetPreviewSourceRead.js"
 import { uiAssetViewTabIconRead } from "./uiAssetViewTabIconRead.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
 
-const columnsCreate = (projectId: () => string, showPreviews: () => boolean): TableColumnDef<AssetListItem>[] => {
+const columnsCreate = (
+  projectId: () => string,
+  showPreviews: () => boolean,
+  showFolderAssignment: () => boolean,
+  structure: ReturnType<typeof uiAssetStructureStateCreate>,
+): TableColumnDef<AssetListItem>[] => {
   const client = uiApiClientRead()
   const previewSourceRead = (asset: AssetListItem) => {
     if (!client.success) return null
@@ -131,13 +138,35 @@ const columnsCreate = (projectId: () => string, showPreviews: () => boolean): Ta
         </time>
       ),
     },
+    {
+      id: "structureFolder",
+      name: "Folder",
+      cell: (asset) => (
+        <Show when={showFolderAssignment()}>
+          <UiStructureAssetFolderSelect
+            assetId={asset.id}
+            assetLabel={uiAssetPathFormat(asset.folders, asset.filename)}
+            selectId={`asset-structure-folder-${asset.id}`}
+            folderId={() => structure.assetFolderIdRead(asset.id)}
+            folderOptions={structure.folderOptions}
+            isDisabled={() => !structure.isReady() || structure.pendingAssetIds().has(asset.id)}
+            assetMove={structure.assetMove}
+          />
+        </Show>
+      ),
+    },
   ]
 }
 
 /** Flat inventory of every asset in one project with filters and pagination. */
 export function UiAssetListPage() {
   const state = uiAssetListPageStateCreate()
-  const columns = columnsCreate(state.projectId, state.showPreviews.get)
+  const columns = columnsCreate(
+    state.projectId,
+    state.showPreviews.get,
+    state.isFolderAssignmentVisible,
+    state.structure,
+  )
   const tablistClass =
     "inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/80 p-1 text-slate-600 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400"
 

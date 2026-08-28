@@ -7,6 +7,7 @@ import {
   uiStructureFolderFilterOptionsRead,
 } from "../src/ui/structure/uiStructureFolderFilterOptionsRead.js"
 import { uiStructureFolderPathsRead } from "../src/ui/structure/uiStructureFolderPathsRead.js"
+import { uiStructureAssetFolderSelectStateCreate } from "../src/ui/structure/uiStructureAssetFolderSelectStateCreate.js"
 
 const folderCreate = (id: string, name: string, parentId: string | null, depth: 1 | 2 | 3): StructureFolder => ({
   id,
@@ -51,6 +52,28 @@ test("does not duplicate a folder filter that still exists", () => {
   ])
 })
 
+test("builds the shared assignment options and sends unassigned as null", () => {
+  const folderId = { current: "folder-child" }
+  const moves: Array<{ assetId: string; folderId: string | null }> = []
+  const state = uiStructureAssetFolderSelectStateCreate({
+    assetId: () => "asset-1",
+    folderId: () => folderId.current,
+    folderOptions: () => [
+      { id: "folder-root", path: "brand", depth: 1 },
+      { id: "folder-child", path: "brand/logos", depth: 2 },
+    ],
+    isDisabled: () => false,
+    assetMove: (assetId, nextFolderId) => moves.push({ assetId, folderId: nextFolderId }),
+  })
+
+  expect(state.optionValues()).toEqual(["unassigned", "folder-root", "folder-child"])
+  expect(state.optionText("folder-child")).toBe("brand/logos")
+  expect(state.valueSignal.get()).toBe("folder-child")
+
+  state.valueSignal.set("unassigned")
+  expect(moves).toEqual([{ assetId: "asset-1", folderId: null }])
+})
+
 test("replaces the free-text folder filter with a flat folder select", async () => {
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 
@@ -68,6 +91,21 @@ test("hides the folder filter and assignment toggle when folders are hidden", as
   expect(page).toContain("pressedSignal={state.showFolders}")
   expect(page).toContain("pressedSignal={state.showFolderAssignment}")
   expect(page).toContain("showFolderAssignment={state.isFolderAssignmentVisible}")
+})
+
+test("adds list assignment controls only when the shared assignment option is visible", async () => {
+  const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
+  const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
+  const structureState = await readFile("src/ui/structure/uiAssetStructureStateCreate.ts", "utf8")
+
+  expect(page).toContain('id: "structureFolder"')
+  expect(page).toContain("<UiStructureAssetFolderSelect")
+  expect(page).toContain("folderOptions={structure.folderOptions}")
+  expect(page).toContain("!structure.isReady() || structure.pendingAssetIds().has(asset.id)")
+  expect(pageState).toContain(
+    'isActive: () => tab() === "structure" || (showFolders.get() && showFolderAssignment.get())',
+  )
+  expect(structureState).toContain("assetFolderIdRead")
 })
 
 test("drops the active folder filter when folders get hidden", async () => {
