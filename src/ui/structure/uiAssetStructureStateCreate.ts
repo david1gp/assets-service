@@ -80,16 +80,6 @@ export const uiAssetStructureStateCreate = (input: {
     },
   )
 
-  const tree = createMemo(() => {
-    const data = query.data()
-    if (data === null) return { roots: [], unassigned: [] }
-    const folderIdByAssetId = new Map<string, string | null>()
-    for (const membership of data.memberships) folderIdByAssetId.set(membership.assetId, membership.structureFolderId)
-    for (const [assetId, folderId] of membershipOverrides.get()) folderIdByAssetId.set(assetId, folderId)
-    return uiStructureTreeCreate(data.folders, data.assets, folderIdByAssetId)
-  })
-
-  const folderOptions = createMemo(() => uiStructureFolderOptionsRead(tree().roots))
   const folderIdByAssetId = createMemo(() => {
     const data = query.data()
     const next = new Map<string, string | null>()
@@ -103,6 +93,13 @@ export const uiAssetStructureStateCreate = (input: {
     }
     return next
   })
+  const tree = createMemo(() => {
+    const data = query.data()
+    if (data === null) return { roots: [], unassigned: [] }
+    return uiStructureTreeCreate(data.folders, data.assets, folderIdByAssetId())
+  })
+
+  const folderOptions = createMemo(() => uiStructureFolderOptionsRead(tree().roots))
 
   const clientRead = () => {
     const client = uiApiClientRead()
