@@ -23,7 +23,14 @@ export type UiStructureDropZoneOptions = {
  */
 const folderIdByElement = new WeakMap<HTMLElement, string | null>()
 
-const dropTargetClasses = ["ring-2", "ring-blue-500"]
+const dropTargetClasses = [
+  "ring-2",
+  "ring-blue-500",
+  "border-blue-500",
+  "bg-blue-50/70",
+  "dark:border-blue-400",
+  "dark:bg-blue-950/40",
+]
 let highlighted: HTMLElement | null = null
 const highlightSet = (element: HTMLElement | null) => {
   if (highlighted === element) return

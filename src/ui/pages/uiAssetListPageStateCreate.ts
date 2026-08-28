@@ -178,12 +178,27 @@ export const uiAssetListPageStateCreate = () => {
     folderDraft,
     classDraft,
     hasFilters,
+    assetClass: () => assetClass(),
+    folder: () => folder(),
+    search: () => search(),
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => cursor() === undefined,
     applyFilters: () => filtersUrlReplace(),
     clearFilters: () => {
       searchDraftState.set("")
       folderDraftState.set("")
+      classDraftState.set("all")
+      filtersUrlReplace()
+    },
+    clearSearch: () => {
+      searchDraftState.set("")
+      filtersUrlReplace()
+    },
+    clearFolder: () => {
+      folderDraftState.set("")
+      filtersUrlReplace()
+    },
+    clearClass: () => {
       classDraftState.set("all")
       filtersUrlReplace()
     },

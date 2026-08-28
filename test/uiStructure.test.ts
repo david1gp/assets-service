@@ -111,7 +111,7 @@ test("keeps the structure presentation and list request at the intended boundari
   expect(section).toContain("<UiStructureFolder")
   expect(section).toContain("grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3")
   expect(folder).toContain("<CardWrapper")
-  expect(folder).toContain("rounded-lg border border-gray-300")
+  expect(folder).toContain("rounded-lg border border-slate-200")
   expect(dropArea).toContain("Drop assets here")
   expect(dropArea).toContain("aria-label={`Assets in ${p.label}`}")
   // The filter form is rendered once outside the tab branches so it applies to both views.

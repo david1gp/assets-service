@@ -5,8 +5,8 @@ export function uiTableDesktopClassesRead(overrides?: DesktopTableClassNames): D
   return {
     class: "w-full text-left text-sm",
     header:
-      "border-b border-gray-200 bg-gray-50/80 px-4 py-3 font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200",
-    row: "border-b border-gray-100 transition-colors hover:bg-gray-50/60 dark:border-gray-800 dark:hover:bg-gray-800/50 last:border-b-0",
+      "border-b border-slate-200 bg-slate-50/80 px-4 py-3 font-semibold text-xs uppercase tracking-wider text-slate-600 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400",
+    row: "border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800/60 dark:hover:bg-slate-800/40 last:border-b-0",
     data: "px-4 py-3.5 align-middle",
     ...overrides,
   }

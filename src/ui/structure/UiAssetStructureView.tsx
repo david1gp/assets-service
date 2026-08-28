@@ -1,10 +1,13 @@
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
+import { mdiFolderOffOutline } from "@adaptive-ds/mdi/mdiFolderOffOutline.js"
 import { mdiFolderPlus } from "@adaptive-ds/mdi/mdiFolderPlus.js"
 import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Badge } from "#ui/static/badge/Badge.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
 import { UiDialog } from "../common/UiDialog.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
@@ -35,13 +38,18 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
 
   return (
     <div class="flex flex-col gap-6">
-      <div class="flex flex-wrap items-center gap-3">
-        <ButtonIcon type="button" icon={mdiFolderPlus} onClick={p.state.folderDialogOpen}>
-          New folder
-        </ButtonIcon>
-        <p class="text-sm text-muted-foreground">
-          Moving an asset here changes its structure folder only, never its canonical path.
-        </p>
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/50">
+        <div class="flex flex-wrap items-center gap-3">
+          <ButtonIcon type="button" icon={mdiFolderPlus} onClick={p.state.folderDialogOpen}>
+            New folder
+          </ButtonIcon>
+          <p class="text-xs text-slate-500 dark:text-slate-400">
+            Moving an asset here changes its structure folder only, never its canonical path.
+          </p>
+        </div>
+        <Badge variant="subtle" class="font-mono text-xs">
+          {p.state.folderOptions().length} {p.state.folderOptions().length === 1 ? "folder" : "folders"}
+        </Badge>
       </div>
 
       <Show when={p.state.actionError()}>
@@ -69,7 +77,15 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
             </For>
 
             <section aria-label="Unassigned" class="flex flex-col gap-3">
-              <h2 class="text-lg font-semibold">Unassigned</h2>
+              <div class="flex items-center justify-between gap-3">
+                <h2 class="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
+                  <Icon path={mdiFolderOffOutline} class="size-5 text-slate-500 dark:text-slate-400" />
+                  <span>Unassigned</span>
+                </h2>
+                <Badge variant="subtle" class="font-mono text-xs">
+                  {p.state.tree().unassigned.length} {p.state.tree().unassigned.length === 1 ? "asset" : "assets"}
+                </Badge>
+              </div>
               <UiStructureDropArea
                 folderId={null}
                 label="Unassigned"
@@ -102,24 +118,38 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
           }}
         >
           <div>
-            <Label for="structure-folder-name">Name</Label>
-            <InputS
-              id="structure-folder-name"
-              maxLength={255}
-              valueSignal={p.state.folderNameDraft}
-              placeholder="logos"
-            />
+            <Label
+              for="structure-folder-name"
+              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+            >
+              Name
+            </Label>
+            <div class="mt-1">
+              <InputS
+                id="structure-folder-name"
+                maxLength={255}
+                valueSignal={p.state.folderNameDraft}
+                placeholder="logos"
+              />
+            </div>
           </div>
           <div>
-            <Label for="structure-folder-parent">Parent folder</Label>
-            <SelectSingleNative
-              id="structure-folder-parent"
-              valueSignal={p.state.folderParentDraft}
-              getOptions={parentOptionValues}
-              valueText={parentOptionText}
-            />
+            <Label
+              for="structure-folder-parent"
+              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+            >
+              Parent folder
+            </Label>
+            <div class="mt-1">
+              <SelectSingleNative
+                id="structure-folder-parent"
+                valueSignal={p.state.folderParentDraft}
+                getOptions={parentOptionValues}
+                valueText={parentOptionText}
+              />
+            </div>
           </div>
-          <div class="flex justify-end gap-2">
+          <div class="mt-2 flex justify-end gap-2">
             <ButtonIcon type="button" icon={mdiClose} variant="outline" onClick={p.state.folderDialogClose}>
               Cancel
             </ButtonIcon>

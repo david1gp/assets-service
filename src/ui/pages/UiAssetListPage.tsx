@@ -2,6 +2,8 @@ import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
 import { mdiEye } from "@adaptive-ds/mdi/mdiEye.js"
 import { mdiEyeOff } from "@adaptive-ds/mdi/mdiEyeOff.js"
+import { mdiFolderMultipleOutline } from "@adaptive-ds/mdi/mdiFolderMultipleOutline.js"
+import { mdiFolderSearchOutline } from "@adaptive-ds/mdi/mdiFolderSearchOutline.js"
 import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
 import { For, Show } from "solid-js"
@@ -50,39 +52,49 @@ const columnsCreate = (projectId: () => string, showPreviews: () => boolean): Ta
   return [
     {
       id: "path",
-      name: "Path",
+      name: "Asset",
       data: (asset) => uiAssetPathFormat(asset.folders, asset.filename),
       cell: (asset) => {
         const preview = () => (showPreviews() ? previewSourceRead(asset) : null)
+        const hasFolders = () => asset.folders.length > 0
         return (
-          <span class="flex items-center gap-3">
+          <div class="flex items-center gap-3 min-w-0">
             <Show when={preview()}>
               {(source) => (
-                <Img
-                  class="h-12 w-12 shrink-0 rounded bg-gray-100 object-contain dark:bg-gray-800"
-                  src={source().url}
-                  alt={source().alt}
-                  width={source().kind === "optimized" ? source().width : undefined}
-                  height={source().kind === "optimized" ? source().height : undefined}
-                />
+                <div class="size-11 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800">
+                  <Img
+                    class="size-full object-contain"
+                    src={source().url}
+                    alt={source().alt}
+                    width={source().kind === "optimized" ? source().width : undefined}
+                    height={source().kind === "optimized" ? source().height : undefined}
+                  />
+                </div>
               )}
             </Show>
-            <span class="min-w-0">
-              <A
-                href={uiPaths.asset(projectId(), asset.id)}
-                class="wrap-anywhere text-blue-700 underline dark:text-blue-300"
-              >
-                {uiAssetPathFormat(asset.folders, asset.filename)}
-              </A>
-              <Show when={asset.deletionStatus}>
-                {(status) => (
-                  <UiStatusBadge class="ml-2" tone={uiDeletionStatusToneRead(status())}>
-                    {uiDeletionStatusLabelRead(status())}
-                  </UiStatusBadge>
-                )}
+            <div class="flex flex-col min-w-0">
+              <Show when={hasFolders()}>
+                <span class="font-mono text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {asset.folders.join("/")}/
+                </span>
               </Show>
-            </span>
-          </span>
+              <div class="flex items-center gap-2 min-w-0">
+                <A
+                  href={uiPaths.asset(projectId(), asset.id)}
+                  class="font-mono text-sm font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400 truncate"
+                >
+                  {asset.filename}
+                </A>
+                <Show when={asset.deletionStatus}>
+                  {(status) => (
+                    <UiStatusBadge tone={uiDeletionStatusToneRead(status())}>
+                      {uiDeletionStatusLabelRead(status())}
+                    </UiStatusBadge>
+                  )}
+                </Show>
+              </div>
+            </div>
+          </div>
         )
       },
     },
@@ -90,19 +102,29 @@ const columnsCreate = (projectId: () => string, showPreviews: () => boolean): Ta
       id: "class",
       name: "Class",
       data: (asset) => asset.class,
-      cell: (asset) => <Badge variant="subtle">{asset.class}</Badge>,
+      cell: (asset) => (
+        <Badge variant="subtle" class="font-mono text-xs capitalize">
+          {asset.class}
+        </Badge>
+      ),
     },
     {
       id: "outputCount",
       name: "Outputs",
       data: (asset) => asset.outputCount,
-      cell: (asset) => asset.outputCount,
+      cell: (asset) => (
+        <span class="font-mono text-xs font-medium text-slate-600 dark:text-slate-400">{asset.outputCount}</span>
+      ),
     },
     {
       id: "updatedAt",
       name: "Updated",
       data: (asset) => asset.updatedAt,
-      cell: (asset) => <time datetime={asset.updatedAt}>{asset.updatedAt.slice(0, 10)}</time>,
+      cell: (asset) => (
+        <time datetime={asset.updatedAt} class="font-mono text-xs text-slate-500 dark:text-slate-400">
+          {asset.updatedAt.slice(0, 10)}
+        </time>
+      ),
     },
   ]
 }
@@ -111,6 +133,8 @@ const columnsCreate = (projectId: () => string, showPreviews: () => boolean): Ta
 export function UiAssetListPage() {
   const state = uiAssetListPageStateCreate()
   const columns = columnsCreate(state.projectId, state.showPreviews.get)
+  const tablistClass =
+    "inline-flex items-center rounded-lg border border-slate-200 bg-slate-100/80 p-1 text-slate-600 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400"
 
   return (
     <>
@@ -124,32 +148,44 @@ export function UiAssetListPage() {
         }
       />
 
-      <div class="mb-6 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Asset views" class="flex gap-2">
-          <For each={uiAssetViewTabs}>
-            {(value) => (
-              <button
-                type="button"
-                role="tab"
-                id={`asset-view-tab-${value}`}
-                aria-selected={state.tabSignal.get() === value}
-                aria-controls={`asset-view-panel-${value}`}
-                class="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 capitalize aria-selected:bg-gray-900 aria-selected:text-white dark:border-gray-600 dark:aria-selected:bg-gray-100 dark:aria-selected:text-gray-900"
-                onClick={() => state.tabSignal.set(value)}
-              >
-                <Icon class="size-5" path={uiAssetViewTabIconRead(value)} />
-                {value}
-              </button>
-            )}
-          </For>
+      {/* Toolbar: View switcher & preview toggle */}
+      <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div role="tablist" aria-label="Asset views" class={tablistClass}>
+            <For each={uiAssetViewTabs}>
+              {(value) => {
+                const active = () => state.tabSignal.get() === value
+                return (
+                  <button
+                    type="button"
+                    role="tab"
+                    id={`asset-view-tab-${value}`}
+                    aria-selected={active()}
+                    aria-controls={`asset-view-panel-${value}`}
+                    class={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-all ${
+                      active()
+                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100"
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                    }`}
+                    onClick={() => state.tabSignal.set(value)}
+                  >
+                    <Icon class="size-4" path={uiAssetViewTabIconRead(value)} />
+                    <span>{value}</span>
+                  </button>
+                )
+              }}
+            </For>
+          </div>
+
+          <ToggleButton
+            title={state.showPreviews.get() ? "Hide image previews" : "Show image previews"}
+            pressedSignal={state.showPreviews}
+            class="text-xs"
+          >
+            <Icon class="mr-1.5 size-4" path={state.showPreviews.get() ? mdiEyeOff : mdiEye} />
+            <span>{state.showPreviews.get() ? "Hide previews" : "Show previews"}</span>
+          </ToggleButton>
         </div>
-        <ToggleButton
-          title={state.showPreviews.get() ? "Hide image previews" : "Show image previews"}
-          pressedSignal={state.showPreviews}
-        >
-          <Icon class="mr-2 size-5" path={state.showPreviews.get() ? mdiEyeOff : mdiEye} />
-          {state.showPreviews.get() ? "Hide previews" : "Show previews"}
-        </ToggleButton>
       </div>
 
       {/* The filters are shared by both views so switching tabs keeps the same asset set. */}
@@ -162,30 +198,53 @@ export function UiAssetListPage() {
           }}
         >
           <div>
-            <Label for="asset-search">Search</Label>
-            <InputS
-              id="asset-search"
-              type="search"
-              maxLength={255}
-              valueSignal={state.searchDraft}
-              placeholder="Filename"
-            />
+            <Label
+              for="asset-search"
+              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+            >
+              Search
+            </Label>
+            <div class="mt-1">
+              <InputS
+                id="asset-search"
+                type="search"
+                maxLength={255}
+                valueSignal={state.searchDraft}
+                placeholder="Filename..."
+              />
+            </div>
           </div>
           <div>
-            <Label for="asset-folder">Folder</Label>
-            <InputS id="asset-folder" maxLength={255} valueSignal={state.folderDraft} placeholder="brand/logos" />
+            <Label
+              for="asset-folder"
+              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+            >
+              Folder
+            </Label>
+            <div class="mt-1">
+              <InputS id="asset-folder" maxLength={255} valueSignal={state.folderDraft} placeholder="brand/logos" />
+            </div>
           </div>
           <div>
-            <Label for="asset-class">Class</Label>
-            <SelectSingleNative
-              id="asset-class"
-              valueSignal={state.classDraft}
-              getOptions={() => [...uiAssetClassOptions]}
-              valueText={(value) => (value === "all" ? "All classes" : value)}
-            />
+            <Label
+              for="asset-class"
+              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+            >
+              Class
+            </Label>
+            <div class="mt-1">
+              <SelectSingleNative
+                id="asset-class"
+                valueSignal={state.classDraft}
+                getOptions={() => [...uiAssetClassOptions]}
+                valueText={(value) =>
+                  value === "all" ? "All classes" : value.charAt(0).toUpperCase() + value.slice(1)
+                }
+              />
+            </div>
           </div>
           <div class="flex items-end gap-2">
-            <ButtonIcon type="submit" icon={mdiMagnify}>
+            <ButtonIcon type="submit" icon={mdiMagnify} class="flex-1">
               Apply
             </ButtonIcon>
             <ButtonIcon
@@ -199,8 +258,67 @@ export function UiAssetListPage() {
             </ButtonIcon>
           </div>
         </form>
+
+        <Show when={state.hasFilters()}>
+          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800/80">
+            <span class="text-xs font-medium text-slate-500 dark:text-slate-400">Active filters:</span>
+            <Show when={state.search()}>
+              {(searchTerm) => (
+                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                  <span>search: "{searchTerm()}"</span>
+                  <button
+                    type="button"
+                    title="Remove search filter"
+                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    onClick={state.clearSearch}
+                  >
+                    <Icon path={mdiClose} class="size-3" />
+                  </button>
+                </span>
+              )}
+            </Show>
+            <Show when={state.folder()}>
+              {(folderTerm) => (
+                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                  <span>folder: "{folderTerm()}"</span>
+                  <button
+                    type="button"
+                    title="Remove folder filter"
+                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    onClick={state.clearFolder}
+                  >
+                    <Icon path={mdiClose} class="size-3" />
+                  </button>
+                </span>
+              )}
+            </Show>
+            <Show when={state.assetClass()}>
+              {(classTerm) => (
+                <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                  <span>class: {classTerm()}</span>
+                  <button
+                    type="button"
+                    title="Remove class filter"
+                    class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    onClick={state.clearClass}
+                  >
+                    <Icon path={mdiClose} class="size-3" />
+                  </button>
+                </span>
+              )}
+            </Show>
+            <button
+              type="button"
+              class="text-xs text-slate-500 hover:text-slate-900 underline dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
+              onClick={state.clearFilters}
+            >
+              Clear all
+            </button>
+          </div>
+        </Show>
       </CardWrapper>
 
+      {/* Structure view panel */}
       <div
         id="asset-view-panel-structure"
         role="tabpanel"
@@ -217,6 +335,7 @@ export function UiAssetListPage() {
         </Show>
       </div>
 
+      {/* List view panel */}
       <div
         id="asset-view-panel-list"
         role="tabpanel"
@@ -225,29 +344,74 @@ export function UiAssetListPage() {
         tabIndex={0}
       >
         <Show when={state.tabSignal.get() === "list"}>
-          <UiQueryView
-            query={state.query}
-            loadingItem="assets"
-            emptyMessage="No assets matched these filters."
-            isEmpty={(data) => (data?.assets.length ?? 0) === 0}
-          >
+          <UiQueryView query={state.query} loadingItem="assets">
             {(data) => (
-              <div class="flex flex-col gap-4">
-                <CardWrapper class="overflow-hidden p-0">
-                  <Table1R
-                    rows={[...(data?.assets ?? [])]}
-                    columns={columns}
-                    desktopClasses={uiTableDesktopClassesRead()}
-                    mobileClasses={uiTableMobileClassesRead()}
+              <Show
+                when={(data?.assets.length ?? 0) > 0}
+                fallback={
+                  <CardWrapper class="flex flex-col items-center justify-center p-8 text-center sm:p-12 border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                    <div class="flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <Icon
+                        path={state.hasFilters() ? mdiFolderSearchOutline : mdiFolderMultipleOutline}
+                        class="size-6"
+                      />
+                    </div>
+                    <h3 class="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">
+                      {state.hasFilters() ? "No matching assets" : "No assets in this project"}
+                    </h3>
+                    <p class="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
+                      {state.hasFilters()
+                        ? "No assets matched your search or filter criteria. Try adjusting or clearing your filters."
+                        : "Upload your first image, video, font, or document to populate this project's asset inventory."}
+                    </p>
+                    <div class="mt-5">
+                      <Show
+                        when={state.hasFilters()}
+                        fallback={
+                          <UiLinkButton href={uiPaths.upload(state.projectId())} icon={mdiCloudUpload}>
+                            Upload asset
+                          </UiLinkButton>
+                        }
+                      >
+                        <ButtonIcon icon={mdiClose} variant="outline" onClick={state.clearFilters}>
+                          Clear filters
+                        </ButtonIcon>
+                      </Show>
+                    </div>
+                  </CardWrapper>
+                }
+              >
+                <div class="flex flex-col gap-4">
+                  {/* Result summary bar */}
+                  <div class="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400">
+                    <span>
+                      Showing{" "}
+                      <strong class="font-semibold text-slate-700 dark:text-slate-200">
+                        {data?.assets.length ?? 0}
+                      </strong>{" "}
+                      {data?.assets.length === 1 ? "asset" : "assets"}
+                    </span>
+                    <Show when={!state.isFirstPage()}>
+                      <span class="font-mono">Page 2+</span>
+                    </Show>
+                  </div>
+
+                  <CardWrapper class="overflow-hidden border border-slate-200 bg-white p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                    <Table1R
+                      rows={[...(data?.assets ?? [])]}
+                      columns={columns}
+                      desktopClasses={uiTableDesktopClassesRead()}
+                      mobileClasses={uiTableMobileClassesRead()}
+                    />
+                  </CardWrapper>
+                  <UiPager
+                    isFirstPage={state.isFirstPage()}
+                    nextCursor={state.nextCursor()}
+                    onFirstPage={state.goToFirstPage}
+                    onNextPage={state.goToNextPage}
                   />
-                </CardWrapper>
-                <UiPager
-                  isFirstPage={state.isFirstPage()}
-                  nextCursor={state.nextCursor()}
-                  onFirstPage={state.goToFirstPage}
-                  onNextPage={state.goToNextPage}
-                />
-              </div>
+                </div>
+              </Show>
             )}
           </UiQueryView>
         </Show>
