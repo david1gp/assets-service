@@ -22,6 +22,9 @@ export type UiStructureAssetChipProps = {
   folderId: string | null
   folderOptions: UiStructureFolderOption[]
   isPending: boolean
+  /** Hides the drag handle when folders are not shown at all. */
+  showFolders: () => boolean
+  showFolderAssignment: () => boolean
   assetMove: (assetId: string, folderId: string | null) => void
 }
 
@@ -55,13 +58,15 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
       class="group flex w-full min-w-0 flex-nowrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-2xs transition-all hover:border-slate-300 aria-busy:cursor-wait aria-busy:opacity-60 sm:w-auto sm:max-w-md dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600"
       aria-busy={p.isPending}
     >
-      <span
-        class="shrink-0 cursor-grab text-slate-300 transition-colors group-hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:group-hover:text-slate-400"
-        title="Drag to move folder"
-        aria-hidden="true"
-      >
-        <Icon path={mdiDragVertical} class="size-4" />
-      </span>
+      <Show when={p.showFolders()}>
+        <span
+          class="shrink-0 cursor-grab text-slate-300 transition-colors group-hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:group-hover:text-slate-400"
+          title="Drag to move folder"
+          aria-hidden="true"
+        >
+          <Icon path={mdiDragVertical} class="size-4" />
+        </span>
+      </Show>
 
       <Show
         when={preview()}
@@ -110,20 +115,22 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
         </div>
       </div>
 
-      <label class="sr-only" for={selectId()}>
-        Structure folder of {label()}
-      </label>
-      <SelectSingleNative
-        id={selectId()}
-        class="!w-28 shrink-0 p-1 text-xs sm:!w-36 md:!w-40"
-        disabled={p.isPending}
-        valueSignal={{
-          get: () => p.folderId ?? uiStructureUnassignedOptionValue,
-          set: (value) => p.assetMove(p.asset.id, value === uiStructureUnassignedOptionValue ? null : value),
-        }}
-        getOptions={optionValues}
-        valueText={optionText}
-      />
+      <Show when={p.showFolderAssignment()}>
+        <label class="sr-only" for={selectId()}>
+          Structure folder of {label()}
+        </label>
+        <SelectSingleNative
+          id={selectId()}
+          class="!w-28 shrink-0 p-1 text-xs sm:!w-36 md:!w-40"
+          disabled={p.isPending}
+          valueSignal={{
+            get: () => p.folderId ?? uiStructureUnassignedOptionValue,
+            set: (value) => p.assetMove(p.asset.id, value === uiStructureUnassignedOptionValue ? null : value),
+          }}
+          getOptions={optionValues}
+          valueText={optionText}
+        />
+      </Show>
     </li>
   )
 }

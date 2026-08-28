@@ -14,7 +14,7 @@ export function Icon(p: IconProps) {
       viewBox={"0 0 24 24"}
       aria-hidden={!p.title}
       stroke-width={0.5}
-      class={classMerge("size-6 shrink-0 align-middle dark:fill-white", p.class)}
+      class={classMerge("size-6 shrink-0 align-middle fill-current", p.class)}
     >
       <path d={p.path} />
     </svg>

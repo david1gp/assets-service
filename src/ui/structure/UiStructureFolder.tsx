@@ -14,6 +14,8 @@ export type UiStructureFolderProps = {
   showPreviews: () => boolean
   pendingAssetIds: ReadonlySet<string>
   folderOptions: UiStructureFolderOption[]
+  showFolders: () => boolean
+  showFolderAssignment: () => boolean
   assetMove: (assetId: string, folderId: string | null) => void
 }
 
@@ -42,6 +44,8 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
         showPreviews={p.showPreviews}
         pendingAssetIds={p.pendingAssetIds}
         folderOptions={p.folderOptions}
+        showFolders={p.showFolders}
+        showFolderAssignment={p.showFolderAssignment}
         assetMove={p.assetMove}
       />
 
@@ -70,6 +74,8 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
                   showPreviews={p.showPreviews}
                   pendingAssetIds={p.pendingAssetIds}
                   folderOptions={p.folderOptions}
+                  showFolders={p.showFolders}
+                  showFolderAssignment={p.showFolderAssignment}
                   assetMove={p.assetMove}
                 />
               </section>

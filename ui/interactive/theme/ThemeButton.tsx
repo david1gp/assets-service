@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js"
+import { createSignal, onCleanup, onMount } from "solid-js"
 import { ButtonIconOnly } from "#ui/interactive/button/ButtonIconOnly.jsx"
 import { buttonVariant } from "#ui/interactive/button/buttonCva.js"
 import type { ThemeButtonText } from "#ui/interactive/theme/ThemeButtonText.js"
@@ -19,9 +19,14 @@ export function ThemeButton(p: ThemeButtonProps) {
   const handleGlobalKeyDown = createGlobalKeyHandler(navigate)
 
   const texts = p.texts ?? themeButtonTextDefault
+  // SSR always starts as `os` ("Operation system"). Showing that label then
+  // swapping to Light/Dark after themeInit shifts the navbar. Wait until the
+  // stored theme is applied before rendering the label.
+  const [themeReady, setThemeReady] = createSignal(false)
 
   onMount(() => {
     themeInit()
+    setThemeReady(true)
     window.addEventListener("keydown", handleGlobalKeyDown)
     onCleanup(() => window.removeEventListener("keydown", handleGlobalKeyDown))
   })
@@ -31,10 +36,10 @@ export function ThemeButton(p: ThemeButtonProps) {
       title={texts.currentTheme(texts[themeSignal.get()])}
       icon={themeIcon(themeSignal.get())}
       variant={buttonVariant.ghost}
-      class={classMerge(p.class)}
+      class={classMerge(p.showText && "min-w-24", p.class)}
       onClick={themeRotate}
     >
-      {p.showText && texts[themeSignal.get()]}
+      {p.showText && themeReady() && texts[themeSignal.get()]}
     </ButtonIconOnly>
   )
 }

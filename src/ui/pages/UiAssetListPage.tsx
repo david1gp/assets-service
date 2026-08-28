@@ -2,7 +2,11 @@ import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
 import { mdiEye } from "@adaptive-ds/mdi/mdiEye.js"
 import { mdiEyeOff } from "@adaptive-ds/mdi/mdiEyeOff.js"
+import { mdiFolderCancelOutline } from "@adaptive-ds/mdi/mdiFolderCancelOutline.js"
+import { mdiFolderMoveOutline } from "@adaptive-ds/mdi/mdiFolderMoveOutline.js"
 import { mdiFolderMultipleOutline } from "@adaptive-ds/mdi/mdiFolderMultipleOutline.js"
+import { mdiFolderOffOutline } from "@adaptive-ds/mdi/mdiFolderOffOutline.js"
+import { mdiFolderOutline } from "@adaptive-ds/mdi/mdiFolderOutline.js"
 import { mdiFolderSearchOutline } from "@adaptive-ds/mdi/mdiFolderSearchOutline.js"
 import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
 import { A } from "@solidjs/router"
@@ -10,6 +14,7 @@ import { For, Show } from "solid-js"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
+import { Button } from "#ui/interactive/button/Button.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { ToggleButton } from "#ui/interactive/toggle/ToggleButton.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
@@ -156,12 +161,16 @@ export function UiAssetListPage() {
               {(value) => {
                 const active = () => state.tabSignal.get() === value
                 return (
-                  <button
+                  <ButtonIcon
                     type="button"
                     role="tab"
                     id={`asset-view-tab-${value}`}
                     aria-selected={active()}
                     aria-controls={`asset-view-panel-${value}`}
+                    variant={active() ? "filled" : "ghost"}
+                    size="none"
+                    icon={uiAssetViewTabIconRead(value)}
+                    iconClass="size-4 mr-0"
                     class={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-all ${
                       active()
                         ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100"
@@ -169,9 +178,8 @@ export function UiAssetListPage() {
                     }`}
                     onClick={() => state.tabSignal.set(value)}
                   >
-                    <Icon class="size-4" path={uiAssetViewTabIconRead(value)} />
                     <span>{value}</span>
-                  </button>
+                  </ButtonIcon>
                 )
               }}
             </For>
@@ -185,6 +193,30 @@ export function UiAssetListPage() {
             <Icon class="mr-1.5 size-4" path={state.showPreviews.get() ? mdiEyeOff : mdiEye} />
             <span>{state.showPreviews.get() ? "Hide previews" : "Show previews"}</span>
           </ToggleButton>
+
+          <ToggleButton
+            title={state.showFolders.get() ? "Hide folders" : "Show folders"}
+            pressedSignal={state.showFolders}
+            class="text-xs"
+          >
+            <Icon class="mr-1.5 size-4" path={state.showFolders.get() ? mdiFolderOffOutline : mdiFolderOutline} />
+            <span>{state.showFolders.get() ? "Hide folders" : "Show folders"}</span>
+          </ToggleButton>
+
+          {/* Assigning an asset to a folder is meaningless while folders are hidden. */}
+          <Show when={state.showFolders.get()}>
+            <ToggleButton
+              title={state.showFolderAssignment.get() ? "Hide folder assignment" : "Show folder assignment"}
+              pressedSignal={state.showFolderAssignment}
+              class="text-xs"
+            >
+              <Icon
+                class="mr-1.5 size-4"
+                path={state.showFolderAssignment.get() ? mdiFolderCancelOutline : mdiFolderMoveOutline}
+              />
+              <span>{state.showFolderAssignment.get() ? "Hide assignment" : "Show assignment"}</span>
+            </ToggleButton>
+          </Show>
         </div>
       </div>
 
@@ -214,17 +246,24 @@ export function UiAssetListPage() {
               />
             </div>
           </div>
-          <div>
-            <Label
-              for="asset-folder"
-              class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
-            >
-              Folder
-            </Label>
-            <div class="mt-1">
-              <InputS id="asset-folder" maxLength={255} valueSignal={state.folderDraft} placeholder="brand/logos" />
+          <Show when={state.showFolders.get()}>
+            <div>
+              <Label
+                for="asset-folder"
+                class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+              >
+                Folder
+              </Label>
+              <div class="mt-1">
+                <SelectSingleNative
+                  id="asset-folder"
+                  valueSignal={state.folderDraft}
+                  getOptions={state.folderOptions}
+                  valueText={(value) => (value === "" ? "All folders" : value)}
+                />
+              </div>
             </div>
-          </div>
+          </Show>
           <div>
             <Label
               for="asset-class"
@@ -266,14 +305,16 @@ export function UiAssetListPage() {
               {(searchTerm) => (
                 <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
                   <span>search: "{searchTerm()}"</span>
-                  <button
+                  <ButtonIcon
                     type="button"
                     title="Remove search filter"
+                    aria-label="Remove search filter"
+                    icon={mdiClose}
+                    size="none"
+                    iconClass="size-3 mr-0"
                     class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
                     onClick={state.clearSearch}
-                  >
-                    <Icon path={mdiClose} class="size-3" />
-                  </button>
+                  />
                 </span>
               )}
             </Show>
@@ -281,14 +322,16 @@ export function UiAssetListPage() {
               {(folderTerm) => (
                 <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
                   <span>folder: "{folderTerm()}"</span>
-                  <button
+                  <ButtonIcon
                     type="button"
                     title="Remove folder filter"
+                    aria-label="Remove folder filter"
+                    icon={mdiClose}
+                    size="none"
+                    iconClass="size-3 mr-0"
                     class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
                     onClick={state.clearFolder}
-                  >
-                    <Icon path={mdiClose} class="size-3" />
-                  </button>
+                  />
                 </span>
               )}
             </Show>
@@ -296,24 +339,28 @@ export function UiAssetListPage() {
               {(classTerm) => (
                 <span class="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
                   <span>class: {classTerm()}</span>
-                  <button
+                  <ButtonIcon
                     type="button"
                     title="Remove class filter"
+                    aria-label="Remove class filter"
+                    icon={mdiClose}
+                    size="none"
+                    iconClass="size-3 mr-0"
                     class="ml-0.5 rounded-xs p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
                     onClick={state.clearClass}
-                  >
-                    <Icon path={mdiClose} class="size-3" />
-                  </button>
+                  />
                 </span>
               )}
             </Show>
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="none"
               class="text-xs text-slate-500 hover:text-slate-900 underline dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
               onClick={state.clearFilters}
             >
               Clear all
-            </button>
+            </Button>
           </div>
         </Show>
       </CardWrapper>
@@ -331,6 +378,8 @@ export function UiAssetListPage() {
             projectId={state.projectId()}
             state={state.structure}
             showPreviews={state.showPreviews.get}
+            showFolders={state.showFolders.get}
+            showFolderAssignment={state.isFolderAssignmentVisible}
           />
         </Show>
       </div>

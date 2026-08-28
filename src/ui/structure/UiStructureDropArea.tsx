@@ -14,6 +14,8 @@ export type UiStructureDropAreaProps = {
   showPreviews: () => boolean
   pendingAssetIds: ReadonlySet<string>
   folderOptions: UiStructureFolderOption[]
+  showFolders: () => boolean
+  showFolderAssignment: () => boolean
   assetMove: (assetId: string, folderId: string | null) => void
   class?: string
 }
@@ -41,6 +43,8 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
             folderId={p.folderId}
             folderOptions={p.folderOptions}
             isPending={p.pendingAssetIds.has(asset.id)}
+            showFolders={p.showFolders}
+            showFolderAssignment={p.showFolderAssignment}
             assetMove={p.assetMove}
           />
         )}

@@ -14,6 +14,9 @@ import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.j
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
 import { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
+import { uiStructureFolderFilterOptionsRead } from "../structure/uiStructureFolderFilterOptionsRead.js"
+import { uiStructureFolderPathsStateCreate } from "../structure/uiStructureFolderPathsStateCreate.js"
+import { uiAssetDisplayOptionCreate } from "./uiAssetDisplayOptionCreate.js"
 import { uiAssetPreviewPreferencePersistenceCreate } from "./uiAssetPreviewPreferencePersistenceCreate.js"
 import { uiAssetViewPreferencePersistenceCreate } from "./uiAssetViewPreferencePersistenceCreate.js"
 import { uiAssetViewTabs } from "./uiAssetViewTabs.js"
@@ -23,6 +26,8 @@ export { uiAssetClassOptions } from "./uiAssetClassOptions.js"
 const uiAssetViewTabSchema = v.picklist(uiAssetViewTabs)
 type UiAssetViewTab = v.InferOutput<typeof uiAssetViewTabSchema>
 const uiAssetFolderDialogSchema = v.picklist(["folder"])
+const uiAssetFolderPreferenceKey = "assets-service:ui:asset-list:show-folders"
+const uiAssetFolderAssignmentPreferenceKey = "assets-service:ui:asset-list:show-folder-assignment"
 
 /** Holds asset inventory filters, search, and pagination bound to the URL. */
 export const uiAssetListPageStateCreate = () => {
@@ -139,6 +144,22 @@ export const uiAssetListPageStateCreate = () => {
     classDraftState.set(assetClass() ?? "all")
   })
 
+  const folderClear = () => {
+    folderDraftState.set("")
+    filtersUrlReplace()
+  }
+
+  // Hiding folders also removes the folder filter control, so the active folder
+  // filter is dropped with it; an unreachable filter would silently hide assets.
+  const showFolders = uiAssetDisplayOptionCreate(uiAssetFolderPreferenceKey, true, (enabled) => {
+    if (!enabled) folderClear()
+  })
+  const showFolderAssignment = uiAssetDisplayOptionCreate(uiAssetFolderAssignmentPreferenceKey, true)
+  const folderPaths = uiStructureFolderPathsStateCreate({ projectId, isEnabled: showFolders.get })
+  const folderOptions = createMemo(() =>
+    uiStructureFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get()),
+  )
+
   const query = uiQueryCreate<AssetListResponse | null>(
     async () => {
       if (tab() !== "list") return { success: true, data: null }
@@ -172,6 +193,11 @@ export const uiAssetListPageStateCreate = () => {
     projectId,
     tabSignal,
     showPreviews,
+    showFolders,
+    showFolderAssignment,
+    /** Only meaningful while folders are shown at all. */
+    isFolderAssignmentVisible: () => showFolders.get() && showFolderAssignment.get(),
+    folderOptions,
     structure,
     query,
     searchDraft,
@@ -194,10 +220,7 @@ export const uiAssetListPageStateCreate = () => {
       searchDraftState.set("")
       filtersUrlReplace()
     },
-    clearFolder: () => {
-      folderDraftState.set("")
-      filtersUrlReplace()
-    },
+    clearFolder: folderClear,
     clearClass: () => {
       classDraftState.set("all")
       filtersUrlReplace()
