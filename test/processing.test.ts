@@ -23,16 +23,16 @@ test("image processing rotates before bounded resize and records actual output m
   expect(result.data.metadata).toMatchObject({
     width: 30,
     height: 60,
-    format: "webp",
+    format: "avif",
     orientationApplied: true,
     aiProvenance: null,
   })
   expect(v.safeParse(processingProvenanceSchema, result.data.provenance).success).toBe(true)
-  expect((await sharp(result.data.bytes).metadata()).format).toBe("webp")
+  expect((await sharp(result.data.bytes).metadata()).format).toBe("heif")
   const expected = await sharp(sourceBytes, { animated: false })
     .rotate()
     .resize({ width: 60, height: 60, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 80 })
+    .avif({ quality: 80 })
     .toBuffer()
   expect(Buffer.from(result.data.bytes).equals(expected)).toBe(true)
 })

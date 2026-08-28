@@ -25,7 +25,7 @@ const draftInputRead = (draft: UiOutputDraft, assetClass: AssetClass): OutputDef
     key,
     width: numberRead(draft.width) ?? Number.NaN,
     height: numberRead(draft.height) ?? Number.NaN,
-    format: draft.format === "woff2" ? "webp" : draft.format,
+    format: draft.format === "woff2" ? "avif" : draft.format,
     ...(quality === undefined ? {} : { quality }),
     ...(draft.aiLabel === "inherit" ? {} : { showAiLabel: draft.aiLabel === "on" }),
   }

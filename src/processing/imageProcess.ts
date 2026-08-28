@@ -32,7 +32,7 @@ export const imageProcess = async (
 
 const imageProcessDefault: ImageProcessingAdapter = async (request) => {
   const op = "imageProcess"
-  const format = request.format ?? "webp"
+  const format = request.format ?? "avif"
   const quality = request.quality ?? defaultQuality
   const aiProvenance = request.aiProvenance ?? null
   const aiLabelOptions = request.aiLabelOptions ?? {}
@@ -114,7 +114,7 @@ const imageProcessDefault: ImageProcessingAdapter = async (request) => {
 }
 
 function encodeImage(pipeline: Sharp, format: ImageProcessingRequest["format"], quality: number): Sharp {
-  switch (format ?? "webp") {
+  switch (format ?? "avif") {
     case "jpg":
       return pipeline.jpeg({ quality })
     case "png":

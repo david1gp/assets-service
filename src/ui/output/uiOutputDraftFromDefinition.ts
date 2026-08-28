@@ -7,7 +7,7 @@ export const uiOutputDraftFromDefinition = (definition: OutputDefinition): UiOut
   key: definition.key,
   width: definition.kind === "image" ? String(definition.width) : "",
   height: definition.kind === "image" ? String(definition.height) : "",
-  format: definition.kind === "image" ? definition.format : definition.kind === "font" ? "woff2" : "webp",
+  format: definition.kind === "image" ? definition.format : definition.kind === "font" ? "woff2" : "avif",
   quality: definition.kind === "image" && definition.quality !== undefined ? String(definition.quality) : "",
   aiLabel:
     definition.kind === "image" && definition.showAiLabel !== undefined

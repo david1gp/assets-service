@@ -252,7 +252,7 @@ export const uiAssetDetailPageStateCreate = () => {
         key: "",
         width: assetClass === "image" ? "1600" : "",
         height: assetClass === "image" ? "900" : "",
-        format: assetClass === "font" ? "woff2" : "webp",
+        format: assetClass === "font" ? "woff2" : "avif",
         quality: "",
         aiLabel: "inherit",
       },
