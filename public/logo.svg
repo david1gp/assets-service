@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" role="img" aria-label="Assets service">
+  <rect width="28" height="28" rx="6" fill="#0f172a" />
+  <path
+    d="M22,4A2,2 0 0,1 24,6V16A2,2 0 0,1 22,18H6A2,2 0 0,1 4,16V4A2,2 0 0,1 6,2H12L14,4H22M2,6V20H20V22H2A2,2 0 0,1 0,20V11H0V6H2M6,6V16H22V6H6Z"
+    fill="#ffffff"
+    transform="translate(6 6) scale(0.6666666667)"
+  />
+</svg>
