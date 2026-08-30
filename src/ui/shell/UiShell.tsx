@@ -48,8 +48,20 @@ export function UiShell(p: RouteSectionProps) {
             <Show when={state.projectId()}>
               <div class="flex items-center gap-1.5 min-w-0 text-sm">
                 <Icon path={mdiChevronRight} class="size-4 text-muted-foreground shrink-0" />
-                <Badge variant="subtle" class="font-mono font-medium max-w-[140px] truncate sm:max-w-[240px]">
-                  {state.projectId()}
+                <Badge
+                  variant="subtle"
+                  class="flex max-w-[140px] min-w-0 flex-col items-start gap-0 leading-tight sm:max-w-[240px]"
+                >
+                  <Show when={state.projectName() !== ""}>
+                    <span class="w-full truncate font-medium">{state.projectName()}</span>
+                  </Show>
+                  <span
+                    class={`w-full truncate font-mono ${
+                      state.projectName() === "" ? "font-medium" : "text-[11px] font-normal text-muted-foreground"
+                    }`}
+                  >
+                    {state.projectId()}
+                  </span>
                 </Badge>
               </div>
             </Show>
@@ -57,10 +69,17 @@ export function UiShell(p: RouteSectionProps) {
 
           <div class="flex items-center gap-2 shrink-0">
             <Show when={state.session().status === "authenticated"}>
-              <Show when={state.session().principal?.subjectId}>
-                <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs text-muted-foreground md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
-                  <Icon path={mdiAccount} class="size-3.5" />
-                  <span class="max-w-[120px] truncate lg:max-w-[180px]">{state.session().principal?.subjectId}</span>
+              <Show when={state.accountId() !== ""}>
+                <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
+                  <Icon path={mdiAccount} class="size-3.5 text-muted-foreground" />
+                  <span class="flex max-w-[120px] min-w-0 flex-col leading-tight lg:max-w-[180px]">
+                    <Show when={state.accountName() !== ""}>
+                      <span class="truncate font-medium">{state.accountName()}</span>
+                    </Show>
+                    <span class={`truncate ${state.accountName() === "" ? "" : "text-[11px]"} text-muted-foreground`}>
+                      {state.accountId()}
+                    </span>
+                  </span>
                 </div>
               </Show>
 
@@ -106,7 +125,18 @@ export function UiShell(p: RouteSectionProps) {
             <div class="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-slate-800">
               <div class="flex items-center gap-2 min-w-0">
                 <Icon path={mdiFolderMultipleOutline} class="size-5 text-slate-700 dark:text-slate-300 shrink-0" />
-                <span class="font-mono text-sm font-semibold truncate">{state.projectId()}</span>
+                <span class="flex min-w-0 flex-col leading-tight">
+                  <Show when={state.projectName() !== ""}>
+                    <span class="truncate text-sm font-semibold">{state.projectName()}</span>
+                  </Show>
+                  <span
+                    class={`truncate font-mono ${
+                      state.projectName() === "" ? "text-sm font-semibold" : "text-xs text-muted-foreground"
+                    }`}
+                  >
+                    {state.projectId()}
+                  </span>
+                </span>
               </div>
               <ButtonIconOnly
                 icon={mdiClose}
@@ -116,6 +146,20 @@ export function UiShell(p: RouteSectionProps) {
                 onClick={state.closeMenu}
               />
             </div>
+
+            <Show when={state.accountId() !== ""}>
+              <div class="flex min-w-0 items-center gap-2 border-b border-slate-200 pb-4 dark:border-slate-800">
+                <Icon path={mdiAccount} class="size-4 shrink-0 text-muted-foreground" />
+                <span class="flex min-w-0 flex-col leading-tight">
+                  <Show when={state.accountName() !== ""}>
+                    <span class="truncate text-sm font-medium">{state.accountName()}</span>
+                  </Show>
+                  <span class={`truncate ${state.accountName() === "" ? "text-sm" : "text-xs"} text-muted-foreground`}>
+                    {state.accountId()}
+                  </span>
+                </span>
+              </div>
+            </Show>
 
             <nav id="mobile-project-navigation" aria-label="Mobile project sections">
               <ul class="flex flex-col gap-1">
