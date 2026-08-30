@@ -25,4 +25,4 @@ Show human-readable project and signed-in user names in the authenticated projec
 - [x] 1. Add verified OIDC display-name extraction to the authenticated principal/session flow with focused tests.
 - [x] 2. Load project metadata in shell state and render project/user names with muted IDs, including non-blocking fallbacks and focused tests.
 - [x] 3. Run focused and full verification, including a browser check of the authenticated UI where access permits.
-- [ ] 4. Commit and push the completed phase using the commits skill, deploy it, and verify production health.
+- [x] 4. Commit and push the completed phase using the commits skill, deploy it, and verify production health.
