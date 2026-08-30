@@ -5,8 +5,8 @@ import { join } from "node:path"
 
 import pkg from "../package.json" with { type: "json" }
 import { assetsCliMain } from "../src/entrypoints/assets-cli.js"
-import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 import type { AssetClass } from "../src/schemas/assetClassSchema.js"
+import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 
 const envelopeResponseCreate = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify({ ok: true, data, requestId: "request-1" }), {
@@ -133,9 +133,36 @@ const cliEnvironmentWithoutProject: NodeJS.ProcessEnv = Object.fromEntries(
   Object.entries(cliEnvironment).filter(([name]) => name !== "ASSETS_PROJECT"),
 )
 
-const apiProjectCreate = (input: { id: string; name: string; slug?: string }) => ({
+const cliEnvironmentWithoutProjectOrConfig: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(cliEnvironment).filter(([name]) => name !== "ASSETS_PROJECT" && name !== "ASSETS_CONFIG_FILE"),
+)
+
+const organizationConfiguration = {
+  organizations: {
+    david: { id: "organization-david", name: "David", slug: "david" },
+    contentoren: { id: "organization-contentoren", name: "Contentoren", slug: "contentoren" },
+  },
+  directoryMappings: {},
+} as const
+
+const globalOrganizationConfigurationWrite = async (homeDirectory: string, configuration: unknown): Promise<void> => {
+  const path = join(homeDirectory, ".config", "assets-service", "config.json")
+  await mkdir(join(path, ".."), { recursive: true })
+  await writeFile(path, JSON.stringify(configuration))
+}
+
+const globalOrganizationCompatibilityConfigurationWrite = async (
+  homeDirectory: string,
+  configuration: unknown,
+): Promise<void> => {
+  const path = join(homeDirectory, ".config", "assets", "config.json")
+  await mkdir(join(path, ".."), { recursive: true })
+  await writeFile(path, JSON.stringify(configuration))
+}
+
+const apiProjectCreate = (input: { id: string; name: string; slug?: string; organizationId?: string }) => ({
   id: input.id,
-  organizationId: "organization-1",
+  organizationId: input.organizationId ?? "organization-1",
   name: input.name,
   slug: input.slug ?? input.id,
   defaultEnvironment: "development",
@@ -232,8 +259,12 @@ test("diff help documents its root and all source directory controls", async () 
   expect(JSON.parse(output[0] ?? "")).toMatchObject({
     ok: true,
     data: {
-      commands: expect.arrayContaining(["diff [root]", "upload-all [root] --integration-note <text>"]),
-      options: expect.arrayContaining(["--dry-run", "--delete"]),
+      commands: expect.arrayContaining([
+        "config show [root]",
+        "diff [root]",
+        "upload-all [root] --integration-note <text>",
+      ]),
+      options: expect.arrayContaining(["--dry-run", "--delete", "--organization", "--env-file"]),
       diff: {
         root: "Default: .",
         sourceDirectories: [
@@ -243,9 +274,192 @@ test("diff help documents its root and all source directory controls", async () 
           "font: ./fonts, --font-dir <directory>, --no-font-dir",
         ],
       },
+      config: {
+        root: "Default: .",
+        output: expect.stringContaining("without displaying credentials"),
+      },
       projectResolution: expect.stringContaining("package.json.name"),
+      organizationResolution: expect.stringContaining("ASSETS_ORGANIZATION"),
+      environmentFile: expect.stringContaining("<command-root>/.env"),
     },
   })
+})
+
+test("config show reports effective local configuration without creating an API client", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-config-show-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-config-show-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await globalOrganizationCompatibilityConfigurationWrite(homeDirectory, organizationConfiguration)
+    await writeFile(
+      join(root, ".env"),
+      [
+        "ASSETS_ORGANIZATION=contentoren",
+        "ASSETS_API_URL=https://file-user:file-password@file.example.test?token=file-secret",
+      ].join("\n"),
+    )
+    await writeFile(join(root, "assets.config.json"), JSON.stringify({ image: "media", video: null }))
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["config", "show", root, "--json"], {
+      env: {
+        HOME: homeDirectory,
+        PWD: root,
+        ASSETS_API_URL: "https://process-user:process-password@api.example.test/v1?token=process-secret",
+        ASSETS_PROJECT: "process-project",
+        ASSETS_ENVIRONMENT: "production",
+        ASSETS_TOKEN: "do-not-print",
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+      fetcher: async () => {
+        throw new Error("config show must not create an API client")
+      },
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        globalConfiguration: {
+          canonicalPath: join(homeDirectory, ".config", "assets-service", "config.json"),
+          fallbackPath: join(homeDirectory, ".config", "assets", "config.json"),
+          canonicalExists: true,
+          fallbackExists: true,
+          canonicalLoaded: true,
+          fallbackLoaded: false,
+          loaded: true,
+          source: "canonical",
+        },
+        environmentFile: { path: join(root, ".env"), source: "command-root", loaded: true },
+        organization: {
+          value: "contentoren",
+          id: "organization-contentoren",
+          name: "Contentoren",
+          source: "env-file",
+        },
+        project: { value: "process-project", source: "process-environment" },
+        environment: { value: "production", source: "process-environment" },
+        apiUrl: { value: "https://api.example.test/v1", source: "process-environment" },
+        sourceDirectories: {
+          root,
+          configPath: join(root, "assets.config.json"),
+          configLoaded: true,
+          values: {
+            image: join(root, "media"),
+            video: null,
+            document: join(root, "documents"),
+            font: join(root, "fonts"),
+          },
+        },
+      },
+    })
+    expect(output[0]).not.toContain("do-not-print")
+    expect(output[0]).not.toContain("process-secret")
+    expect(output[0]).not.toContain("process-password")
+
+    const humanOutput: string[] = []
+    const humanExitCode = await assetsCliMain(["config", "show", root], {
+      env: {
+        HOME: homeDirectory,
+        PWD: root,
+        ASSETS_API_URL: "https://process-user:process-password@api.example.test/v1?token=process-secret",
+        ASSETS_PROJECT: "process-project",
+        ASSETS_ENVIRONMENT: "production",
+      },
+      stdout: (text) => humanOutput.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(humanExitCode).toBe(0)
+    expect(humanOutput[0]).toContain(
+      `  canonical: ${join(homeDirectory, ".config", "assets-service", "config.json")} (exists, loaded, selected)`,
+    )
+    expect(humanOutput[0]).toContain(
+      `  fallback: ${join(homeDirectory, ".config", "assets", "config.json")} (exists, not loaded, not selected)`,
+    )
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("config show reports compatibility fallback and directory-mapped organization without API settings", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-config-show-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-config-show-root-"))
+  try {
+    const fallbackPath = join(homeDirectory, ".config", "assets", "config.json")
+    await mkdir(join(fallbackPath, ".."), { recursive: true })
+    await writeFile(
+      fallbackPath,
+      JSON.stringify({ ...organizationConfiguration, directoryMappings: { [root]: "david" } }),
+    )
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["config", "show", root, "--json"], {
+      env: { HOME: homeDirectory, PWD: root },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        globalConfiguration: {
+          canonicalExists: false,
+          fallbackExists: true,
+          canonicalLoaded: false,
+          fallbackLoaded: true,
+          loaded: true,
+          source: "fallback",
+        },
+        environmentFile: { path: join(root, ".env"), source: "command-root", loaded: false },
+        organization: { value: "david", source: "directory-mapping" },
+        project: { value: null, source: "unresolved" },
+        environment: { value: null, source: "unresolved" },
+        apiUrl: { value: null, source: "unresolved" },
+        sourceDirectories: { root, configLoaded: false },
+      },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("config show distinguishes an existing legacy CLI fallback from a loaded global configuration", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-config-show-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-config-show-root-"))
+  try {
+    await globalOrganizationCompatibilityConfigurationWrite(homeDirectory, {
+      project: "legacy-project",
+      environment: "development",
+    })
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["config", "show", root, "--json"], {
+      env: { HOME: homeDirectory, PWD: root },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        globalConfiguration: {
+          canonicalExists: false,
+          fallbackExists: true,
+          canonicalLoaded: false,
+          fallbackLoaded: false,
+          loaded: false,
+          source: "none",
+        },
+        organization: { value: null, source: "unrestricted" },
+      },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test("settings help documents read, update, and R2 options", async () => {
@@ -538,6 +752,214 @@ test("bulk project resolution gives an explicit project precedence over package.
   }
 })
 
+test("bulk project resolution loads the command-root .env and scopes package names by organization", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-package-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-package-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, organizationConfiguration)
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "shared-project" }))
+    await writeFile(join(root, ".env"), "ASSETS_ORGANIZATION=contentoren\n")
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "david-shared-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "contentoren-shared-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.contentoren.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: home },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(
+      result.requests.some((request) => request.url.includes("/projects/contentoren-shared-project-id/assets")),
+    ).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/david-shared-project-id/assets"))).toBe(
+      false,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution scopes explicit project names by organization", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-name-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-name-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, organizationConfiguration)
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "david-named-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "contentoren-named-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.contentoren.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: root, ASSETS_ORGANIZATION: "contentoren" },
+      ["--organization", "david", "--project", "shared-project"],
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => new URL(request.url).pathname === "/api/v1/projects")).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/david-named-project-id/assets"))).toBe(
+      true,
+    )
+    expect(
+      result.requests.some((request) => request.url.includes("/projects/contentoren-named-project-id/assets")),
+    ).toBe(false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution preserves ambiguity for names within the selected organization", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-name-ambiguity-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-name-ambiguity-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, organizationConfiguration)
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "david-first-named-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "david-second-named-project-id",
+          name: "shared-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: root, ASSETS_ORGANIZATION: "david" },
+      ["--project", "shared-project"],
+    )
+
+    expect(result.exitCode).toBe(1)
+    expect(result.output.error.message).toBe("More than one project named shared-project was found")
+    expect(result.requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/v1/projects/shared-project",
+      "/api/v1/projects",
+    ])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution scopes the sole-project fallback by organization", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-sole-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-sole-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, {
+      ...organizationConfiguration,
+      directoryMappings: { [root]: "david" },
+    })
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "david-sole-project-id",
+          name: "david-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "contentoren-other-project-id",
+          name: "contentoren-project",
+          organizationId: organizationConfiguration.organizations.contentoren.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: root },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/david-sole-project-id/assets"))).toBe(true)
+    expect(
+      result.requests.some((request) => request.url.includes("/projects/contentoren-other-project-id/assets")),
+    ).toBe(false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("bulk project resolution keeps explicit project IDs authoritative across organizations", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-id-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-id-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, organizationConfiguration)
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "explicit-contentoren-project-id",
+          name: "contentoren-project",
+          organizationId: organizationConfiguration.organizations.contentoren.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: root, ASSETS_ORGANIZATION: "david" },
+      ["--project", "explicit-contentoren-project-id"],
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/v1/projects/explicit-contentoren-project-id",
+      "/api/v1/projects/explicit-contentoren-project-id/assets",
+    ])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("--env-file selects organization configuration before the command-root default", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-env-file-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-env-file-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, organizationConfiguration)
+    await writeFile(join(root, ".env"), "ASSETS_ORGANIZATION=contentoren\n")
+    const selectedEnvFile = join(root, "selected.env")
+    await writeFile(selectedEnvFile, "ASSETS_ORGANIZATION=david\n")
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "david-selected-project-id",
+          name: "david-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "contentoren-selected-project-id",
+          name: "contentoren-project",
+          organizationId: organizationConfiguration.organizations.contentoren.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProject, HOME: home, PWD: root },
+      ["--env-file", selectedEnvFile],
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/david-selected-project-id/assets"))).toBe(
+      true,
+    )
+    expect(
+      result.requests.some((request) => request.url.includes("/projects/contentoren-selected-project-id/assets")),
+    ).toBe(false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("bulk project resolution uses ASSETS_PROJECT before package.json.name", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-cli-project-env-"))
   try {
@@ -578,6 +1000,74 @@ test("bulk project resolution keeps ASSETS_PROJECT_ID as a legacy override", asy
   }
 })
 
+test("bulk project resolution gives a process legacy alias precedence over a selected env-file alias", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-project-alias-precedence-"))
+  try {
+    await writeFile(join(root, ".env"), "ASSETS_PROJECT=file-project-id\n")
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({ id: "file-project-id", name: "file-project" }),
+        apiProjectCreate({ id: "process-project-id", name: "process-project" }),
+      ],
+      { ...cliEnvironmentWithoutProject, ASSETS_PROJECT_ID: "process-project-id" },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/process-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/file-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("CLI authentication gives a process legacy token alias precedence over a selected env-file alias", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-token-alias-precedence-"))
+  try {
+    await writeFile(join(root, ".env"), "ASSETS_TOKEN=file-token\n")
+    const { ASSETS_TOKEN: _token, ...environmentWithoutCanonicalToken } = cliEnvironmentWithoutProject
+    const result = await projectResolutionDiffRun(
+      root,
+      [apiProjectCreate({ id: "sole-project-id", name: "sole-project" })],
+      { ...environmentWithoutCanonicalToken, ASSETS_ACCESS_TOKEN: "process-token" },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.length).toBeGreaterThan(0)
+    expect(result.requests.every((request) => request.headers.get("authorization") === "Bearer process-token")).toBe(
+      true,
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("config show reports process aliases over selected env-file aliases", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-config-show-alias-precedence-"))
+  try {
+    await writeFile(join(root, ".env"), "ASSETS_PROJECT=file-project\nASSETS_TOKEN=file-token\n")
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["config", "show", root, "--json"], {
+      env: {
+        HOME: root,
+        PWD: root,
+        ASSETS_PROJECT_ID: "process-project",
+        ASSETS_ACCESS_TOKEN: "process-token",
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: { project: { value: "process-project", source: "process-environment" } },
+    })
+    expect(output[0]).not.toContain("file-token")
+    expect(output[0]).not.toContain("process-token")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("bulk project resolution reads an exact scoped package name from the explicit root", async () => {
   const root = await mkdtemp(join(tmpdir(), "unrelated-directory-name-"))
   try {
@@ -611,6 +1101,72 @@ test("bulk project resolution keeps saved CLI project configuration compatible",
     expect(result.exitCode).toBe(0)
     expect(result.requests.some((request) => request.url.includes("/projects/saved-project-id/assets"))).toBe(true)
   } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("normal commands ignore fallback organization configuration as saved CLI configuration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-fallback-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-fallback-root-"))
+  try {
+    await globalOrganizationCompatibilityConfigurationWrite(home, {
+      ...organizationConfiguration,
+      directoryMappings: { [root]: "david" },
+    })
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "fallback-organization-project-id",
+          name: "fallback-organization-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProjectOrConfig, HOME: home, PWD: root },
+    )
+
+    expect(result.exitCode).toBe(0)
+    expect(
+      result.requests.some((request) => request.url.includes("/projects/fallback-organization-project-id/assets")),
+    ).toBe(true)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("normal commands preserve saved CLI configuration beside canonical organization configuration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "assets-cli-org-coexist-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-org-coexist-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(home, {
+      ...organizationConfiguration,
+      directoryMappings: { [root]: "david" },
+    })
+    await globalOrganizationCompatibilityConfigurationWrite(home, { project: "saved-project" })
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "package-project" }))
+    const result = await projectResolutionDiffRun(
+      root,
+      [
+        apiProjectCreate({
+          id: "saved-project-id",
+          name: "saved-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+        apiProjectCreate({
+          id: "package-project-id",
+          name: "package-project",
+          organizationId: organizationConfiguration.organizations.david.id,
+        }),
+      ],
+      { ...cliEnvironmentWithoutProjectOrConfig, HOME: home, PWD: root },
+    )
+
+    expect(result.exitCode).toBe(0)
+    expect(result.requests.some((request) => request.url.includes("/projects/saved-project-id/assets"))).toBe(true)
+    expect(result.requests.some((request) => request.url.includes("/projects/package-project-id/assets"))).toBe(false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
     await rm(root, { recursive: true, force: true })
   }
 })

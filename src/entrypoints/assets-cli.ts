@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import * as v from "valibot"
@@ -7,35 +7,49 @@ import * as v from "valibot"
 import { apiFailureEnvelopeCreate } from "../api/apiFailureEnvelopeCreate.js"
 import { apiSuccessEnvelopeCreate } from "../api/apiSuccessEnvelopeCreate.js"
 import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
+import { assetsApiResultOptionalRead } from "../api-client/assetsApiResultOptionalRead.js"
 import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { assetIdentifierCreate } from "../asset/assetIdentifierCreate.js"
+import { foldersSchema } from "../asset/foldersSchema.js"
 import {
-  assetDiffClassify,
-  assetDiffStatuses,
   type AssetDiff,
   type AssetDiffEntry,
   type AssetDiffStatus,
+  assetDiffClassify,
+  assetDiffStatuses,
 } from "../asset-cli/assetDiffClassify.js"
-import { assetFileFingerprint, type AssetFileFingerprint } from "../asset-cli/assetFileFingerprint.js"
+import { type AssetFileFingerprint, assetFileFingerprint } from "../asset-cli/assetFileFingerprint.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
 import {
-  remoteAssetHistoryManifestLoad,
   type RemoteAssetHistoryManifest,
+  remoteAssetHistoryManifestLoad,
 } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
-import { foldersSchema } from "../asset/foldersSchema.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
+import {
+  type EnvironmentConfiguration,
+  environmentConfigurationResolve,
+} from "../config/environmentConfigurationResolve.js"
+import { globalOrganizationConfigurationCompatibilityPathResolve } from "../config/globalOrganizationConfigurationCompatibilityPathResolve.js"
+import { globalOrganizationConfigurationPathResolve } from "../config/globalOrganizationConfigurationPathResolve.js"
+import { globalOrganizationConfigurationRead } from "../config/globalOrganizationConfigurationRead.js"
+import { environmentValueRead } from "../config/environmentValueRead.js"
+import {
+  type OrganizationConfiguration,
+  organizationConfigurationResolve,
+} from "../config/organizationConfigurationResolve.js"
+import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
+import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
+import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
+import { packageVersion } from "../packageVersion.js"
+import type { ProjectSettings } from "../project/projectSettingsSchema.js"
+import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
-import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
-import { packageVersion } from "../packageVersion.js"
-import type { ProjectSettings } from "../project/projectSettingsSchema.js"
-import { projectSettingsUpdateSchema, type ProjectSettingsUpdate } from "../project/projectSettingsUpdateSchema.js"
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 
@@ -99,6 +113,7 @@ const optionNames = new Set([
   "document-list",
   "dir",
   "document-dir",
+  "env-file",
   "environment",
   "file",
   "folder",
@@ -115,6 +130,7 @@ const optionNames = new Set([
   "limit",
   "note",
   "output-dir",
+  "organization",
   "path",
   "poll-interval",
   "project",
@@ -164,6 +180,7 @@ const diffSourceDirectoryOptionNames = new Set([
 const commandHelp = {
   commands: [
     "auth login",
+    "config show [root]",
     "doctor --environment <development|production>",
     "diff [root]",
     "upload-all [root] --integration-note <text>",
@@ -188,10 +205,16 @@ const commandHelp = {
       "font: ./fonts, --font-dir <directory>, --no-font-dir",
     ],
   },
+  config: {
+    root: "Default: .",
+    output: "Reports resolved local configuration and sources without displaying credentials or session secrets.",
+  },
   options: [
     "--api-url",
+    "--organization",
     "--project",
     "--environment",
+    "--env-file",
     "--config",
     "--session",
     "--json",
@@ -241,7 +264,11 @@ const commandHelp = {
     "--public-base-url",
   ],
   projectResolution:
-    "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project.",
+    "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project; name, package name, and sole-project selection are scoped by the resolved organization, while explicit project IDs remain authoritative.",
+  organizationResolution:
+    "Organization selection: --organization, selected .env ASSETS_ORGANIZATION, process ASSETS_ORGANIZATION, global directory mapping, or unrestricted resolution.",
+  environmentFile:
+    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched.",
 }
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
@@ -282,8 +309,29 @@ const jsonFileRead = async <T>(filePath: string, schema: v.GenericSchema, op: st
   return { success: true, data: parsed.output as T }
 }
 
-const configRead = (env: NodeJS.ProcessEnv): Promise<Result<CliConfig | null>> =>
-  jsonFileRead(configPathRead(env), configSchema, "assetsCliConfigRead")
+const configRead = async (
+  env: NodeJS.ProcessEnv,
+  sourceEnvironment: NodeJS.ProcessEnv,
+): Promise<Result<CliConfig | null>> => {
+  const path = configPathRead(env)
+  const config = await jsonFileRead<CliConfig>(path, configSchema, "assetsCliConfigRead")
+  if (config.success) return config
+  if (
+    env.ASSETS_CONFIG_FILE !== undefined ||
+    env.ASSETS_CONFIG_PATH !== undefined ||
+    env.ASSETS_CONFIG !== undefined ||
+    path !== globalOrganizationConfigurationCompatibilityPathResolve({ env: sourceEnvironment })
+  )
+    return config
+
+  const canonical = await globalOrganizationConfigurationRead({
+    path: globalOrganizationConfigurationPathResolve({ env: sourceEnvironment }),
+  })
+  if (!canonical.success || canonical.data !== null) return config
+  const fallback = await globalOrganizationConfigurationRead({ path })
+  if (!fallback.success || fallback.data === null) return config
+  return { success: true, data: null }
+}
 
 const sessionRead = (env: NodeJS.ProcessEnv): Promise<Result<CliSession | null>> =>
   jsonFileRead(sessionPathRead(env), sessionSchema, "assetsCliSessionRead")
@@ -355,7 +403,9 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "outputs", "metadata", "settings"].includes(command) ? positionals.shift() : undefined
+  const subcommand = ["auth", "config", "outputs", "metadata", "settings"].includes(command)
+    ? positionals.shift()
+    : undefined
   return {
     success: true,
     data: { command, ...(subcommand === undefined ? {} : { subcommand }), positionals, options, json },
@@ -379,7 +429,9 @@ const optionAllowed = (parsed: ParsedCommand, allowed: readonly string[]): Resul
       name === "project" ||
       name === "environment" ||
       name === "config" ||
-      name === "session"
+      name === "session" ||
+      name === "organization" ||
+      name === "env-file"
     )
       continue
     if (!allowedSet.has(name))
@@ -579,26 +631,270 @@ const packageNameRead = async (projectRoot: string): Promise<Result<string | nul
   return { success: true, data: value.name }
 }
 
+const commandRootRead = (parsed: ParsedCommand): string | undefined => {
+  if (
+    parsed.command === "diff" ||
+    parsed.command === "upload-all" ||
+    parsed.command === "import" ||
+    (parsed.command === "config" && parsed.subcommand === "show")
+  )
+    return parsed.positionals[0] ?? "."
+  return undefined
+}
+
+type ConfigShowGlobalSource = "canonical" | "fallback" | "none"
+
+type ConfigShowGlobalOutput = {
+  canonicalPath: string
+  fallbackPath: string
+  canonicalExists: boolean
+  fallbackExists: boolean
+  canonicalLoaded: boolean
+  fallbackLoaded: boolean
+  loaded: boolean
+  source: ConfigShowGlobalSource
+}
+
+type ConfigShowValueOutput = {
+  value: string | null
+  source: string
+}
+
+type ConfigShowOutput = {
+  globalConfiguration: ConfigShowGlobalOutput
+  environmentFile: {
+    path: string
+    source: string
+    loaded: boolean
+  }
+  organization: {
+    value: string | null
+    id: string | null
+    name: string | null
+    source: string
+  }
+  project: ConfigShowValueOutput
+  environment: ConfigShowValueOutput
+  apiUrl: ConfigShowValueOutput
+  sourceDirectories: {
+    root: string
+    configPath: string
+    configLoaded: boolean
+    values: ProjectSourceConfiguration
+  }
+}
+
+const fileExistsRead = async (filePath: string): Promise<Result<boolean>> => {
+  try {
+    await stat(filePath)
+    return { success: true, data: true }
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+      return { success: true, data: false }
+    return resultFailure("assetsCliConfigShow", `Could not inspect ${filePath}`)
+  }
+}
+
+const configShowGlobalRead = async (sourceEnvironment: NodeJS.ProcessEnv): Promise<Result<ConfigShowGlobalOutput>> => {
+  const pathOptions = { env: sourceEnvironment }
+  const canonicalPath = globalOrganizationConfigurationPathResolve(pathOptions)
+  const fallbackPath = globalOrganizationConfigurationCompatibilityPathResolve(pathOptions)
+  const canonicalExists = await fileExistsRead(canonicalPath)
+  if (!canonicalExists.success) return canonicalExists
+  const fallbackExists = await fileExistsRead(fallbackPath)
+  if (!fallbackExists.success) return fallbackExists
+  const global = await globalOrganizationConfigurationRead(pathOptions)
+  if (!global.success) return global
+  const source: ConfigShowGlobalSource = global.data === null ? "none" : canonicalExists.data ? "canonical" : "fallback"
+  return {
+    success: true,
+    data: {
+      canonicalPath,
+      fallbackPath,
+      canonicalExists: canonicalExists.data,
+      fallbackExists: fallbackExists.data,
+      canonicalLoaded: source === "canonical",
+      fallbackLoaded: source === "fallback",
+      loaded: source !== "none",
+      source,
+    },
+  }
+}
+
+const configShowEnvironmentFileSourceRead = (
+  parsed: ParsedCommand,
+  sourceEnvironment: NodeJS.ProcessEnv,
+  commandRoot: string | undefined,
+): string => {
+  if (optionRead(parsed, "env-file") !== undefined) return "option"
+  if (sourceEnvironment.ASSETS_ENV_FILE !== undefined && sourceEnvironment.ASSETS_ENV_FILE.length > 0)
+    return "process-environment"
+  return commandRoot === undefined ? "working-directory" : "command-root"
+}
+
+const configShowValueRead = (candidates: readonly (readonly [string | undefined, string])[]): ConfigShowValueOutput => {
+  for (const [value, source] of candidates) {
+    if (value !== undefined) return { value, source }
+  }
+  return { value: null, source: "unresolved" }
+}
+
+const configShowApiUrlRead = (value: ConfigShowValueOutput): ConfigShowValueOutput => {
+  if (value.value === null) return value
+  if (!URL.canParse(value.value)) return { ...value, value: null }
+  const parsed = new URL(value.value)
+  if (
+    parsed.username.length === 0 &&
+    parsed.password.length === 0 &&
+    parsed.search.length === 0 &&
+    parsed.hash.length === 0
+  )
+    return value
+  return { ...value, value: `${parsed.origin}${parsed.pathname}` }
+}
+
+const configShowCommandRun = async (input: {
+  parsed: ParsedCommand
+  sourceEnvironment: NodeJS.ProcessEnv
+  environment: EnvironmentConfiguration
+  commandRoot: string | undefined
+  savedConfig: CliConfig
+  organization: OrganizationConfiguration
+  globalConfiguration: ConfigShowGlobalOutput
+}): Promise<CommandOutput> => {
+  const { parsed, sourceEnvironment, environment, commandRoot, savedConfig, organization, globalConfiguration } = input
+  if (parsed.subcommand !== "show") return { result: resultFailure("assetsCliConfigShow", "Use config show") }
+  if (parsed.positionals.length > 1)
+    return { result: resultFailure("assetsCliConfigShow", "The config show command takes zero or one root argument") }
+  const allowed = optionAllowed(parsed, [])
+  if (!allowed.success) return { result: allowed }
+
+  const rootInput = parsed.positionals[0] ?? "."
+  const sourceConfiguration = await projectSourceConfigurationRead(rootInput)
+  if (!sourceConfiguration.success) return { result: sourceConfiguration }
+  const sourceConfigurationPath = join(sourceConfiguration.data.root, "assets.config.json")
+  const sourceConfigurationLoaded = await fileExistsRead(sourceConfigurationPath)
+  if (!sourceConfigurationLoaded.success) return { result: sourceConfigurationLoaded }
+  const packageName = await packageNameRead(rootInput)
+  if (!packageName.success) return { result: packageName }
+
+  const projectEnvironment = environmentValueRead(sourceEnvironment, environment.fileEnvironment, [
+    "ASSETS_PROJECT",
+    "ASSETS_PROJECT_ID",
+  ])
+  const selectedEnvironmentValue = environmentValueRead(sourceEnvironment, environment.fileEnvironment, [
+    "ASSETS_ENVIRONMENT",
+  ])
+  const apiUrlEnvironment = environmentValueRead(sourceEnvironment, environment.fileEnvironment, ["ASSETS_API_URL"])
+  const project = configShowValueRead([
+    [optionRead(parsed, "project"), "option"],
+    [projectEnvironment.value, projectEnvironment.source],
+    [savedConfig.project, "saved-config"],
+    [packageName.data ?? undefined, "package-json"],
+  ])
+  const selectedEnvironment = configShowValueRead([
+    [optionRead(parsed, "environment"), "option"],
+    [selectedEnvironmentValue.value, selectedEnvironmentValue.source],
+    [savedConfig.environment, "saved-config"],
+  ])
+  const apiUrl = configShowApiUrlRead(
+    configShowValueRead([
+      [optionRead(parsed, "api-url"), "option"],
+      [apiUrlEnvironment.value, apiUrlEnvironment.source],
+      [savedConfig.apiUrl, "saved-config"],
+    ]),
+  )
+  const organizationValue = organization.organization
+  const output: ConfigShowOutput = {
+    globalConfiguration,
+    environmentFile: {
+      path: environment.envFilePath,
+      source: configShowEnvironmentFileSourceRead(parsed, sourceEnvironment, commandRoot),
+      loaded: environment.envFileLoaded,
+    },
+    organization: {
+      value: organizationValue?.slug ?? null,
+      id: organizationValue?.id ?? null,
+      name: organizationValue?.name ?? null,
+      source: organization.source,
+    },
+    project,
+    environment: selectedEnvironment,
+    apiUrl,
+    sourceDirectories: {
+      root: sourceConfiguration.data.root,
+      configPath: sourceConfigurationPath,
+      configLoaded: sourceConfigurationLoaded.data,
+      values: sourceConfiguration.data.sourceDirectories,
+    },
+  }
+  const lines = [
+    `Global configuration: ${output.globalConfiguration.source} (${output.globalConfiguration.loaded ? "loaded" : "not loaded"})`,
+    `  canonical: ${output.globalConfiguration.canonicalPath} (${output.globalConfiguration.canonicalExists ? "exists" : "missing"}, ${output.globalConfiguration.canonicalLoaded ? "loaded" : "not loaded"}, ${output.globalConfiguration.source === "canonical" ? "selected" : "not selected"})`,
+    `  fallback: ${output.globalConfiguration.fallbackPath} (${output.globalConfiguration.fallbackExists ? "exists" : "missing"}, ${output.globalConfiguration.fallbackLoaded ? "loaded" : "not loaded"}, ${output.globalConfiguration.source === "fallback" ? "selected" : "not selected"})`,
+    `Environment file: ${output.environmentFile.path} (${output.environmentFile.source}, ${output.environmentFile.loaded ? "loaded" : "not loaded"})`,
+    `Organization: ${output.organization.value ?? "unresolved"} (${output.organization.source})`,
+    `Project: ${output.project.value ?? "unresolved"} (${output.project.source})`,
+    `Environment: ${output.environment.value ?? "unresolved"} (${output.environment.source})`,
+    `API URL: ${output.apiUrl.value ?? "unresolved"} (${output.apiUrl.source})`,
+    `Source directories: ${output.sourceDirectories.root}`,
+    `  config: ${output.sourceDirectories.configPath} (${output.sourceDirectories.configLoaded ? "loaded" : "defaults"})`,
+    ...(["image", "video", "document", "font"] as const).map(
+      (assetClass) => `  ${assetClass}: ${output.sourceDirectories.values[assetClass] ?? "disabled"}`,
+    ),
+  ]
+  return { result: { success: true, data: output }, humanOutput: `${lines.join("\n")}\n` }
+}
+
 const projectAndEnvironmentRead = async (
   client: AssetsApiClient,
   parsed: ParsedCommand,
   config: CliConfig,
   projectRoot?: string,
   environmentSelection: ProjectEnvironmentSelection = "configured",
+  organizationId?: string,
 ): Promise<Result<{ projectId: string; environment?: string }>> => {
   let projectId = optionRead(parsed, "project") ?? config.project
+  let projectDefaultEnvironment: string | undefined
+  if (projectId !== undefined && organizationId !== undefined) {
+    const directProject = assetsApiResultOptionalRead(await client.projectRead(projectId))
+    if (!directProject.success) return directProject
+    if (directProject.data !== null) {
+      projectDefaultEnvironment = directProject.data.defaultEnvironment
+    } else {
+      const projects = await client.projectsReadAll()
+      if (!projects.success) return projects
+      if (!projects.data.some((project) => project.id === projectId)) {
+        const scopedMatches = projects.data.filter(
+          (project) => project.organizationId === organizationId && project.name === projectId,
+        )
+        if (scopedMatches.length === 1) projectId = scopedMatches[0]?.id
+        if (scopedMatches.length > 1)
+          return resultFailure("assetsCliProjectRead", `More than one project named ${projectId} was found`)
+        if (scopedMatches.length === 0 && projects.data.some((project) => project.name === projectId))
+          return resultFailure(
+            "assetsCliProjectRead",
+            `The project ${projectId} was not found in the selected organization`,
+          )
+      }
+    }
+  }
   if (projectId === undefined) {
     const projects = await client.projectsReadAll()
     if (!projects.success) return projects
+    const scopedProjects =
+      organizationId === undefined
+        ? projects.data
+        : projects.data.filter((project) => project.organizationId === organizationId)
     const packageNameResult: Result<string | null> =
       projectRoot === undefined ? { success: true, data: null } : await packageNameRead(projectRoot)
     if (!packageNameResult.success) return packageNameResult
     const matches =
-      packageNameResult.data === null ? [] : projects.data.filter((project) => project.name === packageNameResult.data)
+      packageNameResult.data === null ? [] : scopedProjects.filter((project) => project.name === packageNameResult.data)
     if (matches.length === 1) projectId = matches[0]?.id
-    if (projectId === undefined && projects.data.length === 1) projectId = projects.data[0]?.id
+    if (projectId === undefined && scopedProjects.length === 1) projectId = scopedProjects[0]?.id
     if (projectId === undefined) {
-      if (projects.data.length === 0)
+      if (scopedProjects.length === 0)
         return resultFailure(
           "assetsCliProjectRead",
           "Could not determine the project. No accessible projects were found. Verify the API URL, token, and access.",
@@ -616,6 +912,8 @@ const projectAndEnvironmentRead = async (
     if (!valid.success) return resultFailure("assetsCliEnvironmentRead", "The environment was invalid")
     return { success: true, data: { projectId, environment: valid.output } }
   }
+  if (projectDefaultEnvironment !== undefined)
+    return { success: true, data: { projectId, environment: projectDefaultEnvironment } }
   const project = await client.projectRead(projectId)
   if (!project.success) return project
   return { success: true, data: { projectId, environment: project.data.defaultEnvironment } }
@@ -1331,6 +1629,7 @@ const commandRun = async (
   config: CliConfig,
   env: NodeJS.ProcessEnv,
   stdin: () => Promise<string>,
+  organizationId?: string,
 ): Promise<CommandOutput> => {
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
 
@@ -1366,7 +1665,7 @@ const commandRun = async (
       return { result: resultFailure("assetsCliDoctor", "The doctor command takes no positional arguments") }
     const allowed = optionAllowed(parsed, [])
     if (!allowed.success) return { result: allowed }
-    const selected = await projectAndEnvironmentRead(client, parsed, config)
+    const selected = await projectAndEnvironmentRead(client, parsed, config, undefined, "configured", organizationId)
     if (!selected.success) return { result: selected }
     const checks: Array<{ name: string; status: "ok" | "failed"; message?: string }> = []
     const health = await client.healthRead()
@@ -1403,7 +1702,14 @@ const commandRun = async (
     if (parsed.subcommand === "read") {
       const allowed = optionAllowed(parsed, [])
       if (!allowed.success) return { result: allowed }
-      const selected = await projectAndEnvironmentRead(client, parsed, config, undefined, "project-default")
+      const selected = await projectAndEnvironmentRead(
+        client,
+        parsed,
+        config,
+        undefined,
+        "project-default",
+        organizationId,
+      )
       if (!selected.success) return { result: selected }
       const environment = selected.data.environment
       if (environment === undefined)
@@ -1429,7 +1735,7 @@ const commandRun = async (
         return {
           result: resultFailure("assetsCliSettingsUpdate", "Settings update requires at least one changed field"),
         }
-      const selected = await projectAndEnvironmentRead(client, parsed, config)
+      const selected = await projectAndEnvironmentRead(client, parsed, config, undefined, "configured", organizationId)
       if (!selected.success) return { result: selected }
       const settings = await client.projectSettingsRead(selected.data.projectId)
       if (!settings.success) return { result: settings }
@@ -1466,7 +1772,7 @@ const commandRun = async (
 
   const projectRoot =
     parsed.command === "diff" || parsed.command === "upload-all" ? (parsed.positionals[0] ?? ".") : undefined
-  const selected = await projectAndEnvironmentRead(client, parsed, config, projectRoot)
+  const selected = await projectAndEnvironmentRead(client, parsed, config, projectRoot, "configured", organizationId)
   if (!selected.success) return { result: selected }
   const projectId = selected.data.projectId
 
@@ -1795,7 +2101,7 @@ const structuredFailureRead = (result: Extract<Result<unknown>, { success: false
   const inferredCode =
     result.op === "assetsCliConfig" || result.op === "assetsCliSessionRead"
       ? "not_configured"
-      : /Parse|Validate|Target|Media|Command|Environment|Project|Settings|SourceConfiguration|RootScan|Preflight|Diff/u.test(
+      : /Parse|Validate|Target|Media|Command|Config|Environment|Organization|Project|Settings|SourceConfiguration|RootScan|Preflight|Diff/u.test(
             result.op,
           ) || /invalid|requires|must be|missing|outside|did not match/u.test(result.errorMessage)
         ? "validation_failed"
@@ -1859,8 +2165,16 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
   if (flagRead(parsed.data, "help") || parsed.data.command === "help")
     return outputWrite({ result: { success: true, data: commandHelp } }, parsed.data.json, stdout, stderr)
 
+  const commandRoot = commandRootRead(parsed.data)
+  const environmentResult = await environmentConfigurationResolve({
+    env: sourceEnv,
+    ...(optionRead(parsed.data, "env-file") === undefined ? {} : { envFile: optionRead(parsed.data, "env-file") }),
+    ...(commandRoot === undefined ? {} : { commandRoot }),
+  })
+  if (!environmentResult.success) return outputWrite({ result: environmentResult }, parsed.data.json, stdout, stderr)
+
   const env: NodeJS.ProcessEnv = {
-    ...sourceEnv,
+    ...environmentResult.data.environment,
     ...(optionRead(parsed.data, "config") === undefined
       ? {}
       : { ASSETS_CONFIG_FILE: optionRead(parsed.data, "config") }),
@@ -1869,16 +2183,53 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
       : { ASSETS_SESSION_FILE: optionRead(parsed.data, "session") }),
   }
 
-  const configResult = await configRead(env)
-  if (!configResult.success) return outputWrite({ result: configResult }, parsed.data.json, stdout, stderr)
+  const configCommand = parsed.data.command === "config"
+  const globalConfiguration = configCommand ? await configShowGlobalRead(sourceEnv) : undefined
+  if (globalConfiguration !== undefined && !globalConfiguration.success)
+    return outputWrite({ result: globalConfiguration }, parsed.data.json, stdout, stderr)
+  const configResult = await configRead(env, sourceEnv)
+  if (!configResult.success && (!configCommand || globalConfiguration?.data === null))
+    return outputWrite({ result: configResult }, parsed.data.json, stdout, stderr)
+  const savedConfig: CliConfig = configResult.success ? (configResult.data ?? {}) : {}
+  const projectEnvironment = environmentValueRead(sourceEnv, environmentResult.data.fileEnvironment, [
+    "ASSETS_PROJECT",
+    "ASSETS_PROJECT_ID",
+  ])
   const config: CliConfig = {
-    ...(configResult.data ?? {}),
-    ...(env.ASSETS_PROJECT === undefined && env.ASSETS_PROJECT_ID === undefined
-      ? {}
-      : { project: env.ASSETS_PROJECT ?? env.ASSETS_PROJECT_ID }),
+    ...savedConfig,
+    ...(projectEnvironment.value === undefined ? {} : { project: projectEnvironment.value }),
     ...(env.ASSETS_ENVIRONMENT === undefined ? {} : { environment: env.ASSETS_ENVIRONMENT }),
   }
-  const apiUrl = optionRead(parsed.data, "api-url") ?? env.ASSETS_API_URL ?? config.apiUrl
+  const organizationResult = await organizationConfigurationResolve({
+    env: sourceEnv,
+    ...(optionRead(parsed.data, "organization") === undefined
+      ? {}
+      : { organization: optionRead(parsed.data, "organization") }),
+    ...(optionRead(parsed.data, "env-file") === undefined ? {} : { envFile: optionRead(parsed.data, "env-file") }),
+    ...(commandRoot === undefined ? {} : { commandRoot }),
+  })
+  if (!organizationResult.success) return outputWrite({ result: organizationResult }, parsed.data.json, stdout, stderr)
+  if (configCommand) {
+    if (globalConfiguration === undefined || !globalConfiguration.success)
+      return outputWrite(
+        { result: resultFailure("assetsCliConfigShow", "Global configuration diagnostics were unavailable") },
+        parsed.data.json,
+        stdout,
+        stderr,
+      )
+    const command = await configShowCommandRun({
+      parsed: parsed.data,
+      sourceEnvironment: sourceEnv,
+      environment: environmentResult.data,
+      commandRoot,
+      savedConfig,
+      organization: organizationResult.data,
+      globalConfiguration: globalConfiguration.data,
+    })
+    return outputWrite(command, parsed.data.json, stdout, stderr)
+  }
+  const apiUrlEnvironment = environmentValueRead(sourceEnv, environmentResult.data.fileEnvironment, ["ASSETS_API_URL"])
+  const apiUrl = optionRead(parsed.data, "api-url") ?? apiUrlEnvironment.value ?? config.apiUrl
   if (apiUrl === undefined)
     return outputWrite(
       { result: resultFailure("assetsCliConfig", "Set ASSETS_API_URL or --api-url") },
@@ -1888,7 +2239,11 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     )
   const sessionResult = await sessionRead(env)
   if (!sessionResult.success) return outputWrite({ result: sessionResult }, parsed.data.json, stdout, stderr)
-  const accessToken = env.ASSETS_TOKEN ?? env.ASSETS_ACCESS_TOKEN ?? sessionResult.data?.accessToken
+  const accessTokenEnvironment = environmentValueRead(sourceEnv, environmentResult.data.fileEnvironment, [
+    "ASSETS_TOKEN",
+    "ASSETS_ACCESS_TOKEN",
+  ])
+  const accessToken = accessTokenEnvironment.value ?? sessionResult.data?.accessToken
   const pollInterval = optionRead(parsed.data, "poll-interval")
   const parsedPollInterval =
     pollInterval === undefined ? undefined : numberRead(pollInterval, "poll-interval", 0, 3600000)
@@ -1903,7 +2258,14 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     pollIntervalMilliseconds: parsedPollInterval?.data,
   })
   if (!clientResult.success) return outputWrite({ result: clientResult }, parsed.data.json, stdout, stderr)
-  const command = await commandRun(parsed.data, clientResult.data, config, env, options.stdinRead ?? stdinRead)
+  const command = await commandRun(
+    parsed.data,
+    clientResult.data,
+    config,
+    env,
+    options.stdinRead ?? stdinRead,
+    organizationResult.data.organization?.id,
+  )
   return outputWrite(command, parsed.data.json, stdout, stderr)
 }
 
