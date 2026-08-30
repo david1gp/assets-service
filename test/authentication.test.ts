@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { rm } from "node:fs/promises"
 
+import { databaseSessionStoreCreate } from "../src/authentication/databaseSessionStoreCreate.js"
 import { humanLoginCallback } from "../src/authentication/humanLoginCallback.js"
 import { humanLoginInitiate } from "../src/authentication/humanLoginInitiate.js"
 import { jwtPrincipalValidate } from "../src/authentication/jwtPrincipalValidate.js"
@@ -10,6 +11,9 @@ import { projectAuthorizationCheck } from "../src/authentication/projectAuthoriz
 import { protectedRequestBoundaryCreate } from "../src/authentication/protectedRequestBoundaryCreate.js"
 import { requestAuthenticationRead } from "../src/authentication/requestAuthenticationRead.js"
 import { serviceBearerValidate } from "../src/authentication/serviceBearerValidate.js"
+import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
+import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
+import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { zitadelCredentialDoctor } from "../src/infrastructure/zitadel/zitadelCredentialDoctor.js"
 import { zitadelGrantAdapterMemoryCreate } from "../src/infrastructure/zitadel/zitadelGrantAdapterMemoryCreate.js"
 import type { ZitadelJwk } from "../src/infrastructure/zitadel/zitadelJwk.js"
@@ -17,10 +21,6 @@ import { zitadelJwksClientCreate } from "../src/infrastructure/zitadel/zitadelJw
 import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
 import { zitadelOidcClientCreate } from "../src/infrastructure/zitadel/zitadelOidcClientCreate.js"
 import { zitadelProvisioningAdapterMemoryCreate } from "../src/infrastructure/zitadel/zitadelProvisioningAdapterMemoryCreate.js"
-import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
-import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
-import { databaseSessionStoreCreate } from "../src/authentication/databaseSessionStoreCreate.js"
-import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 
 const nowSeconds = 1_700_000_000
 
@@ -98,6 +98,7 @@ describe("Zitadel authentication contracts", () => {
       success: true,
       data: { method: "service_account", organizationAdmin: false, grants: [{ projectId: "zitadel-project-1" }] },
     })
+    if (valid.success) expect(valid.data).not.toHaveProperty("displayName")
 
     const withoutGrantToken = await tokenCreate(
       keys.privateKey,
@@ -201,6 +202,7 @@ describe("Zitadel authentication contracts", () => {
         grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
       },
     })
+    if (result.success) expect(result.data).not.toHaveProperty("displayName")
     expect(requested).toEqual([
       "https://zitadel.example.test/auth/v1/users/me",
       "https://zitadel.example.test/auth/v1/usergrants/me/_search",
@@ -400,6 +402,7 @@ describe("Zitadel authentication contracts", () => {
         return () => `session-${++count}`
       })(),
     })
+    let idToken: string | undefined
     let membershipFailure = false
     const oidcClient = {
       discoveryRead: async () => ({
@@ -411,13 +414,24 @@ describe("Zitadel authentication contracts", () => {
           jwks_uri: "https://zitadel.example.test/oauth/keys",
         },
       }),
-      authorizationUrlCreate: async (input: { state: string; codeChallenge: string }) => ({
-        success: true as const,
-        data: `https://zitadel.example.test/oauth/authorize?state=${input.state}&code_challenge=${input.codeChallenge}`,
-      }),
+      authorizationUrlCreate: async (input: { state: string; codeChallenge: string; nonce: string }) => {
+        idToken = await tokenCreate(
+          keys.privateKey,
+          tokenClaimsCreate({
+            aud: config.clientId,
+            name: "  Ada Lovelace  ",
+            nonce: input.nonce,
+            sub: "human-1",
+          }),
+        )
+        return {
+          success: true as const,
+          data: `https://zitadel.example.test/oauth/authorize?state=${input.state}&code_challenge=${input.codeChallenge}`,
+        }
+      },
       authorizationCodeExchange: async () => ({
         success: true as const,
-        data: { access_token: token, token_type: "Bearer", expires_in: 600 },
+        data: { access_token: token, token_type: "Bearer", expires_in: 600, id_token: idToken },
       }),
       organizationMembershipRead: async () =>
         membershipFailure
@@ -462,6 +476,7 @@ describe("Zitadel authentication contracts", () => {
     // The whole deep link, path and query, survives the round trip.
     expect(callback.data.returnTo).toBe(deepLink)
     expect(callback.data.principal.organizationAdmin).toBe(true)
+    expect(callback.data.principal.displayName).toBe("Ada Lovelace")
 
     now += 61
     const sessionCookie = callback.data.sessionCookie.split(";", 1)[0]
@@ -486,6 +501,7 @@ describe("Zitadel authentication contracts", () => {
     expect(auth.success).toBe(true)
     if (!auth.success) return
     expect(auth.data.sessionCookie).toContain("Secure")
+    expect(auth.data.principal.displayName).toBe("Ada Lovelace")
 
     const oldSessionCookie = callback.data.sessionCookie.split(";", 1)[0]
     if (!oldSessionCookie) return
@@ -554,6 +570,8 @@ describe("Zitadel authentication contracts", () => {
       membershipOrganizationId = config.organizationId,
       tokenTransform: (token: string) => string = (token) => token,
       membershipFailure = false,
+      idTokenClaims?: Record<string, unknown>,
+      callbackConfig = config,
     ) => {
       const token = tokenTransform(
         await tokenCreate(keys.privateKey, tokenClaimsCreate({ sub: "human-callback-test", ...claims })),
@@ -561,6 +579,7 @@ describe("Zitadel authentication contracts", () => {
       const stateStore = memoryPkceStateStoreCreate({ now: () => nowSeconds * 1000 })
       const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => crypto.randomUUID() })
       let membershipCalls = 0
+      let idToken: string | undefined
       const oidcClient = {
         discoveryRead: async () => ({
           success: true as const,
@@ -571,13 +590,21 @@ describe("Zitadel authentication contracts", () => {
             jwks_uri: "https://zitadel.example.test/oauth/keys",
           },
         }),
-        authorizationUrlCreate: async () => ({
-          success: true as const,
-          data: "https://zitadel.example.test/authorize",
-        }),
+        authorizationUrlCreate: async (input: { nonce: string }) => {
+          if (idTokenClaims !== undefined) {
+            idToken = await tokenCreate(
+              keys.privateKey,
+              tokenClaimsCreate({ ...idTokenClaims, aud: callbackConfig.clientId, nonce: input.nonce }),
+            )
+          }
+          return {
+            success: true as const,
+            data: "https://zitadel.example.test/authorize",
+          }
+        },
         authorizationCodeExchange: async () => ({
           success: true as const,
-          data: { access_token: token, token_type: "Bearer", expires_in: 600 },
+          data: { access_token: token, token_type: "Bearer", expires_in: 600, id_token: idToken },
         }),
         organizationMembershipRead: async (_accessToken: string, organizationId: string) => {
           membershipCalls += 1
@@ -594,7 +621,7 @@ describe("Zitadel authentication contracts", () => {
       const initiation = await humanLoginInitiate(
         { returnTo: "/projects" },
         {
-          config,
+          config: callbackConfig,
           stateStore,
           oidcClient,
           now: () => nowSeconds * 1000,
@@ -607,7 +634,7 @@ describe("Zitadel authentication contracts", () => {
         { code: "one-time-code", state: initiation.data.state },
         initiation.data.state,
         {
-          config,
+          config: callbackConfig,
           stateStore,
           sessionStore,
           oidcClient,
@@ -665,6 +692,31 @@ describe("Zitadel authentication contracts", () => {
     const existingGrant = await callbackRun({}, [])
     expect(existingGrant.result).toMatchObject({ success: true, data: { principal: { organizationAdmin: false } } })
     expect(existingGrant.membershipCalls).toBe(1)
+
+    const accessTokenName = await callbackRun({ name: "Access token name" }, [])
+    expect(accessTokenName.result).toMatchObject({ success: true, data: { principal: { organizationAdmin: false } } })
+    if (accessTokenName.result.success) expect(accessTokenName.result.data.principal).not.toHaveProperty("displayName")
+
+    const mismatchedIdToken = await callbackRun({}, [], config.organizationId, (token) => token, false, {
+      sub: "different-user",
+      name: "Different User",
+    })
+    expect(mismatchedIdToken.result.success).toBe(false)
+    expect(mismatchedIdToken.membershipCalls).toBe(0)
+
+    const clockSkewedIdToken = await callbackRun(
+      {},
+      [],
+      config.organizationId,
+      (token) => token,
+      false,
+      { sub: "human-callback-test", name: "Near Expiry", exp: nowSeconds - 30 },
+      { ...config, clockSkewSeconds: 60 },
+    )
+    expect(clockSkewedIdToken.result).toMatchObject({
+      success: true,
+      data: { principal: { displayName: "Near Expiry" } },
+    })
 
     const unavailableRegularUser = await callbackRun({}, [], config.organizationId, (token) => token, true)
     expect(unavailableRegularUser.result).toMatchObject({
@@ -906,6 +958,7 @@ describe("Zitadel authentication contracts", () => {
       const session: AuthenticationSession = {
         principal: {
           subjectId: "human-1",
+          displayName: "Ada Lovelace",
           organizationId: "org-1",
           organizationAdmin: false,
           method: "human_session" as const,

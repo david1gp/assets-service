@@ -7,6 +7,7 @@ import type { Result } from "../schemas/resultSchema.js"
 import { jwtPrincipalValidate } from "./jwtPrincipalValidate.js"
 import { jwtTokenParse } from "./jwtTokenParse.js"
 import { jwtTokenSignatureVerify } from "./jwtTokenSignatureVerify.js"
+import { oidcIdTokenDisplayNameExtract } from "./oidcIdTokenDisplayNameExtract.js"
 import type { PkceCallbackRequest } from "./pkceCallbackRequestSchema.js"
 import { pkceCallbackRequestSchema } from "./pkceCallbackRequestSchema.js"
 import type { PkceStateStore } from "./pkceStateStore.js"
@@ -61,6 +62,7 @@ export const humanLoginCallback = async (
   if (options.jwksUri !== undefined && options.jwksUri !== discovery.data.jwks_uri) {
     return resultErrorCreate(op, "The configured JWKS URI did not match OIDC discovery")
   }
+  let verifiedIdTokenPayload: Record<string, unknown> | undefined
   if (token.data.id_token) {
     const idToken = await jwtTokenParse(token.data.id_token)
     if (!idToken.success) return idToken
@@ -79,11 +81,34 @@ export const humanLoginCallback = async (
       return resultErrorCreate(op, "The OIDC ID token issuer was invalid")
     if (idToken.data.payload.nonce !== state.data.nonce)
       return resultErrorCreate(op, "The OIDC ID token nonce did not match")
+    const idIssuedAt = idToken.data.payload.iat
     const idExpiresAt = idToken.data.payload.exp
     const nowSeconds = Math.floor((options.now ?? (() => Date.now()))() / 1000)
-    if (typeof idExpiresAt !== "number" || !Number.isInteger(idExpiresAt) || idExpiresAt <= nowSeconds) {
+    const skew = options.config.clockSkewSeconds
+    if (
+      typeof idIssuedAt !== "number" ||
+      !Number.isInteger(idIssuedAt) ||
+      typeof idExpiresAt !== "number" ||
+      !Number.isInteger(idExpiresAt)
+    ) {
+      return resultErrorCreate(op, "The OIDC ID token time claims were invalid")
+    }
+    if (idExpiresAt <= nowSeconds - skew) {
       return resultErrorCreate(op, "The OIDC ID token expiry was invalid")
     }
+    if (idIssuedAt > nowSeconds + skew || idExpiresAt <= idIssuedAt) {
+      return resultErrorCreate(op, "The OIDC ID token issue time was invalid")
+    }
+    if (idToken.data.payload.nbf !== undefined) {
+      const idNotBefore = idToken.data.payload.nbf
+      if (typeof idNotBefore !== "number" || !Number.isInteger(idNotBefore)) {
+        return resultErrorCreate(op, "The OIDC ID token not-before claim was invalid")
+      }
+      if (idNotBefore > nowSeconds + skew) {
+        return resultErrorCreate(op, "The OIDC ID token is not active yet")
+      }
+    }
+    verifiedIdTokenPayload = idToken.data.payload
   }
 
   const principal = await jwtPrincipalValidate(token.data.access_token, {
@@ -99,6 +124,13 @@ export const humanLoginCallback = async (
     clockSkewSeconds: options.config.clockSkewSeconds,
   })
   if (!principal.success) return principal
+  let displayName: string | undefined
+  if (verifiedIdTokenPayload !== undefined) {
+    if (verifiedIdTokenPayload.sub !== principal.data.subjectId) {
+      return resultErrorCreate(op, "The OIDC ID token subject did not match the access token subject")
+    }
+    displayName = oidcIdTokenDisplayNameExtract(verifiedIdTokenPayload)
+  }
 
   const accessToken = await jwtTokenParse(token.data.access_token)
   if (!accessToken.success) return accessToken
@@ -133,7 +165,12 @@ export const humanLoginCallback = async (
   const now = Math.floor((options.now ?? (() => Date.now()))() / 1000)
   const expiresAt = Math.min(now + options.config.sessionTtlSeconds, principal.data.expiresAt)
   const session: AuthenticationSession = {
-    principal: { ...principal.data, organizationAdmin: isOrganizationAdmin, expiresAt },
+    principal: {
+      ...principal.data,
+      ...(displayName === undefined ? {} : { displayName }),
+      organizationAdmin: isOrganizationAdmin,
+      expiresAt,
+    },
     createdAt: now,
     expiresAt,
     rotateAt: Math.min(now + options.config.sessionRotationSeconds, expiresAt),
