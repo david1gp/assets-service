@@ -10,6 +10,8 @@ import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { UiOutputTargetBadges } from "../output/UiOutputTargetBadges.jsx"
+import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiAssetPreviewSourceRead } from "../pages/uiAssetPreviewSourceRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { UiStructureAssetFolderSelect } from "./UiStructureAssetFolderSelect.jsx"
@@ -49,7 +51,7 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
   return (
     <li
       data-asset-id={p.asset.id}
-      class="group flex w-full min-w-0 flex-nowrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-2xs transition-all hover:border-slate-300 aria-busy:cursor-wait aria-busy:opacity-60 sm:w-auto sm:max-w-md dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600"
+      class="group flex w-full min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-2xs transition-all hover:border-slate-300 aria-busy:cursor-wait aria-busy:opacity-60 sm:w-auto sm:max-w-md dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600"
       aria-busy={p.isPending}
     >
       <Show when={p.showFolders()}>
@@ -83,13 +85,15 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
         )}
       </Show>
 
-      <div class="flex min-w-0 flex-1 flex-col">
+      {/* `overflow-hidden` keeps the chips inside this column so they can never reach the folder select. */}
+      <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Show when={hasFolders()}>
           <span class="truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">
             {p.asset.folders.join("/")}/
           </span>
         </Show>
-        <div class="flex items-center gap-1.5 min-w-0">
+        {/* Chips wrap below the filename at every width because they never shrink and would otherwise overflow onto the folder select. */}
+        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
           <A
             href={uiPaths.asset(p.projectId, p.asset.id)}
             title={label()}
@@ -99,6 +103,7 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
           >
             {p.asset.filename}
           </A>
+          <UiOutputTargetBadges targets={uiAssetOutputTargetsRead(p.asset)} class="px-1 py-0" />
           <Show when={p.asset.deletionStatus}>
             {(status) => (
               <UiStatusBadge tone={uiDeletionStatusToneRead(status())} class="px-1 py-0 text-[10px]">

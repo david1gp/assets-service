@@ -29,7 +29,9 @@ export function UiStructureAssetFolderSelect(p: UiStructureAssetFolderSelectProp
       </label>
       <SelectSingleNative
         id={p.selectId}
-        class="!w-28 shrink-0 p-1 text-xs sm:!w-36 md:!w-40"
+        // Below `sm` the select takes its own row so the target chips after the
+        // filename stay fully visible instead of being clipped by it.
+        class="!w-full shrink-0 basis-full p-1 text-xs sm:!w-36 sm:basis-auto md:!w-40"
         disabled={state.isDisabled()}
         valueSignal={state.valueSignal}
         getOptions={state.optionValues}

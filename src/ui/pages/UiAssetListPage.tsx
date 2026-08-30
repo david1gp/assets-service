@@ -32,9 +32,11 @@ import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { UiOutputTargetBadges } from "../output/UiOutputTargetBadges.jsx"
+import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
-import { UiStructureAssetFolderSelect } from "../structure/UiStructureAssetFolderSelect.jsx"
 import { UiAssetStructureView } from "../structure/UiAssetStructureView.jsx"
+import { UiStructureAssetFolderSelect } from "../structure/UiStructureAssetFolderSelect.jsx"
 import type { uiAssetStructureStateCreate } from "../structure/uiAssetStructureStateCreate.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
@@ -90,13 +92,15 @@ const columnsCreate = (
                   {asset.folders.join("/")}/
                 </span>
               </Show>
-              <div class="flex items-center gap-2 min-w-0">
+              {/* Narrow viewports wrap the target chips below the filename so they cannot overlap the folder select. */}
+              <div class="flex flex-wrap items-center gap-2 min-w-0 sm:flex-nowrap">
                 <A
                   href={uiPaths.asset(projectId(), asset.id)}
                   class="font-mono text-sm font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400 truncate"
                 >
                   {asset.filename}
                 </A>
+                <UiOutputTargetBadges targets={uiAssetOutputTargetsRead(asset)} />
                 <Show when={asset.deletionStatus}>
                   {(status) => (
                     <UiStatusBadge tone={uiDeletionStatusToneRead(status())}>

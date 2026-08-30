@@ -1,13 +1,3 @@
-import { Input } from "#ui/input/input/Input.jsx"
-import { InputS } from "#ui/input/input/InputS.jsx"
-import { Label } from "#ui/input/label/Label.jsx"
-import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { Badge } from "#ui/static/badge/Badge.jsx"
-import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
-import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
-import { Icon } from "#ui/static/icon/Icon.jsx"
-import { Img } from "#ui/static/img/Img.jsx"
 import { mdiArrowLeft } from "@adaptive-ds/mdi/mdiArrowLeft.js"
 import { mdiClockOutline } from "@adaptive-ds/mdi/mdiClockOutline.js"
 import { mdiContentSave } from "@adaptive-ds/mdi/mdiContentSave.js"
@@ -23,6 +13,16 @@ import { mdiTrashCan } from "@adaptive-ds/mdi/mdiTrashCan.js"
 import { mdiTune } from "@adaptive-ds/mdi/mdiTune.js"
 import { A } from "@solidjs/router"
 import { For, Show } from "solid-js"
+import { Input } from "#ui/input/input/Input.jsx"
+import { InputS } from "#ui/input/input/InputS.jsx"
+import { Label } from "#ui/input/label/Label.jsx"
+import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Badge } from "#ui/static/badge/Badge.jsx"
+import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
+import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
+import { Img } from "#ui/static/img/Img.jsx"
 import { UiDialog } from "../common/UiDialog.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
@@ -35,6 +35,8 @@ import { uiDeletionProgressRead } from "../deletion/uiDeletionProgressRead.js"
 import { uiDeletionStatusDetailRead } from "../deletion/uiDeletionStatusDetailRead.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { UiOutputTargetBadges } from "../output/UiOutputTargetBadges.jsx"
+import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiDeepLinkCreate } from "../routing/uiDeepLinkCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
@@ -206,6 +208,9 @@ export function UiAssetDetailPage() {
                     <h2 class="wrap-anywhere font-mono text-lg font-bold text-slate-900 dark:text-slate-100">
                       {asset.filename}
                     </h2>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <UiOutputTargetBadges targets={uiAssetOutputTargetsRead(asset)} />
+                    </div>
                   </div>
 
                   <div class="mt-3 flex flex-wrap items-center gap-2">
