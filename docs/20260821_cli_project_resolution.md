@@ -10,7 +10,7 @@ Let the assets CLI determine the target project from explicit configuration, `pa
 - Match `package.json.name` exactly, including npm scopes.
 - Resolve the relevant package from the command’s project root.
 - When no project is accessible, direct users to verify API URL, token, and access.
-- When identity is ambiguous, suggest `--project <name>` or `ASSETS_PROJECT` in the environment or a `.env` file only if `.env` loading is supported.
+- When identity is ambiguous, suggest `--project <name>` or `ASSETS_PROJECT` in the environment or selected environment file.
 - Preserve existing saved CLI configuration compatibility if present.
 
 ## Approach
@@ -37,7 +37,7 @@ Let the assets CLI determine the target project from explicit configuration, `pa
 ## Current context
 
 - Resolution is implemented for bulk commands using the positional root’s exact `package.json.name`, after explicit environment/saved configuration and before sole-project fallback.
-- The CLI has no explicit dotenv parser; Bun runtime `.env` loading supports the current-working-directory guidance in the error.
+- The CLI explicitly parses the selected environment file: `--env-file`, `ASSETS_ENV_FILE`, `<command-root>/.env`, or `$PWD/.env`; it does not search ancestors.
 - Version `0.3.0` is published on GitHub and npm with provenance; both CLI bins and a clean `bunx` invocation are verified.
-- Error guidance distinguishes missing token/access from ambiguous project selection and accurately describes Bun’s current-working-directory `.env` behavior.
+- Error guidance distinguishes missing token/access from ambiguous project selection and accurately describes selected environment-file behavior.
 - Full repository checks pass with 311 tests.

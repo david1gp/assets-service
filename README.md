@@ -41,6 +41,62 @@ bun run assets lists --dir src/app/assets
 bun run assets lists --check --dir src/app/assets
 ```
 
+### Organization and environment selection
+
+The CLI uses the global organization configuration at `~/.config/assets-service/config.json` (or the equivalent
+`XDG_CONFIG_HOME` path). Its schema contains the existing `david` and `contentoren` organizations and optional directory
+mappings:
+
+```json
+{
+  "organizations": {
+    "david": {
+      "id": "<david-organization-id>",
+      "name": "David",
+      "slug": "david"
+    },
+    "contentoren": {
+      "id": "<contentoren-organization-id>",
+      "name": "Contentoren",
+      "slug": "contentoren"
+    }
+  },
+  "directoryMappings": {
+    "~/personal": "david",
+    "~/leo": "contentoren"
+  }
+}
+```
+
+Only `david` and `contentoren` may be configured. `~/adaptive` remains unmapped. Mappings use normalized containing
+directories, require path boundaries, and choose the longest matching mapping. The legacy
+`~/.config/assets/config.json` path is used only when the canonical file is absent; an invalid canonical file does not
+fall back. The fallback accepts this organization schema, while an old saved CLI configuration there is ignored for
+organization selection.
+
+Put a project override in the selected `.env` file:
+
+```dotenv
+ASSETS_ORGANIZATION=contentoren
+```
+
+The environment file is selected in this order: `--env-file <path>`, `ASSETS_ENV_FILE`, `<command-root>/.env`, then
+`$PWD/.env`. Explicit paths are relative to the working directory and must exist; a default `.env` is optional. The CLI
+does not search ancestor directories. For organization selection, the precise precedence is `--organization`,
+`ASSETS_ORGANIZATION` in the selected `.env`, process `ASSETS_ORGANIZATION`, the global directory mapping, then
+unrestricted resolution. Organization selectors may be a configured key, ID, or slug. `ZITADEL_ORGANIZATION_ID` is
+reserved for server authentication and is not used for CLI selection.
+
+```bash
+bun run assets diff ./site --env-file ./env/site.env
+ASSETS_ENV_FILE=./env/site.env bun run assets diff ./site
+bun run assets config show ./site
+bun run assets config show ./site --json
+```
+
+`assets config show [root] [--json]` defaults `root` to `.` and reports the effective values, source paths, load state,
+and source of each value. JSON and human output omit credentials and session secrets; API URLs are sanitized.
+
 ### Remote project settings
 
 Administrators can read or update the R2 binding and public base URL for one project environment through the remote
@@ -125,10 +181,10 @@ Use `ASSETS_API_URL`, `ASSETS_TOKEN`, `ASSETS_PROJECT`, and `ASSETS_ENVIRONMENT`
 writes one newline-terminated deterministic envelope to stdout. Failed commands return a nonzero exit code.
 
 Project selection uses `--project`, `ASSETS_PROJECT` (or legacy `ASSETS_PROJECT_ID`), saved CLI configuration, the exact
-`name` in the bulk command root's `package.json` (never the directory basename), and finally the sole accessible project. Bun loads `ASSETS_PROJECT`
-from the current working directory's `.env` file when running the CLI. If more than one project is accessible and no
-identity matches, use `--project <name>` or set `ASSETS_PROJECT`; if none are accessible, verify the API URL, token,
-and access.
+`name` in the bulk command root's `package.json` (never the directory basename), and finally the sole accessible project.
+`ASSETS_PROJECT` and `ASSETS_ENVIRONMENT` may come from the selected environment file; process values take precedence
+over values from that file. If more than one project is accessible and no identity matches, use `--project <name>` or
+set `ASSETS_PROJECT`; if none are accessible, verify the API URL, token, and access.
 
 The remote CLI generates `imageList.ts`, `videoList.ts`, `documentList.ts`, and `fontList.ts`, including empty lists. `lists --check` compares
 exact UTF-8/LF bytes and exits with code 1 when a file differs.

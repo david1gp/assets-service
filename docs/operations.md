@@ -71,6 +71,42 @@ bun run assets settings update --project my-site --environment production \
   --public-base-url https://assets.example.com
 ```
 
+### CLI organization and environment selection
+
+The remote CLI's organization configuration is separate from the backend process variables above. By default, store it
+at `~/.config/assets-service/config.json` (or under `XDG_CONFIG_HOME`):
+
+```json
+{
+  "organizations": {
+    "david": { "id": "<david-organization-id>", "name": "David", "slug": "david" },
+    "contentoren": { "id": "<contentoren-organization-id>", "name": "Contentoren", "slug": "contentoren" }
+  },
+  "directoryMappings": {
+    "~/personal": "david",
+    "~/leo": "contentoren"
+  }
+}
+```
+
+Only the existing `david` and `contentoren` organizations are valid; do not add `adaptive`, and leave `~/adaptive`
+unmapped. Directory mappings use normalized containing paths, with the longest match winning. The legacy
+`~/.config/assets/config.json` is read only when the canonical file is absent. A malformed canonical file is an error and
+does not trigger fallback; an old saved CLI configuration at the fallback path is ignored as an organization config.
+
+The selected environment file is, in order, `--env-file <path>`, `ASSETS_ENV_FILE`, `<command-root>/.env`, or `$PWD/.env`.
+Relative explicit paths resolve from the working directory. Explicit files must exist, the default `.env` is optional, and
+ancestor directories are never searched. Organization precedence is `--organization`, `ASSETS_ORGANIZATION` in the
+selected `.env`, process `ASSETS_ORGANIZATION`, global directory mapping, then unrestricted resolution.
+`ZITADEL_ORGANIZATION_ID` is reserved for server authentication. Use `assets config show [root] [--json]` (root defaults to
+`.`) to inspect effective values, paths, load state, and sources without exposing secrets.
+
+```bash
+bun run assets diff ./site --env-file ./env/site.env
+ASSETS_ENV_FILE=./env/site.env bun run assets diff ./site
+bun run assets config show ./site --json
+```
+
 ## Bulk project upload
 
 The remote CLI reads `<root>/assets.config.json` for `assets diff [root]` and `assets upload-all [root]`. `root` defaults
