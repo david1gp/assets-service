@@ -6,6 +6,7 @@ import {
   type AuditEventListResponse,
   auditEventListResponseSchema,
 } from "../../api-client/auditEventListResponseSchema.js"
+import { auditActionCatalog, type AuditAction } from "../../audit/auditActionCatalog.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
@@ -13,6 +14,9 @@ import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
+import { uiAuditActionSelectionUpdate } from "./uiAuditActionSelectionUpdate.js"
+
+type UiAuditActionSelection = AuditAction | "all"
 
 /** Loads the audit trail of one project filtered by action. */
 export const uiAuditPageStateCreate = () => {
@@ -23,16 +27,26 @@ export const uiAuditPageStateCreate = () => {
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
   const actionSchema = auditEventListQuerySchema.entries.action
   const action = createMemo(() => uiSearchParamSchemaRead(actionSchema, searchParams.action))
-  const actionDraftState = createSignalObject(action() ?? "")
+  const actionSelectionRead = (): UiAuditActionSelection[] => {
+    const selectedAction = action()
+    if (selectedAction === undefined) return ["all"]
+    return selectedAction.split(",") as AuditAction[]
+  }
+  const actionDraftState = createSignalObject<UiAuditActionSelection[]>(actionSelectionRead())
   let pendingActionSearchParams = new URLSearchParams(window.location.search)
 
+  const actionDraftValueRead = () => {
+    const selectedActions = actionDraftState.get().filter((value): value is AuditAction => value !== "all")
+    return selectedActions.length === 0 ? undefined : selectedActions.join(",")
+  }
+
   const actionUrlValuesRead = () => {
-    const value = uiSearchParamSchemaRead(actionSchema, actionDraftState.get())
+    const value = uiSearchParamSchemaRead(actionSchema, actionDraftValueRead())
     return { action: value ?? null, cursor: null }
   }
 
   const actionUrlReplace = () => {
-    const value = uiSearchParamSchemaRead(actionSchema, actionDraftState.get())
+    const value = uiSearchParamSchemaRead(actionSchema, actionDraftValueRead())
     if (value === undefined) pendingActionSearchParams.delete("action")
     else pendingActionSearchParams.set("action", value)
     pendingActionSearchParams.delete("cursor")
@@ -44,14 +58,13 @@ export const uiAuditPageStateCreate = () => {
 
   const actionDraft = {
     get: actionDraftState.get,
-    set: (value: string) => {
-      actionDraftState.set(value)
-      actionUrlReplace()
+    set: (value: UiAuditActionSelection[]) => {
+      actionDraftState.set(uiAuditActionSelectionUpdate(actionDraftState.get(), value))
     },
   }
 
   createEffect(() => {
-    actionDraftState.set(action() ?? "")
+    actionDraftState.set(actionSelectionRead())
     pendingActionSearchParams = new URLSearchParams(window.location.search)
   })
 
@@ -75,10 +88,11 @@ export const uiAuditPageStateCreate = () => {
   return {
     query,
     actionDraft,
+    actionOptions: () => ["all", ...auditActionCatalog] satisfies UiAuditActionSelection[],
     hasFilter: () => action() !== undefined,
     applyFilter: actionUrlReplace,
     clearFilter: () => {
-      actionDraftState.set("")
+      actionDraftState.set(["all"])
       actionUrlReplace()
     },
     nextCursor: () => query.data()?.page.nextCursor ?? null,

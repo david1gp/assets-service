@@ -22,6 +22,7 @@ import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
 import { assetListResponseSchema } from "./assetListResponseSchema.js"
+import { auditActionFilterSchema } from "./auditActionFilterSchema.js"
 import { assetStructureFolderMembershipSetRequestSchema } from "./assetStructureFolderMembershipSetRequestSchema.js"
 import { assetsApiResultOptionalRead } from "./assetsApiResultOptionalRead.js"
 import { auditEventListResponseSchema } from "./auditEventListResponseSchema.js"
@@ -116,7 +117,7 @@ const jobListInputSchema = v.strictObject({
 const auditEventListInputSchema = v.strictObject({
   ...pageInputSchema.entries,
   actorId: v.optional(v.pipe(v.string(), v.maxLength(255))),
-  action: v.optional(v.pipe(v.string(), v.maxLength(128))),
+  action: v.optional(auditActionFilterSchema),
   resourceType: v.optional(v.pipe(v.string(), v.maxLength(128))),
   resourceId: v.optional(idSchema),
 })

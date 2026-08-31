@@ -1,6 +1,6 @@
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
-import { InputS } from "#ui/input/input/InputS.jsx"
+import { CheckMultiple } from "#ui/input/check/CheckMultiple.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
@@ -53,12 +53,12 @@ export function UiAuditPage() {
         >
           <div class="min-w-60 flex-1">
             <Label for="audit-action">Action</Label>
-            <InputS
+            <CheckMultiple
               id="audit-action"
-              type="search"
-              maxLength={128}
               valueSignal={state.actionDraft}
-              placeholder="asset.deleted"
+              getOptions={state.actionOptions}
+              valueText={(value) => (value === "all" ? "All actions" : value)}
+              innerClass="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-4"
             />
           </div>
           <ButtonIcon type="submit" icon={mdiMagnify}>

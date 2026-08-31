@@ -145,6 +145,7 @@ const deletionState = {
 type Received = {
   projectId?: string
   actorId?: string
+  auditAction?: string
   eligibility?: { projectId: string; environment: string; sourceRevisionId: string }
 }
 
@@ -246,8 +247,11 @@ const catalogRepositoryCreate = (): CatalogApiRepository => ({
   manifestRead: () => ({ success: true, data: manifest }),
 })
 
-const auditRepositoryCreate = (): AuditApiRepository => ({
-  auditEventsRead: () => ({ success: true, data: { items: [auditEvent], nextCursor: null } }),
+const auditRepositoryCreate = (received?: Received): AuditApiRepository => ({
+  auditEventsRead: (_projectId, options) => {
+    if (received && options.action !== undefined) received.auditAction = options.action
+    return { success: true, data: { items: [auditEvent], nextCursor: null } }
+  },
   auditEventRead: () => ({ success: true, data: auditEvent }),
 })
 
@@ -328,7 +332,7 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
     workflowApiRepository: workflowRepositoryCreate(),
     backupApiRepository: backupRepositoryCreate(),
     catalogApiRepository: catalogRepositoryCreate(),
-    auditApiRepository: auditRepositoryCreate(),
+    auditApiRepository: auditRepositoryCreate(received),
     uploadApiRepository: uploadRepositoryCreate(),
     deletionApiRepository: deletionRepositoryCreate(received),
     legacyImportExecutor: importExecutorCreate(received),
@@ -493,6 +497,34 @@ describe("task 6 API routes", () => {
       requestCreate("/api/v1/projects/project-service/audit-events", await sessionCreate(options, "contributor")),
     )
     expect(deniedAudit.status).toBe(403)
+  })
+
+  test("validates and forwards single and multiple audit action filters", async () => {
+    const received: Received = {}
+    const options = optionsCreate("admin", received)
+    const app = apiAppCreate(options)
+    const admin = await sessionCreate(options, "admin")
+
+    const absent = await app.fetch(requestCreate("/api/v1/projects/project-service/audit-events", admin))
+    expect(absent.status).toBe(200)
+    expect(received.auditAction).toBeUndefined()
+
+    const single = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/audit-events?action=asset.created", admin),
+    )
+    expect(single.status).toBe(200)
+    expect(received.auditAction).toBe("asset.created")
+
+    const multiple = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/audit-events?action=asset.created%2Casset.deleted", admin),
+    )
+    expect(multiple.status).toBe(200)
+    expect(received.auditAction).toBe("asset.created,asset.deleted")
+
+    const invalid = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/audit-events?action=asset.created%2Casset.unknown", admin),
+    )
+    expect(invalid.status).toBe(400)
   })
 
   test("validates and scopes the eligibility environment", async () => {

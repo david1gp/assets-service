@@ -1,3 +1,4 @@
+import { auditActionCatalog } from "../audit/auditActionCatalog.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
@@ -807,7 +808,7 @@ export const fixtureDatabaseSeed = (
           organizationId: seed.organizationId,
           projectId: seed.projectId,
           actorId: seed.subjectId,
-          action: "asset.created",
+          action: auditActionCatalog[0],
           resourceType: "asset",
           resourceId: asset.id,
           details: { filename: asset.filename },

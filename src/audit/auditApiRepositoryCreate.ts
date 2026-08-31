@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import * as v from "valibot"
 
 import type { AuditApiRepository } from "./auditApiRepository.js"
@@ -29,7 +29,7 @@ export const auditApiRepositoryCreate = (db: AssetDatabase): AuditApiRepository 
     try {
       const conditions = [eq(auditEventTable.projectId, projectId)]
       if (options.actorId !== undefined) conditions.push(eq(auditEventTable.actorId, options.actorId))
-      if (options.action !== undefined) conditions.push(eq(auditEventTable.action, options.action))
+      if (options.action !== undefined) conditions.push(inArray(auditEventTable.action, options.action.split(",")))
       if (options.resourceType !== undefined) conditions.push(eq(auditEventTable.resourceType, options.resourceType))
       if (options.resourceId !== undefined) conditions.push(eq(auditEventTable.resourceId, options.resourceId))
       const rows = db

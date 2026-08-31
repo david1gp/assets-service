@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, or } from "drizzle-orm"
 import * as v from "valibot"
+import { auditActionCatalog } from "../audit/auditActionCatalog.js"
 import type { RcloneBackupDeleteAdapter } from "../backup/rcloneBackupDeleteAdapter.js"
 import { canonicalJsonDigest } from "../catalog/canonicalJsonDigest.js"
 import { canonicalJsonStringify } from "../catalog/canonicalJsonStringify.js"
@@ -673,7 +674,7 @@ function deletionFinalize(
       organizationId: project.organizationId,
       projectId: asset.projectId,
       actorId: "system:deletion",
-      action: "asset.deleted",
+      action: auditActionCatalog[2],
       resourceType: "asset",
       resourceId: asset.id,
       details: { deletionId: state.id, completedSteps: state.completedSteps.length },

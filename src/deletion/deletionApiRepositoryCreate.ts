@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm"
 import * as v from "valibot"
+import { auditActionCatalog } from "../audit/auditActionCatalog.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
@@ -104,7 +105,7 @@ export const deletionApiRepositoryCreate = (db: AssetDatabase): DeletionApiRepos
             organizationId: organization.id,
             projectId,
             actorId,
-            action: "asset.deletion_requested",
+            action: auditActionCatalog[1],
             resourceType: "asset",
             resourceId: assetId,
             details: { deletionId, workflowId },
