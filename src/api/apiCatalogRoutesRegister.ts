@@ -1,10 +1,11 @@
-import { Hono } from "hono"
 import type { MiddlewareHandler } from "hono"
+import { Hono } from "hono"
 import * as v from "valibot"
 
 import { catalogListQuerySchema } from "../api-client/catalogListQuerySchema.js"
 import { manifestListQuerySchema } from "../api-client/manifestListQuerySchema.js"
 import type { CatalogApiRepository } from "../catalog/catalogApiRepository.js"
+import type { CatalogPublicationService } from "../catalog/catalogPublicationService.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
 import { apiErrorResponseCreate } from "./apiErrorResponseCreate.js"
@@ -47,8 +48,10 @@ export const apiCatalogRoutesRegister = (
   app: ApiApp,
   options: {
     repository?: CatalogApiRepository
+    publicationService?: CatalogPublicationService
     authenticationMiddleware: MiddlewareHandler<ApiContext>
     uploaderMiddleware: MiddlewareHandler<ApiContext>
+    adminMiddleware: MiddlewareHandler<ApiContext>
   },
 ): void => {
   const prefix = "/api/v1/projects/:projectId"
@@ -120,16 +123,19 @@ export const apiCatalogRoutesRegister = (
     const missing = configuredRead(context)
     if (missing) return missing
     const projectId = projectIdRead(context)
+    const environment = environmentRead(context)
     const generationId = idRead(context, "generationId")
     if (projectId === null)
       return failureResponseCreate(context, 500, "internal_error", "The project could not be read")
+    if (environment === null)
+      return failureResponseCreate(context, 400, "validation_failed", "The catalog environment was invalid")
     if (generationId === null)
       return failureResponseCreate(context, 400, "validation_failed", "The catalog generation identifier was invalid")
-    const catalog = options.repository?.catalogRead(projectId, generationId)
+    const catalog = options.repository?.catalogRead(projectId, generationId, environment)
     if (catalog === undefined)
       return failureResponseCreate(context, 500, "not_configured", "The catalog API is not configured")
     if (!catalog.success) return failureResponseCreate(context, 500, "internal_error", "The catalog could not be read")
-    if (catalog.data === null)
+    if (catalog.data === null || catalog.data.catalog.environment !== environment)
       return failureResponseCreate(context, 404, "not_found", "The catalog generation was not found")
     return successResponseCreate(context, catalog.data)
   }
@@ -156,6 +162,15 @@ export const apiCatalogRoutesRegister = (
         return failureResponseCreate(context, 400, "validation_failed", "The catalog environment was invalid")
       if (!query.success)
         return failureResponseCreate(context, 400, "validation_failed", "The generated list query was invalid")
+      if (query.output.generationId !== undefined) {
+        const generation = options.repository?.catalogRead(projectId, query.output.generationId, environment)
+        if (generation === undefined)
+          return failureResponseCreate(context, 500, "not_configured", "The catalog API is not configured")
+        if (!generation.success)
+          return failureResponseCreate(context, 500, "internal_error", "The catalog generation could not be read")
+        if (generation.data === null || generation.data.catalog.environment !== environment)
+          return failureResponseCreate(context, 404, "not_found", "The catalog generation was not found")
+      }
       const lists = options.repository?.catalogListsRead(projectId, environment, query.output)
       if (lists === undefined)
         return failureResponseCreate(context, 500, "not_configured", "The catalog API is not configured")
@@ -182,6 +197,13 @@ export const apiCatalogRoutesRegister = (
         return failureResponseCreate(context, 400, "validation_failed", "The catalog environment was invalid")
       if (generationId === null)
         return failureResponseCreate(context, 400, "validation_failed", "The catalog generation identifier was invalid")
+      const generation = options.repository?.catalogRead(projectId, generationId, environment)
+      if (generation === undefined)
+        return failureResponseCreate(context, 500, "not_configured", "The catalog API is not configured")
+      if (!generation.success)
+        return failureResponseCreate(context, 500, "internal_error", "The catalog generation could not be read")
+      if (generation.data === null || generation.data.catalog.environment !== environment)
+        return failureResponseCreate(context, 404, "not_found", "The catalog generation was not found")
       const lists = options.repository?.catalogListsRead(projectId, environment, { generationId })
       if (lists === undefined)
         return failureResponseCreate(context, 500, "not_configured", "The catalog API is not configured")
@@ -189,6 +211,34 @@ export const apiCatalogRoutesRegister = (
         return failureResponseCreate(context, 500, "internal_error", "The generated lists could not be read")
       if (lists.data === null) return failureResponseCreate(context, 404, "not_found", "The catalog was not found")
       return successResponseCreate(context, lists.data)
+    },
+  )
+
+  app.post(
+    `${prefix}/catalogs/:environment/rebuild`,
+    options.authenticationMiddleware,
+    options.adminMiddleware,
+    async (context) => {
+      const publicationService = options.publicationService
+      if (publicationService === undefined)
+        return failureResponseCreate(context, 500, "not_configured", "The catalog publication API is not configured")
+      const projectId = projectIdRead(context)
+      const environment = environmentRead(context)
+      if (projectId === null)
+        return failureResponseCreate(context, 500, "internal_error", "The project could not be read")
+      if (environment === null || environment !== "production")
+        return failureResponseCreate(context, 400, "validation_failed", "The catalog rebuild requires production")
+      const rebuilt = await publicationService.catalogProductionRebuild(projectId)
+      if (!rebuilt.success) {
+        const notFound = /not found|does not exist/i.test(rebuilt.errorMessage)
+        return failureResponseCreate(
+          context,
+          notFound ? 404 : 500,
+          notFound ? "not_found" : "internal_error",
+          notFound ? "The production environment was not found" : "The catalog could not be rebuilt",
+        )
+      }
+      return successResponseCreate(context, rebuilt.data)
     },
   )
 

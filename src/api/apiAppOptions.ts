@@ -2,6 +2,7 @@ import type { AssetApiRepository } from "../asset/assetApiRepository.js"
 import type { AuditApiRepository } from "../audit/auditApiRepository.js"
 import type { BackupApiRepository } from "../backup/backupApiRepository.js"
 import type { CatalogApiRepository } from "../catalog/catalogApiRepository.js"
+import type { CatalogPublicationService } from "../catalog/catalogPublicationService.js"
 import type { DeletionApiRepository } from "../deletion/deletionApiRepository.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -20,6 +21,7 @@ export type ApiAppOptions = {
   workflowApiRepository?: WorkflowApiRepository
   backupApiRepository?: BackupApiRepository
   catalogApiRepository?: CatalogApiRepository
+  catalogPublicationService?: CatalogPublicationService
   auditApiRepository?: AuditApiRepository
   readinessCheck?: () => Result<true> | Promise<Result<true>>
   requestIdCreate?: (request: Request) => string

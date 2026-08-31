@@ -22,9 +22,9 @@ import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
 import { assetListResponseSchema } from "./assetListResponseSchema.js"
-import { auditActionFilterSchema } from "./auditActionFilterSchema.js"
 import { assetStructureFolderMembershipSetRequestSchema } from "./assetStructureFolderMembershipSetRequestSchema.js"
 import { assetsApiResultOptionalRead } from "./assetsApiResultOptionalRead.js"
+import { auditActionFilterSchema } from "./auditActionFilterSchema.js"
 import { auditEventListResponseSchema } from "./auditEventListResponseSchema.js"
 import { backupListResponseSchema } from "./backupListResponseSchema.js"
 import { catalogHistoryResponseSchema } from "./catalogHistoryResponseSchema.js"
@@ -668,6 +668,26 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
   const catalogCurrentOptionalRead = async (projectId: string, environment: string) =>
     assetsApiResultOptionalRead(await catalogCurrentRead(projectId, environment))
 
+  const catalogProductionRebuild = (projectId: string, environment: string) => {
+    const validEnvironment = schemaParse(
+      environmentNameSchema,
+      environment,
+      "assetsApiClientCatalogProductionRebuild",
+      "The target environment was invalid",
+    )
+    if (!validEnvironment.success) return validEnvironment
+    if (validEnvironment.data !== "production")
+      return resultFailure("assetsApiClientCatalogProductionRebuild", "Catalog rebuilds require production")
+    return requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/catalogs/production/rebuild`,
+      method: "POST",
+      responseSchema: catalogResponseSchema,
+      operation: "assetsApiClientCatalogProductionRebuild",
+    })
+  }
+
+  const catalogRebuild = catalogProductionRebuild
+
   const catalogListsRead = (projectId: string, environment: string, query: { generationId?: string } = {}) => {
     const valid = schemaParse(
       catalogListInputSchema,
@@ -916,6 +936,8 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     jobCancel,
     catalogCurrentRead,
     catalogCurrentOptionalRead,
+    catalogProductionRebuild,
+    catalogRebuild,
     catalogListsRead,
     catalogListsOptionalRead,
     catalogHistoryRead,

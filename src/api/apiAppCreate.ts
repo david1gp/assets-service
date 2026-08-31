@@ -229,6 +229,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/backup-status$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+\/(current|history|lists|manifests)$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+\/rebuild$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+\/generations\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+\/generations\/[^/]+\/lists$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/manifests$/, methods: ["GET"] },
@@ -575,17 +576,18 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       const grant = authentication?.principal.grants.find(
         (candidate) => candidate.projectId === binding?.zitadelProjectId,
       )
-      const uploaderId =
-        !authentication?.principal.organizationAdmin &&
-        grant?.roles.includes("contributor") &&
+      const uploaderId = authentication?.principal.subjectId
+      const notificationEligible =
+        authentication !== undefined &&
+        !authentication.principal.organizationAdmin &&
+        grant?.roles.includes("contributor") === true &&
         !grant.roles.includes("admin")
-          ? authentication?.principal.subjectId
-          : undefined
       const intent = await options.uploadApiRepository.uploadIntentCreate(
         project.id,
         environment.data,
         parsed.output,
         uploaderId,
+        notificationEligible,
       )
       if (!intent.success) return domainFailureResponseCreate(context, intent.errorMessage)
       return successResponseCreate(context, intent.data, 201)
@@ -1170,8 +1172,10 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
   })
   apiCatalogRoutesRegister(app, {
     repository: options.catalogApiRepository,
+    publicationService: options.catalogPublicationService,
     authenticationMiddleware,
     uploaderMiddleware,
+    adminMiddleware,
   })
   apiStructureRoutesRegister(app, {
     repository: options.assetApiRepository,

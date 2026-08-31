@@ -9,11 +9,10 @@ import { backupOriginal } from "../backup/backupOriginal.js"
 import { backupReceiptRepositoryCreate } from "../backup/backupReceiptRepositoryCreate.js"
 import type { RcloneBackupAdapter } from "../backup/rcloneBackupAdapter.js"
 import type { RcloneBackupDeleteAdapter } from "../backup/rcloneBackupDeleteAdapter.js"
-import { canonicalJsonDigest } from "../catalog/canonicalJsonDigest.js"
-import { canonicalJsonStringify } from "../catalog/canonicalJsonStringify.js"
-import { catalogEntryPropertyCreate } from "../catalog/catalogEntryPropertyCreate.js"
-import { catalogSchema } from "../catalog/catalogSchema.js"
+import type { CatalogPublicationService } from "../catalog/catalogPublicationService.js"
+import { catalogPublicationServiceCreate } from "../catalog/catalogPublicationServiceCreate.js"
 import { assetDeletionHandle } from "../deletion/assetDeletionHandle.js"
+import { documentMediaTypeSchema } from "../document/documentMediaTypeSchema.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
@@ -22,7 +21,6 @@ import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { backupReceiptTable } from "../infrastructure/db/schema/backupReceiptTable.js"
 import { blobTable } from "../infrastructure/db/schema/blobTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
-import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { jobDependencyTable } from "../infrastructure/db/schema/jobDependencyTable.js"
@@ -39,7 +37,6 @@ import type { MediaMetadata } from "../metadata/mediaMetadataSchema.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
 import { outputRemoteObjectKeyCreate } from "../output/outputRemoteObjectKeyCreate.js"
 import { outputVersionRepositoryAllocate } from "../output/outputVersionRepositoryAllocate.js"
-import { documentMediaTypeSchema } from "../document/documentMediaTypeSchema.js"
 import { documentProcess } from "../processing/documentProcess.js"
 import { fontProcess } from "../processing/fontProcess.js"
 import type { FontProcessingAdapter } from "../processing/fontProcessingAdapter.js"
@@ -74,6 +71,7 @@ type AssetWorkflowHandlersRegisterInput = {
   fontProcessor?: FontProcessingAdapter
   temporaryDirectory?: string
   adminBaseUrl?: string
+  catalogPublicationService?: CatalogPublicationService
 }
 
 type HandlerRegistry = ReturnType<typeof jobHandlerRegistryCreate>
@@ -102,6 +100,8 @@ export const assetWorkflowHandlersRegister = (
   registry: HandlerRegistry,
   input: AssetWorkflowHandlersRegisterInput,
 ): Result<null> => {
+  const catalogPublicationService =
+    input.catalogPublicationService ?? catalogPublicationServiceCreate(input.db, input.storage)
   const handlers: Array<[Job["kind"], JobHandler]> = [
     ["verify_original", (job, context) => verifyOriginalHandle(job, context, input)],
     ["backup_original", (job, context) => backupOriginalHandle(job, context, input)],
@@ -110,7 +110,7 @@ export const assetWorkflowHandlersRegister = (
     ["copy_video_output", (job, context) => processOutputHandle(job, context, input)],
     ["process_font_output", (job, context) => processOutputHandle(job, context, input)],
     ["process_document_output", (job, context) => processOutputHandle(job, context, input)],
-    ["publish_asset", (job, context) => publishAssetHandle(job, context, input)],
+    ["publish_asset", (job, context) => publishAssetHandle(job, context, input, catalogPublicationService)],
     ["notify_customer_upload", (job, context) => notifyCustomerUploadHandle(job, context, input)],
     ["cleanup_local_files", (job, context) => cleanupLocalFilesHandle(job, context, input)],
     ["delete_asset", (job, context) => assetDeletionHandle(job, context, input)],
@@ -372,7 +372,13 @@ async function notifyCustomerUploadHandle(
   const currentOutput = input.db
     .select({ objectKey: outputVersionTable.objectKey })
     .from(outputVersionTable)
-    .where(and(eq(outputVersionTable.assetId, context.data.asset.id), eq(outputVersionTable.current, true)))
+    .where(
+      and(
+        eq(outputVersionTable.projectId, context.data.asset.projectId),
+        eq(outputVersionTable.assetId, context.data.asset.id),
+        eq(outputVersionTable.current, true),
+      ),
+    )
     .orderBy(asc(outputVersionTable.objectKey))
     .limit(1)
     .get()
@@ -546,6 +552,7 @@ async function processOutputHandle(
   const folders = foldersRead(context.data.asset)
   const allocation = outputVersionRepositoryAllocate(input.db, {
     id: `version-${job.id}`,
+    projectId: context.data.asset.projectId,
     outputDefinitionId: definition.id,
     assetId: context.data.asset.id,
     sourceRevisionId: context.data.source.id,
@@ -653,6 +660,7 @@ async function publishAssetHandle(
   job: Job,
   _handlerContext: Parameters<JobHandler>[1],
   input: AssetWorkflowHandlersRegisterInput,
+  catalogPublicationService: CatalogPublicationService,
 ): Promise<Result<null>> {
   const context = await assetContextRead(input.db, job)
   if (!context.success) return context
@@ -699,7 +707,12 @@ async function publishAssetHandle(
     const version = input.db
       .select()
       .from(outputVersionTable)
-      .where(eq(outputVersionTable.id, parsedVersionId.output))
+      .where(
+        and(
+          eq(outputVersionTable.projectId, context.data.asset.projectId),
+          eq(outputVersionTable.id, parsedVersionId.output),
+        ),
+      )
       .get()
     if (definition === undefined || version === undefined)
       return resultErrorCreate("publishAssetHandle", "Published output record is missing")
@@ -755,7 +768,11 @@ async function publishAssetHandle(
   if (new Set(outputs.map((output) => output.definition.id)).size !== outputs.length)
     return resultErrorCreate("publishAssetHandle", "An output definition was published more than once")
 
-  const published = await catalogPublish(input.db, input.storage, context.data, outputs, input.clock?.() ?? new Date())
+  const published = await catalogPublicationService.catalogAssetPublish(
+    context.data,
+    outputs,
+    input.clock?.() ?? new Date(),
+  )
   if (!published.success) return published
   return { success: true, data: null }
 }
@@ -1038,232 +1055,16 @@ function blobRepositoryEnsure(
 ): Result<typeof blobTable.$inferSelect> {
   const existing = db.select().from(blobTable).where(eq(blobTable.id, blob.id)).get()
   if (existing !== undefined) {
-    if (existing.sha256 !== blob.sha256 || existing.byteSize !== blob.byteSize || existing.objectKey !== blob.objectKey)
+    if (
+      existing.projectId !== blob.projectId ||
+      existing.sha256 !== blob.sha256 ||
+      existing.byteSize !== blob.byteSize ||
+      existing.objectKey !== blob.objectKey
+    )
       return resultErrorCreate("blobRepositoryEnsure", "Blob identity does not match the immutable object")
     return { success: true, data: existing }
   }
   return databaseRecordInsert(db, blobTable, blob)
-}
-
-async function catalogPublish(
-  db: AssetDatabase,
-  storage: StorageAdapter,
-  context: AssetContext,
-  outputs: readonly PublishedOutput[],
-  now: Date,
-): Promise<Result<null>> {
-  const currentCatalog = db
-    .select()
-    .from(catalogTable)
-    .where(
-      and(eq(catalogTable.projectId, context.asset.projectId), eq(catalogTable.environment, context.environment.name)),
-    )
-    .get()
-  const previousOutputs =
-    currentCatalog === undefined
-      ? []
-      : db
-          .select()
-          .from(catalogOutputTable)
-          .where(eq(catalogOutputTable.generationId, currentCatalog.generationId))
-          .all()
-  const proposedGenerationId = `catalog-generation-${context.asset.id}-${context.source.id}`
-  const nextOutputs = [
-    ...previousOutputs
-      .filter((output) => output.assetId !== context.asset.id)
-      .map((output) => ({ ...output, generationId: proposedGenerationId })),
-    ...outputs.map((output) => ({
-      generationId: proposedGenerationId,
-      assetId: context.asset.id,
-      outputVersionId: output.version.id,
-      class: context.asset.class,
-      key: output.definition.key,
-      property: catalogEntryPropertyCreate({
-        folders: foldersRead(context.asset),
-        basename: context.asset.basename,
-        key: output.definition.key,
-      }),
-      path: output.version.objectKey,
-      metadata: output.metadata,
-    })),
-  ]
-  const canonicalOutputsForDigest = nextOutputs.toSorted((left, right) => {
-    if (left.property !== right.property) return left.property < right.property ? -1 : 1
-    return left.outputVersionId < right.outputVersionId ? -1 : left.outputVersionId > right.outputVersionId ? 1 : 0
-  })
-  const manifestOutputs = canonicalOutputsForDigest.map(({ generationId: _generationId, ...output }) => output)
-  const digest = canonicalJsonDigest(manifestOutputs)
-  const existingGeneration = db
-    .select()
-    .from(catalogGenerationTable)
-    .where(
-      and(
-        eq(catalogGenerationTable.projectId, context.asset.projectId),
-        eq(catalogGenerationTable.environment, context.environment.name),
-        eq(catalogGenerationTable.digest, digest),
-      ),
-    )
-    .get()
-  const generationId = existingGeneration?.id ?? proposedGenerationId
-  const canonicalOutputs = canonicalOutputsForDigest.map((output) => ({ ...output, generationId }))
-  const generatedAt = existingGeneration?.createdAt ?? now.toISOString()
-  const manifestObjectKey =
-    existingGeneration?.manifestObjectKey ?? `catalogs/${context.environment.name}/${digest}.json`
-  const parsedManifest = v.safeParse(catalogSchema, {
-    schema: "assets.catalog.v1",
-    projectId: context.asset.projectId,
-    environment: context.environment.name,
-    digest,
-    rendererVersion: "assets-service.catalog.v1",
-    generatedAt,
-    outputs: manifestOutputs,
-  })
-  if (!parsedManifest.success)
-    return resultErrorCreate("catalogPublish", "Canonical catalog manifest is invalid", parsedManifest.issues)
-  const manifestBytes = new TextEncoder().encode(canonicalJsonStringify(parsedManifest.output))
-  const manifestSha256 = bytesSha256(manifestBytes)
-  const manifestLocation = storageObjectLocationCreate(context.binding, "private-source", manifestObjectKey)
-  if (!manifestLocation.success) return manifestLocation
-  const storedManifest = await storageObjectPutEnsure(
-    storage,
-    manifestLocation.data,
-    manifestBytes,
-    "application/json",
-    manifestSha256,
-  )
-  if (!storedManifest.success) return storedManifest
-
-  return databaseTransactionRun<null>(
-    db,
-    (transaction) => {
-      const currentVersions = transaction
-        .select({ id: outputVersionTable.id, outputDefinitionId: outputVersionTable.outputDefinitionId })
-        .from(outputVersionTable)
-        .where(eq(outputVersionTable.assetId, context.asset.id))
-        .all()
-      for (const version of currentVersions) {
-        transaction
-          .update(outputVersionTable)
-          .set({ current: false })
-          .where(eq(outputVersionTable.id, version.id))
-          .run()
-      }
-      for (const output of outputs) {
-        transaction
-          .update(outputVersionTable)
-          .set({ current: true })
-          .where(eq(outputVersionTable.id, output.version.id))
-          .run()
-      }
-
-      const generation = transaction
-        .select()
-        .from(catalogGenerationTable)
-        .where(eq(catalogGenerationTable.id, generationId))
-        .get()
-      if (generation === undefined) {
-        const insertedGeneration = databaseRecordInsert(transaction, catalogGenerationTable, {
-          id: generationId,
-          projectId: context.asset.projectId,
-          environment: context.environment.name,
-          digest,
-          manifestObjectKey,
-          rendererVersion: "assets-service.catalog.v1",
-          createdAt: generatedAt,
-        })
-        if (!insertedGeneration.success) return insertedGeneration
-      } else if (
-        generation.projectId !== context.asset.projectId ||
-        generation.environment !== context.environment.name ||
-        generation.digest !== digest ||
-        generation.manifestObjectKey !== manifestObjectKey
-      ) {
-        return resultErrorCreate("catalogPublish", "Catalog generation identity does not match its manifest")
-      }
-
-      const manifest = transaction
-        .select()
-        .from(manifestTable)
-        .where(eq(manifestTable.catalogGenerationId, generationId))
-        .get()
-      if (manifest === undefined) {
-        const insertedManifest = databaseRecordInsert(transaction, manifestTable, {
-          id: `manifest-${generationId}`,
-          projectId: context.asset.projectId,
-          assetId: null,
-          catalogGenerationId: generationId,
-          kind: "catalog",
-          schema: "assets.catalog.v1",
-          objectKey: manifestObjectKey,
-          byteSize: manifestBytes.byteLength,
-          sha256: manifestSha256,
-          createdAt: generatedAt,
-        })
-        if (!insertedManifest.success) return insertedManifest
-      } else if (
-        manifest.projectId !== context.asset.projectId ||
-        manifest.kind !== "catalog" ||
-        manifest.schema !== "assets.catalog.v1" ||
-        manifest.objectKey !== manifestObjectKey ||
-        manifest.byteSize !== manifestBytes.byteLength ||
-        manifest.sha256 !== manifestSha256
-      ) {
-        return resultErrorCreate("catalogPublish", "Catalog manifest identity does not match its immutable object")
-      }
-      const manifestBlob = blobRepositoryEnsure(transaction, {
-        id: `blob-manifest-${generationId}`,
-        projectId: context.asset.projectId,
-        assetId: null,
-        sourceRevisionId: null,
-        outputVersionId: null,
-        storage: "private",
-        environment: context.environment.name,
-        kind: "manifest",
-        objectKey: manifestObjectKey,
-        byteSize: manifestBytes.byteLength,
-        sha256: manifestSha256,
-        mediaType: "application/json",
-        createdAt: generatedAt,
-      })
-      if (!manifestBlob.success) return manifestBlob
-      transaction.delete(catalogOutputTable).where(eq(catalogOutputTable.generationId, generationId)).run()
-      for (const output of canonicalOutputs) {
-        const insertedOutput = databaseRecordInsert(transaction, catalogOutputTable, output)
-        if (!insertedOutput.success) return insertedOutput
-      }
-
-      const catalog = transaction
-        .select()
-        .from(catalogTable)
-        .where(eq(catalogTable.id, `catalog-${context.asset.projectId}-${context.environment.name}`))
-        .get()
-      if (catalog === undefined) {
-        const insertedCatalog = databaseRecordInsert(transaction, catalogTable, {
-          id: `catalog-${context.asset.projectId}-${context.environment.name}`,
-          projectId: context.asset.projectId,
-          environment: context.environment.name,
-          generationId,
-          schema: "assets.catalog.v1",
-          digest,
-          rendererVersion: "assets-service.catalog.v1",
-          generatedAt,
-          updatedAt: generatedAt,
-        })
-        if (!insertedCatalog.success) return insertedCatalog
-      } else {
-        const updatedCatalog = transaction
-          .update(catalogTable)
-          .set({ generationId, digest, generatedAt, updatedAt: generatedAt })
-          .where(eq(catalogTable.id, catalog.id))
-          .returning({ id: catalogTable.id })
-          .get()
-        if (updatedCatalog === undefined)
-          return resultErrorCreate("catalogPublish", "Catalog pointer changed concurrently")
-      }
-      return { success: true, data: null }
-    },
-    { behavior: "immediate" },
-  )
 }
 
 function mediaMetadataRead(value: unknown): Result<MediaMetadata> {

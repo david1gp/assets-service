@@ -27,7 +27,11 @@ export type CatalogApiRepository = {
     environment: Catalog["environment"],
     options: CatalogListOptions,
   ) => Result<CatalogPage>
-  catalogRead: (projectId: string, generationId: string) => Result<CatalogSnapshot | null>
+  catalogRead: (
+    projectId: string,
+    generationId: string,
+    environment?: Catalog["environment"],
+  ) => Result<CatalogSnapshot | null>
   catalogListsRead: (
     projectId: string,
     environment: Catalog["environment"],

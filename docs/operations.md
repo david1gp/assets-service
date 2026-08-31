@@ -58,6 +58,20 @@ one setting option. The CLI reads the complete settings document, merges only th
 environment, and writes the complete document. Omitted fields and the other environment are preserved. An empty
 prefix is valid and clears an existing prefix; quote it as `--r2-prefix ""`.
 
+### Production catalog rebuild
+
+Catalog publication is serialized through SQLite immediate transactions. The manifest object is written outside the
+transaction and the catalog pointer is revalidated before commit; a bounded retry prevents concurrent API and worker
+publications from losing each other's outputs. The supported rebuild uses the current output versions already in the
+database. It does not reprocess assets or upload output objects, is scoped to one project, and is safe to repeat:
+
+```bash
+bun run assets catalogs rebuild --project <id-or-name> --environment production
+```
+
+The command is synchronous and requires authenticated `admin` access to the selected project. Only `production` is
+accepted. A failed manifest write or database commit leaves the existing catalog pointer and generation unchanged.
+
 For separate development and production buckets, configure each environment independently at the bucket root:
 
 ```bash

@@ -5,6 +5,7 @@ import { databasePkceStateStoreCreate } from "../authentication/databasePkceStat
 import { databaseSessionStoreCreate } from "../authentication/databaseSessionStoreCreate.js"
 import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
+import { catalogPublicationServiceCreate } from "../catalog/catalogPublicationServiceCreate.js"
 import type { ServiceRuntimeConfig } from "../config/serviceRuntimeConfig.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
@@ -52,6 +53,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const workflowApiRepository = workflowApiRepositoryCreate(connection.data.db)
   const backupApiRepository = backupApiRepositoryCreate(connection.data.db)
   const catalogApiRepository = catalogApiRepositoryCreate(connection.data.db)
+  const catalogPublicationService = catalogPublicationServiceCreate(connection.data.db, storage)
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })
@@ -78,6 +80,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     workflowApiRepository,
     backupApiRepository,
     catalogApiRepository,
+    catalogPublicationService,
     auditApiRepository,
     authentication: {
       config: config.zitadel,

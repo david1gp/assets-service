@@ -1,9 +1,8 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import * as v from "valibot"
 
 import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
-import { assetMetadataTable } from "../infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
@@ -29,25 +28,9 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
       .where(eq(catalogOutputTable.generationId, generationId))
       .orderBy(asc(catalogOutputTable.property), asc(catalogOutputTable.outputVersionId))
       .all()
-    const assetIds = [...new Set(rows.map((row) => row.assetId))]
-    const metadataByAssetId = new Map(
-      assetIds.length === 0
-        ? []
-        : db
-            .select({ assetId: assetMetadataTable.assetId, metadata: assetMetadataTable.metadata })
-            .from(assetMetadataTable)
-            .where(inArray(assetMetadataTable.assetId, assetIds))
-            .all()
-            .map((row) => [row.assetId, row.metadata] as const),
-    )
     const outputs: import("./catalogOutputSchema.js").CatalogOutput[] = []
     for (const row of rows) {
-      const assetMetadata = metadataByAssetId.get(row.assetId)
-      const metadata =
-        assetMetadata?.kind === "image" && row.metadata.kind === "image"
-          ? { ...row.metadata, alt: assetMetadata.alt }
-          : row.metadata
-      const { generationId: _generationId, ...output } = { ...row, metadata }
+      const { generationId: _generationId, ...output } = row
       const parsed = v.safeParse(catalogOutputSchema, output)
       if (!parsed.success)
         return resultErrorCreate("catalogApiRepositoryOutputRead", "The stored catalog output was invalid")
@@ -72,11 +55,23 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
     return { success: true, data: { id, generationId: generation.id, current, catalog: parsed.output } } as const
   }
 
-  const generationRead = (projectId: string, generationId: string) =>
+  const generationRead = (
+    projectId: string,
+    generationId: string,
+    environment?: typeof catalogGenerationTable.$inferSelect.environment,
+  ) =>
     db
       .select()
       .from(catalogGenerationTable)
-      .where(and(eq(catalogGenerationTable.projectId, projectId), eq(catalogGenerationTable.id, generationId)))
+      .where(
+        environment === undefined
+          ? and(eq(catalogGenerationTable.projectId, projectId), eq(catalogGenerationTable.id, generationId))
+          : and(
+              eq(catalogGenerationTable.projectId, projectId),
+              eq(catalogGenerationTable.id, generationId),
+              eq(catalogGenerationTable.environment, environment),
+            ),
+      )
       .get()
 
   const catalogCurrentRead: CatalogApiRepository["catalogCurrentRead"] = (projectId, environment) => {
@@ -87,7 +82,7 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
         .where(and(eq(catalogTable.projectId, projectId), eq(catalogTable.environment, environment)))
         .get()
       if (current === undefined) return { success: true, data: null }
-      const generation = generationRead(projectId, current.generationId)
+      const generation = generationRead(projectId, current.generationId, environment)
       if (generation === undefined)
         return resultErrorCreate("catalogApiRepositoryCurrentRead", "The catalog generation was not found")
       return snapshotRead(generation, current.id, true)
@@ -96,14 +91,20 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
     }
   }
 
-  const catalogRead: CatalogApiRepository["catalogRead"] = (projectId, generationId) => {
+  const catalogRead: CatalogApiRepository["catalogRead"] = (projectId, generationId, environment) => {
     try {
-      const generation = generationRead(projectId, generationId)
+      const generation = generationRead(projectId, generationId, environment)
       if (generation === undefined) return { success: true, data: null }
       const current = db
         .select({ id: catalogTable.id })
         .from(catalogTable)
-        .where(eq(catalogTable.generationId, generationId))
+        .where(
+          and(
+            eq(catalogTable.projectId, projectId),
+            eq(catalogTable.environment, generation.environment),
+            eq(catalogTable.generationId, generationId),
+          ),
+        )
         .get()
       return snapshotRead(generation, current?.id ?? generation.id, current !== undefined)
     } catch (error) {
@@ -147,17 +148,21 @@ export const catalogApiRepositoryCreate = (db: AssetDatabase): CatalogApiReposit
 
   const catalogListsRead: CatalogApiRepository["catalogListsRead"] = (projectId, environment, options) => {
     const selected = options.generationId
-      ? catalogRead(projectId, options.generationId)
+      ? catalogRead(projectId, options.generationId, environment)
       : catalogCurrentRead(projectId, environment)
     if (!selected.success) return selected
     if (selected.data === null) return { success: true, data: null }
     const entries: unknown[] = []
     for (const output of selected.data.catalog.outputs) {
-      const asset = db.select().from(assetTable).where(eq(assetTable.id, output.assetId)).get()
+      const asset = db
+        .select()
+        .from(assetTable)
+        .where(and(eq(assetTable.projectId, projectId), eq(assetTable.id, output.assetId)))
+        .get()
       const version = db
         .select()
         .from(outputVersionTable)
-        .where(eq(outputVersionTable.id, output.outputVersionId))
+        .where(and(eq(outputVersionTable.projectId, projectId), eq(outputVersionTable.id, output.outputVersionId)))
         .get()
       if (asset === undefined || version === undefined)
         return resultErrorCreate("catalogApiRepositoryListsRead", "The catalog output was incomplete")

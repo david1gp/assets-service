@@ -18,6 +18,7 @@ import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
 import { manifestTable } from "../src/infrastructure/db/schema/manifestTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { outboxEventTable } from "../src/infrastructure/db/schema/outboxEventTable.js"
+import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
@@ -27,12 +28,14 @@ import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memory
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 import { storageBindingResolve } from "../src/storage/storageBindingResolve.js"
 import { storageObjectLocationCreate } from "../src/storage/storageObjectLocationCreate.js"
+import type { StorageAdapter } from "../src/storage/storageAdapter.js"
 import { uploadIngestionComplete } from "../src/upload/uploadIngestionComplete.js"
 import { assetWorkflowHandlersRegister } from "../src/workflow/assetWorkflowHandlersRegister.js"
 import { jobHandlerRegistryCreate } from "../src/workflow/jobHandlerRegistryCreate.js"
 import { workflowEngineCreate } from "../src/workflow/workflowEngineCreate.js"
 
 const now = "2026-08-17T00:00:00.000Z"
+const staleAt = "2026-08-16T00:00:00.000Z"
 const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
 
 describe("asset ingestion workflow", () => {
@@ -101,7 +104,18 @@ describe("asset ingestion workflow", () => {
         }).success,
       ).toBe(true)
 
-      const storage = memoryStorageAdapterCreate()
+      const storageBase = memoryStorageAdapterCreate()
+      let publicationFailureInjected = false
+      const storage: StorageAdapter = {
+        ...storageBase,
+        copyImmutable: async (copyInput) => {
+          if (!publicationFailureInjected && copyInput.destination.namespace === "public-output") {
+            publicationFailureInjected = true
+            return { success: false, op: "testPublication", errorMessage: "publication temporarily unavailable" }
+          }
+          return storageBase.copyImmutable(copyInput)
+        },
+      }
       const environment = opened.data.db.select().from(environmentTable).get()
       if (environment === undefined) return
       const binding = storageBindingResolve(environment)
@@ -116,7 +130,7 @@ describe("asset ingestion workflow", () => {
         uploadId: "upload-asset-workflow",
         outputDefinitions: [
           {
-            id: "output-asset-workflow",
+            id: "output-asset-upload-asset-workflow-default",
             assetId: "asset-upload-asset-workflow",
             kind: "image",
             key: "default",
@@ -147,6 +161,24 @@ describe("asset ingestion workflow", () => {
       })
       expect(ingestion).toMatchObject({ success: true, data: { assetId: "asset-upload-asset-workflow" } })
       if (!ingestion.success) return
+      expect(opened.data.db.select().from(outputDefinitionTable).all()).toMatchObject([
+        {
+          id: "output-asset-upload-asset-workflow-default",
+          width: 100,
+          height: 50,
+          format: "png",
+          quality: null,
+          showAiLabel: null,
+        },
+        {
+          id: "output-asset-workflow-mobile",
+          width: 50,
+          height: 50,
+          format: "png",
+          quality: null,
+          showAiLabel: null,
+        },
+      ])
       const workspacePath = opened.data.db
         .select()
         .from(jobTable)
@@ -238,8 +270,9 @@ describe("asset ingestion workflow", () => {
         retryBackoffMs: () => 0,
         clock: () => new Date(now),
       })
-      for (let index = 0; index < 7; index += 1) await restartedEngine.runOnce()
+      for (let index = 0; index < 8; index += 1) await restartedEngine.runOnce()
 
+      expect(publicationFailureInjected).toBe(true)
       expect(
         opened.data.db
           .select()
@@ -443,6 +476,34 @@ describe("asset ingestion workflow", () => {
             createdAt: now,
           })
           if (!source.success) return source
+          const managedOutput = databaseRecordInsert(transaction, outputDefinitionTable, {
+            id: "output-asset-explicit-replacement-default",
+            assetId: "asset-explicit-replacement",
+            kind: "image",
+            key: "default",
+            width: 3840,
+            height: 2160,
+            format: "webp",
+            quality: 60,
+            showAiLabel: true,
+            createdAt: staleAt,
+            updatedAt: staleAt,
+          })
+          if (!managedOutput.success) return managedOutput
+          const otherOutput = databaseRecordInsert(transaction, outputDefinitionTable, {
+            id: "output-asset-explicit-replacement-mobile",
+            assetId: "asset-explicit-replacement",
+            kind: "image",
+            key: "mobile",
+            width: 640,
+            height: 360,
+            format: "jpg",
+            quality: 70,
+            showAiLabel: false,
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!otherOutput.success) return otherOutput
           return databaseRecordInsert(transaction, uploadTable, {
             id: "upload-explicit-replacement",
             projectId: "project-explicit-replacement",
@@ -495,6 +556,60 @@ describe("asset ingestion workflow", () => {
           sourceRevisionId: "source-upload-explicit-replacement",
         },
       })
+      expect(opened.data.db.select().from(outputDefinitionTable).all()).toMatchObject([
+        {
+          id: "output-asset-explicit-replacement-default",
+          width: 1920,
+          height: 1080,
+          format: "avif",
+          quality: 80,
+          showAiLabel: null,
+          createdAt: staleAt,
+          updatedAt: now,
+        },
+        {
+          id: "output-asset-explicit-replacement-mobile",
+          width: 640,
+          height: 360,
+          format: "jpg",
+          quality: 70,
+          showAiLabel: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      opened.data.db
+        .update(outputDefinitionTable)
+        .set({ width: 3840, height: 2160, format: "webp", quality: 60, showAiLabel: true, updatedAt: staleAt })
+        .where(eq(outputDefinitionTable.id, "output-asset-explicit-replacement-default"))
+        .run()
+      const repeated = await uploadIngestionComplete(opened.data.db, storage, {
+        uploadId: "upload-explicit-replacement",
+        now,
+      })
+      expect(repeated).toEqual(ingestion)
+      expect(opened.data.db.select().from(outputDefinitionTable).all()).toMatchObject([
+        {
+          id: "output-asset-explicit-replacement-default",
+          width: 1920,
+          height: 1080,
+          format: "avif",
+          quality: 80,
+          showAiLabel: null,
+          createdAt: staleAt,
+          updatedAt: now,
+        },
+        {
+          id: "output-asset-explicit-replacement-mobile",
+          width: 640,
+          height: 360,
+          format: "jpg",
+          quality: 70,
+          showAiLabel: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
       expect(opened.data.db.select().from(assetTable).all()).toMatchObject([
         {
           id: "asset-explicit-replacement",

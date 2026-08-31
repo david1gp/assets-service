@@ -3,6 +3,7 @@ import { assetApiRepositoryCreate } from "../asset/assetApiRepositoryCreate.js"
 import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
 import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
+import { catalogPublicationServiceCreate } from "../catalog/catalogPublicationServiceCreate.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
@@ -58,6 +59,7 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     publicBaseUrl: options.origin,
     objects: storageObjects.data,
   })
+  const catalogPublicationService = catalogPublicationServiceCreate(connection.data.db, uploadStorage.storage)
 
   const app = apiAppCreate({
     authentication: authentication.options,
@@ -69,6 +71,7 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     workflowApiRepository: workflowApiRepositoryCreate(connection.data.db),
     backupApiRepository: backupApiRepositoryCreate(connection.data.db),
     catalogApiRepository: catalogApiRepositoryCreate(connection.data.db),
+    catalogPublicationService,
     auditApiRepository: auditApiRepositoryCreate(connection.data.db),
     readinessCheck: () => ({ success: true, data: true }),
   })

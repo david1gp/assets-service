@@ -2,17 +2,18 @@ import { describe, expect, test } from "bun:test"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
 import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
+import type { AuditApiRepository } from "../src/audit/auditApiRepository.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
 import { memorySessionStoreCreate } from "../src/authentication/memorySessionStoreCreate.js"
 import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.js"
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
-import type { ProjectRepository } from "../src/project/projectRepository.js"
-import type { WorkflowApiRepository } from "../src/workflow/workflowApiRepository.js"
 import type { BackupApiRepository } from "../src/backup/backupApiRepository.js"
 import type { CatalogApiRepository } from "../src/catalog/catalogApiRepository.js"
-import type { AuditApiRepository } from "../src/audit/auditApiRepository.js"
-import type { UploadApiRepository } from "../src/upload/uploadApiRepository.js"
+import type { CatalogPublicationService } from "../src/catalog/catalogPublicationService.js"
 import type { DeletionApiRepository } from "../src/deletion/deletionApiRepository.js"
+import type { ProjectRepository } from "../src/project/projectRepository.js"
+import type { UploadApiRepository } from "../src/upload/uploadApiRepository.js"
+import type { WorkflowApiRepository } from "../src/workflow/workflowApiRepository.js"
 
 const now = 1_700_000_000
 const project = {
@@ -97,6 +98,11 @@ const catalog = {
     outputs: [],
   },
 }
+const rebuiltCatalog = {
+  ...catalog,
+  current: true as const,
+  catalog: { ...catalog.catalog, environment: "production" as const },
+}
 const manifest = {
   id: "manifest-1",
   projectId: "project-1",
@@ -144,6 +150,7 @@ const deletionState = {
 type Received = {
   auditAction?: string
   eligibility?: { projectId: string; environment: string; sourceRevisionId: string }
+  rebuildProjectId?: string
 }
 
 const projectRepositoryCreate = (): ProjectRepository => ({
@@ -221,6 +228,14 @@ const catalogRepositoryCreate = (): CatalogApiRepository => ({
   }),
   manifestsRead: () => ({ success: true, data: { items: [manifest], nextCursor: null } }),
   manifestRead: () => ({ success: true, data: manifest }),
+})
+
+const catalogPublicationServiceCreate = (received: Received): CatalogPublicationService => ({
+  catalogAssetPublish: async () => ({ success: true, data: rebuiltCatalog }),
+  catalogProductionRebuild: async (projectId) => {
+    received.rebuildProjectId = projectId
+    return { success: true, data: rebuiltCatalog }
+  },
 })
 
 const auditRepositoryCreate = (received?: Received): AuditApiRepository => ({
@@ -308,6 +323,7 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
     workflowApiRepository: workflowRepositoryCreate(),
     backupApiRepository: backupRepositoryCreate(),
     catalogApiRepository: catalogRepositoryCreate(),
+    catalogPublicationService: catalogPublicationServiceCreate(received),
     auditApiRepository: auditRepositoryCreate(received),
     uploadApiRepository: uploadRepositoryCreate(),
     deletionApiRepository: deletionRepositoryCreate(received),
@@ -376,6 +392,7 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/catalogs/development"],
       ["/api/v1/projects/project-service/catalogs/development/history"],
       ["/api/v1/projects/project-service/catalogs/development/lists"],
+      ["/api/v1/projects/project-service/catalogs/production/rebuild", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/manifests"],
       ["/api/v1/projects/project-service/audit-events"],
       ["/api/v1/projects/project-service/audit-events/audit-1"],
@@ -420,6 +437,7 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/workflows/workflow-1/retry", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/jobs/job-1/cancel", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/audit-events", {}],
+      ["/api/v1/projects/project-service/catalogs/production/rebuild", { method: "POST", body: "{}" }],
     ]
     const responses = await Promise.all(requests.map(([path, init]) => app.fetch(requestCreate(path, uploader, init))))
     expect(responses.map((response) => response.status)).toEqual(requests.map(() => 403))
@@ -458,6 +476,29 @@ describe("task 6 API routes", () => {
       requestCreate("/api/v1/projects/project-service/audit-events", await sessionCreate(options, "contributor")),
     )
     expect(deniedAudit.status).toBe(403)
+  })
+
+  test("rejects catalog generations from a different URL environment", async () => {
+    const options = optionsCreate("admin", {})
+    const app = apiAppCreate(options)
+    const admin = await sessionCreate(options, "admin")
+    const detail = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/production/generations/generation-1", admin),
+    )
+    const lists = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/production/generations/generation-1/lists", admin),
+    )
+    const queryLists = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/production/lists?generationId=generation-1", admin),
+    )
+    const valid = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/development/generations/generation-1/lists", admin),
+    )
+
+    expect(detail.status).toBe(404)
+    expect(lists.status).toBe(404)
+    expect(queryLists.status).toBe(404)
+    expect(valid.status).toBe(200)
   })
 
   test("validates and forwards single and multiple audit action filters", async () => {
@@ -521,5 +562,31 @@ describe("task 6 API routes", () => {
     })
     expect(invalid.status).toBe(400)
     expect(isolated.status).toBe(404)
+  })
+
+  test("allows only admins to rebuild the production catalog", async () => {
+    const received: Received = {}
+    const adminOptions = optionsCreate("admin", received)
+    const adminApp = apiAppCreate(adminOptions)
+    const admin = await sessionCreate(adminOptions, "admin")
+    const contributorOptions = optionsCreate("contributor", {})
+    const contributorApp = apiAppCreate(contributorOptions)
+    const contributor = await sessionCreate(contributorOptions, "contributor")
+
+    const rebuilt = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/production/rebuild", admin, { method: "POST" }),
+    )
+    const denied = await contributorApp.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/production/rebuild", contributor, { method: "POST" }),
+    )
+    const wrongEnvironment = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/catalogs/development/rebuild", admin, { method: "POST" }),
+    )
+
+    expect(rebuilt.status).toBe(200)
+    expect(await rebuilt.json()).toMatchObject({ data: { catalog: { environment: "production" } } })
+    expect(received.rebuildProjectId).toBe("project-1")
+    expect(denied.status).toBe(403)
+    expect(wrongEnvironment.status).toBe(400)
   })
 })
