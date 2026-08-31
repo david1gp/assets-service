@@ -22,6 +22,7 @@ import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceC
 import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiUploadFoldersRead } from "../upload/uiUploadFoldersRead.js"
 import { type UiAssetActivity, uiAssetActivitySchema } from "./uiAssetActivitySchema.js"
+import { uiAssetDetailReplacementUploadStateCreate } from "./uiAssetDetailReplacementUploadStateCreate.js"
 import { type UiAssetDialog, uiAssetDialogSchema } from "./uiAssetDialogSchema.js"
 import { uiSourceRevisionLatestImageRead } from "./uiSourceRevisionLatestImageRead.js"
 
@@ -194,6 +195,16 @@ export const uiAssetDetailPageStateCreate = () => {
       moveFolder3.set(asset.folders[2] ?? "")
     }
     if (!outputsDraftActive) outputDraftsLoad(asset)
+  })
+
+  const replacementUpload = uiAssetDetailReplacementUploadStateCreate({
+    projectId,
+    assetId,
+    asset: query.data,
+    refresh: () => {
+      query.reload()
+      activity.reload()
+    },
   })
 
   const clientRead = () => {
@@ -400,6 +411,7 @@ export const uiAssetDetailPageStateCreate = () => {
     confirmOutputs,
     confirmDeletion,
     outputSaveBlockedReason,
+    replacementUpload,
     sourceRevisionLinks,
     latestImagePreview,
     outputHistoryLinks,

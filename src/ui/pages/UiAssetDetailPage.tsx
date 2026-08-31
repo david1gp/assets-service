@@ -18,6 +18,7 @@ import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Details } from "#ui/interactive/details/Details.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
@@ -41,6 +42,7 @@ import { uiDeepLinkCreate } from "../routing/uiDeepLinkCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiAssetDetailPageStateCreate } from "./uiAssetDetailPageStateCreate.js"
+import { UiAssetDetailReplacementUpload } from "./UiAssetDetailReplacementUpload.jsx"
 
 const imageFormats = ["webp", "avif", "jpg", "png"]
 
@@ -187,12 +189,11 @@ export function UiAssetDetailPage() {
 
                   <Show when={asset.metadata}>
                     {(metadata) => (
-                      <div class="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
-                          Metadata JSON
-                        </h3>
-                        <CodeBlock data={metadata().metadata} />
-                      </div>
+                      <Details title="Metadata JSON" class="mt-5" summaryClass="p-3">
+                        <div class="px-3 pb-3">
+                          <CodeBlock data={metadata().metadata} />
+                        </div>
+                      </Details>
                     )}
                   </Show>
                 </CardWrapper>
@@ -235,7 +236,7 @@ export function UiAssetDetailPage() {
                     </ButtonIcon>
                     <ButtonIcon
                       icon={mdiTune}
-                      variant="outline"
+                      variant="filled"
                       size="sm"
                       onClick={() => state.openDialogSet("outputs")}
                     >
@@ -444,6 +445,13 @@ export function UiAssetDetailPage() {
                     History of uploaded master source files and backup receipts.
                   </p>
                 </div>
+              </div>
+
+              <div class="mt-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">
+                  Upload a replacement
+                </h3>
+                <UiAssetDetailReplacementUpload upload={state.replacementUpload} />
               </div>
 
               <ul class="mt-4 flex flex-col gap-3">
