@@ -7,8 +7,9 @@ import * as v from "valibot"
 import { apiFailureEnvelopeCreate } from "../api/apiFailureEnvelopeCreate.js"
 import { apiSuccessEnvelopeCreate } from "../api/apiSuccessEnvelopeCreate.js"
 import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
-import { assetsApiResultOptionalRead } from "../api-client/assetsApiResultOptionalRead.js"
 import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
+import { assetsApiResultOptionalRead } from "../api-client/assetsApiResultOptionalRead.js"
+import type { OutputDefinitionInput } from "../api-client/outputDefinitionInputSchema.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { assetIdentifierCreate } from "../asset/assetIdentifierCreate.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
@@ -31,10 +32,10 @@ import {
   type EnvironmentConfiguration,
   environmentConfigurationResolve,
 } from "../config/environmentConfigurationResolve.js"
+import { environmentValueRead } from "../config/environmentValueRead.js"
 import { globalOrganizationConfigurationCompatibilityPathResolve } from "../config/globalOrganizationConfigurationCompatibilityPathResolve.js"
 import { globalOrganizationConfigurationPathResolve } from "../config/globalOrganizationConfigurationPathResolve.js"
 import { globalOrganizationConfigurationRead } from "../config/globalOrganizationConfigurationRead.js"
-import { environmentValueRead } from "../config/environmentValueRead.js"
 import {
   type OrganizationConfiguration,
   organizationConfigurationResolve,
@@ -42,6 +43,7 @@ import {
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
+import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectSettings } from "../project/projectSettingsSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
@@ -190,6 +192,7 @@ const commandHelp = {
     "metadata set|unset <asset-key>",
     "settings read [--project <id-or-name>] [--environment <development|production>]",
     "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
+    "catalogs rebuild --project <id-or-name> --environment production",
     "move <asset-key> --to <path>",
     "delete <asset-key>",
     "lists [--check] [--dir <directory>]",
@@ -400,7 +403,7 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "config", "outputs", "metadata", "settings"].includes(command)
+  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings"].includes(command)
     ? positionals.shift()
     : undefined
   return {
@@ -1005,6 +1008,9 @@ type UploadAllOutputEntry = {
   altUpdated?: boolean
   altUpdatePlanned?: boolean
   altUpdateFailed?: boolean
+  defaultReconciled?: boolean
+  defaultReconciliationPlanned?: boolean
+  defaultReconciliationFailed?: boolean
   error?: string
 }
 
@@ -1017,6 +1023,8 @@ type UploadAllOutput = {
   entries: readonly UploadAllOutputEntry[]
   altUpdated: number
   altUpdatesPending: number
+  defaultReconciled: number
+  defaultReconciliationsPending: number
 }
 
 const uploadAllOutputEntryCreate = (
@@ -1046,6 +1054,8 @@ const uploadAllHumanOutputRead = (output: UploadAllOutput): string => {
     counts.set(entry.action, (counts.get(entry.action) ?? 0) + 1)
     const details = [
       entry.action,
+      entry.defaultReconciled === true ? "default-reconciled" : "",
+      entry.defaultReconciliationPlanned === true ? "default-reconciliation-planned" : "",
       entry.deleted === true ? "deleted" : "",
       entry.error === undefined ? "" : entry.error,
     ]
@@ -1056,9 +1066,81 @@ const uploadAllHumanOutputRead = (output: UploadAllOutput): string => {
   lines.push(
     `Summary: ${(["uploaded", "skipped", "planned", "failed"] as const)
       .map((action) => `${action}=${counts.get(action) ?? 0}`)
-      .join(" ")} alt-updated=${output.altUpdated} alt-updates-pending=${output.altUpdatesPending}`,
+      .join(
+        " ",
+      )} alt-updated=${output.altUpdated} alt-updates-pending=${output.altUpdatesPending} default-reconciled=${output.defaultReconciled} default-reconciliations-pending=${output.defaultReconciliationsPending}`,
   )
   return `${lines.join("\n")}\n`
+}
+
+const outputDefinitionInputCreate = (definition: OutputDefinition): OutputDefinitionInput => {
+  if (definition.kind === "image") {
+    return {
+      kind: "image",
+      key: definition.key,
+      width: definition.width,
+      height: definition.height,
+      format: definition.format,
+      ...(definition.quality === undefined ? {} : { quality: definition.quality }),
+      ...(definition.showAiLabel === undefined ? {} : { showAiLabel: definition.showAiLabel }),
+    }
+  }
+  if (definition.kind === "video") return { kind: "video", key: definition.key }
+  if (definition.kind === "document") return { kind: "document", key: "default" }
+  return { kind: "font", key: definition.key, format: definition.format }
+}
+
+const managedImageDefaultRead = (entry: AssetDiffEntry): OutputDefinition | undefined => {
+  if (entry.status !== "matching" || entry.remote?.class !== "image") return undefined
+  const defaultId = `output-${entry.remote.assetId}-default`
+  return entry.remote.outputHistory.find((history) => history.definition.id === defaultId)?.definition
+}
+
+const managedImageDefaultReconciliationRequired = (entry: AssetDiffEntry): boolean => {
+  const definition = managedImageDefaultRead(entry)
+  return (
+    definition?.kind === "image" &&
+    (definition.key !== "default" ||
+      definition.width !== 1920 ||
+      definition.height !== 1080 ||
+      definition.format !== "avif" ||
+      definition.quality !== 80 ||
+      definition.showAiLabel !== undefined)
+  )
+}
+
+const managedImageDefaultReconciliationInputsCreate = (
+  entry: AssetDiffEntry,
+): Result<readonly OutputDefinitionInput[]> => {
+  const remote = entry.remote
+  if (remote === undefined) return resultFailure("assetsCliUploadAll", "The matching asset had no remote asset")
+  const defaultId = `output-${remote.assetId}-default`
+  const outputs = remote.outputHistory.map(({ definition }) =>
+    definition.id === defaultId
+      ? {
+          kind: "image" as const,
+          key: "default",
+          width: 1920,
+          height: 1080,
+          format: "avif" as const,
+          quality: 80,
+        }
+      : outputDefinitionInputCreate(definition),
+  )
+  return { success: true, data: outputs }
+}
+
+const managedImageDefaultReconcile = async (
+  client: AssetsApiClient,
+  projectId: string,
+  entry: AssetDiffEntry,
+): Promise<Result<undefined>> => {
+  const inputs = managedImageDefaultReconciliationInputsCreate(entry)
+  if (!inputs.success) return inputs
+  if (entry.remote === undefined) return resultFailure("assetsCliUploadAll", "The matching asset had no remote asset")
+  const reconciled = await client.assetOutputsSet(projectId, entry.remote.assetId, { outputs: inputs.data })
+  if (!reconciled.success) return reconciled
+  return { success: true, data: undefined }
 }
 
 const altNormalize = (alt: string | null | undefined): string | null => {
@@ -1201,6 +1283,8 @@ const uploadAllCommandRun = async (
       entries,
       altUpdated: 0,
       altUpdatesPending: 0,
+      defaultReconciled: 0,
+      defaultReconciliationsPending: 0,
     }
     return {
       result: { success: true, data: output },
@@ -1219,7 +1303,9 @@ const uploadAllCommandRun = async (
   )
   const entries: UploadAllOutputEntry[] = []
   const altUpdatesPending = actionableEntries.filter(altUpdateRequired).length
+  const defaultReconciliationsPending = actionableEntries.filter(managedImageDefaultReconciliationRequired).length
   let altUpdated = 0
+  let defaultReconciled = 0
   let failed = false
   for (const entry of actionableEntries) {
     const localEntry = entry.local
@@ -1231,11 +1317,17 @@ const uploadAllCommandRun = async (
       continue
     }
     if (dryRun) {
+      const defaultReconciliationRequired = managedImageDefaultReconciliationRequired(entry)
       entries.push(
         uploadAllOutputEntryCreate(
           entry,
-          entry.status === "matching" && !altUpdateRequired(entry) ? "skipped" : "planned",
-          altUpdateRequired(entry) ? altUpdateOutputDetailsCreate(entry, "planned") : {},
+          entry.status === "matching" && !altUpdateRequired(entry) && !defaultReconciliationRequired
+            ? "skipped"
+            : "planned",
+          {
+            ...(altUpdateRequired(entry) ? altUpdateOutputDetailsCreate(entry, "planned") : {}),
+            ...(defaultReconciliationRequired ? { defaultReconciliationPlanned: true } : {}),
+          },
         ),
       )
       continue
@@ -1276,6 +1368,23 @@ const uploadAllCommandRun = async (
     }
 
     if (entry.status === "matching") {
+      const defaultReconciliationRequired = managedImageDefaultReconciliationRequired(entry)
+      if (defaultReconciliationRequired) {
+        const reconciled = await managedImageDefaultReconcile(client, projectId, entry)
+        if (!reconciled.success) {
+          failed = true
+          entries.push(
+            uploadAllOutputEntryCreate(entry, "failed", {
+              ...altDetails,
+              defaultReconciliationFailed: true,
+              error: reconciled.errorMessage,
+            }),
+          )
+          continue
+        }
+        defaultReconciled += 1
+        altDetails = { ...altDetails, defaultReconciled: true }
+      }
       if (!deleteLocal) {
         entries.push(uploadAllOutputEntryCreate(entry, "skipped", altDetails))
         continue
@@ -1540,6 +1649,8 @@ const uploadAllCommandRun = async (
     entries,
     altUpdated,
     altUpdatesPending,
+    defaultReconciled,
+    defaultReconciliationsPending,
   }
   return {
     result: { success: true, data: output },
@@ -1745,9 +1856,19 @@ const commandRun = async (
   }
 
   if (
-    !["diff", "upload-all", "upload", "list", "lists", "show", "outputs", "metadata", "move", "delete"].includes(
-      parsed.command,
-    )
+    ![
+      "catalogs",
+      "diff",
+      "upload-all",
+      "upload",
+      "list",
+      "lists",
+      "show",
+      "outputs",
+      "metadata",
+      "move",
+      "delete",
+    ].includes(parsed.command)
   )
     return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
 
@@ -1761,6 +1882,19 @@ const commandRun = async (
   const selected = await projectAndEnvironmentRead(client, parsed, config, projectRoot, "configured", organizationId)
   if (!selected.success) return { result: selected }
   const projectId = selected.data.projectId
+
+  if (parsed.command === "catalogs") {
+    if (parsed.subcommand !== "rebuild") return { result: resultFailure("assetsCliCatalogs", "Use catalogs rebuild") }
+    if (parsed.positionals.length !== 0)
+      return {
+        result: resultFailure("assetsCliCatalogsRebuild", "The catalogs rebuild command takes no positional arguments"),
+      }
+    const allowed = optionAllowed(parsed, [])
+    if (!allowed.success) return { result: allowed }
+    if (selected.data.environment !== "production")
+      return { result: resultFailure("assetsCliCatalogsRebuild", "Catalog rebuilds require --environment production") }
+    return { result: await client.catalogProductionRebuild(projectId, selected.data.environment) }
+  }
 
   if (parsed.command === "upload-all") return uploadAllCommandRun(parsed, client, projectId, selected.data.environment)
 

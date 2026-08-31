@@ -47,6 +47,42 @@ test("assets API client validates upload intent before fetching", async () => {
   expect(fetchCount).toBe(0)
 })
 
+test("assets API client rebuilds only the production catalog", async () => {
+  const requests: Request[] = []
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken: "admin-token",
+    fetcher: async (input, init) => {
+      requests.push(new Request(String(input), init))
+      return envelopeResponseCreate({
+        id: "catalog-project-1-production",
+        generationId: "generation-1",
+        current: true,
+        catalog: {
+          schema: "assets.catalog.v1",
+          projectId: "project-1",
+          environment: "production",
+          digest: "a".repeat(64),
+          rendererVersion: "assets-service.catalog.v1",
+          generatedAt: "2026-08-31T00:00:00.000Z",
+          outputs: [],
+        },
+      })
+    },
+  })
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const invalid = await clientResult.data.catalogProductionRebuild("project-1", "development")
+  const rebuilt = await clientResult.data.catalogProductionRebuild("project-1", "production")
+  expect(invalid.success).toBe(false)
+  expect(rebuilt.success).toBe(true)
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.method).toBe("POST")
+  expect(requests[0]?.url).toBe("https://assets.example.test/api/v1/projects/project-1/catalogs/production/rebuild")
+  expect(requests[0]?.headers.get("authorization")).toBe("Bearer admin-token")
+})
+
 test("assets API client sends an explicit upload target", async () => {
   let request: Request | undefined
   const clientResult = assetsApiClientCreate({

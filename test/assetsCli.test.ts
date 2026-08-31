@@ -1385,6 +1385,43 @@ test("lists --check returns a nonzero exit when generated files differ", async (
   })
 })
 
+test("catalogs rebuild calls the synchronous production admin endpoint", async () => {
+  const requests: Request[] = []
+  const stdout: string[] = []
+  const exitCode = await assetsCliMain(
+    ["catalogs", "rebuild", "--project", "project-1", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      stdout: (text) => stdout.push(text),
+      stderr: () => undefined,
+      fetcher: async (input, init) => {
+        const request = new Request(String(input), init)
+        requests.push(request)
+        return envelopeResponseCreate({
+          id: "catalog-project-1-production",
+          generationId: "generation-1",
+          current: true,
+          catalog: {
+            schema: "assets.catalog.v1",
+            projectId: "project-1",
+            environment: "production",
+            digest: "a".repeat(64),
+            rendererVersion: "assets-service.catalog.v1",
+            generatedAt: "2026-08-31T00:00:00.000Z",
+            outputs: [],
+          },
+        })
+      },
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.method).toBe("POST")
+  expect(requests[0]?.url).toBe("https://assets.example.test/api/v1/projects/project-1/catalogs/production/rebuild")
+  expect(stdout.join("")).toContain('"generationId":"generation-1"')
+})
+
 test("remote upload sends an intent, the exact bytes, and completion without local fallback", async () => {
   const directory = await mkdtemp(join(tmpdir(), "assets-cli-upload-"))
   try {
@@ -1539,6 +1576,8 @@ test("upload-all uploads only new and changed files in stable order and skips ma
         environment: "development",
         altUpdated: 0,
         altUpdatesPending: 0,
+        defaultReconciled: 0,
+        defaultReconciliationsPending: 0,
         root,
         wait: false,
         entries: [
@@ -1570,6 +1609,289 @@ test("upload-all uploads only new and changed files in stable order and skips ma
             status: "new",
             uploadId: "upload-2",
             workflowId: "workflow-new",
+          },
+        ],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all repairs a stale canonical image default without uploading bytes and preserves other definitions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-default-repair-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("matching")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    const remote = {
+      ...assetCreate({
+        id: "asset-default-repair",
+        filename: "hero.jpg",
+        sha256: contentSha256Create(bytes),
+        byteSize: bytes.byteLength,
+      }),
+      outputHistory: [
+        {
+          definition: {
+            id: "output-asset-default-repair-default",
+            assetId: "asset-default-repair",
+            kind: "image" as const,
+            key: "default",
+            width: 1280,
+            height: 720,
+            format: "webp" as const,
+            quality: 60,
+            showAiLabel: true,
+          },
+          versions: [],
+        },
+        {
+          definition: {
+            id: "output-asset-default-repair-mobile",
+            assetId: "asset-default-repair",
+            kind: "image" as const,
+            key: "mobile",
+            width: 640,
+            height: 360,
+            format: "png" as const,
+            quality: 70,
+            showAiLabel: false,
+          },
+          versions: [],
+        },
+      ],
+    }
+    const requests: Request[] = []
+    const outputBodies: unknown[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.endsWith("/outputs")) {
+        const body = await request.json()
+        outputBodies.push(body)
+        return envelopeResponseCreate({
+          outputs: (body as { outputs: Record<string, unknown>[] }).outputs.map((output) => ({
+            ...output,
+            assetId: "asset-default-repair",
+            id: remote.outputHistory.find((history) => history.definition.key === output.key)?.definition.id,
+          })),
+          workflowId: "workflow-repair",
+        })
+      }
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "PUT"])
+    expect(
+      requests.some((request) => request.url.includes("/uploads/") || request.url.includes("upload.example.test")),
+    ).toBe(false)
+    expect(outputBodies).toEqual([
+      {
+        outputs: [
+          {
+            kind: "image",
+            key: "default",
+            width: 1920,
+            height: 1080,
+            format: "avif",
+            quality: 80,
+          },
+          {
+            kind: "image",
+            key: "mobile",
+            width: 640,
+            height: 360,
+            format: "png",
+            quality: 70,
+            showAiLabel: false,
+          },
+        ],
+      },
+    ])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        defaultReconciled: 1,
+        defaultReconciliationsPending: 1,
+        entries: [
+          {
+            action: "skipped",
+            defaultReconciled: true,
+            status: "matching",
+          },
+        ],
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all skips current and noncanonical image defaults", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-default-skip-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const currentBytes = new TextEncoder().encode("current")
+    const noncanonicalBytes = new TextEncoder().encode("noncanonical")
+    await writeFile(join(root, "images", "current.jpg"), currentBytes)
+    await writeFile(join(root, "images", "noncanonical.jpg"), noncanonicalBytes)
+    const current = {
+      ...assetCreate({
+        id: "asset-current-default",
+        filename: "current.jpg",
+        sha256: contentSha256Create(currentBytes),
+        byteSize: currentBytes.byteLength,
+      }),
+      outputHistory: [
+        {
+          definition: {
+            id: "output-asset-current-default-default",
+            assetId: "asset-current-default",
+            kind: "image" as const,
+            key: "default",
+            width: 1920,
+            height: 1080,
+            format: "avif" as const,
+            quality: 80,
+          },
+          versions: [],
+        },
+      ],
+    }
+    const noncanonical = {
+      ...assetCreate({
+        id: "asset-noncanonical-default",
+        filename: "noncanonical.jpg",
+        sha256: contentSha256Create(noncanonicalBytes),
+        byteSize: noncanonicalBytes.byteLength,
+      }),
+      outputHistory: [
+        {
+          definition: {
+            id: "output-asset-noncanonical-default-default-legacy",
+            assetId: "asset-noncanonical-default",
+            kind: "image" as const,
+            key: "default",
+            width: 1280,
+            height: 720,
+            format: "webp" as const,
+            quality: 60,
+          },
+          versions: [],
+        },
+      ],
+    }
+    const requests: Request[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [current, noncanonical], page: { limit: 100, nextCursor: null } })
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        defaultReconciled: 0,
+        defaultReconciliationsPending: 0,
+        entries: [
+          { action: "skipped", status: "matching" },
+          { action: "skipped", status: "matching" },
+        ],
+      },
+    })
+    expect(
+      JSON.parse(output[0] ?? "").data.entries.every(
+        (entry: { defaultReconciled?: boolean }) => entry.defaultReconciled !== true,
+      ),
+    ).toBe(true)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all dry-run reports stale canonical default reconciliation without mutating", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-default-dry-run-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("dry run")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    const remote = {
+      ...assetCreate({
+        id: "asset-default-dry-run",
+        filename: "hero.jpg",
+        sha256: contentSha256Create(bytes),
+        byteSize: bytes.byteLength,
+      }),
+      outputHistory: [
+        {
+          definition: {
+            id: "output-asset-default-dry-run-default",
+            assetId: "asset-default-dry-run",
+            kind: "image" as const,
+            key: "default",
+            width: 100,
+            height: 100,
+            format: "png" as const,
+            quality: 50,
+          },
+          versions: [],
+        },
+      ],
+    }
+    const requests: Request[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["upload-all", root, "--integration-note", "bulk", "--dry-run", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        defaultReconciled: 0,
+        defaultReconciliationsPending: 1,
+        dryRun: true,
+        entries: [
+          {
+            action: "planned",
+            defaultReconciliationPlanned: true,
+            status: "matching",
           },
         ],
       },
@@ -2753,7 +3075,7 @@ test("upload-all human output keeps deterministic entry ordering", async () => {
     expect(output[0]).toBe(
       `Root: ${root}\nEnvironment: development\nWait: no\nDelete: no\nDry run: yes\n` +
         "new image images/a.jpg planned\nnew image images/z.jpg planned\n" +
-        "Summary: uploaded=0 skipped=0 planned=2 failed=0 alt-updated=0 alt-updates-pending=0\n",
+        "Summary: uploaded=0 skipped=0 planned=2 failed=0 alt-updated=0 alt-updates-pending=0 default-reconciled=0 default-reconciliations-pending=0\n",
     )
   } finally {
     await rm(root, { recursive: true, force: true })

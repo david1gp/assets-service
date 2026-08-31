@@ -166,15 +166,16 @@ bun run assets upload-all . --integration-note "bulk upload" --wait
 ```
 
 `diff` is read-only and reports `new`, `changed`, `matching`, `remote-only`, `unsupported`, and `conflict` entries.
-`upload-all` uploads only `new` and `changed` entries; matching entries are skipped for upload. `--integration-note` is required
-and must contain 1 to 10,000 characters. `--delete` implies `--wait` and removes a local file only after the service
+`upload-all` uploads source bytes only for `new` and `changed` entries; matching entries are skipped for upload and may
+reconcile a stale canonical service-managed image default. `--integration-note` is required and must contain 1 to 10,000
+characters. `--delete` implies `--wait` and removes a local file only after the service
 proves that the exact source revision is backed up, processed successfully, published, and in the current catalog.
 The bulk commands recheck the file immediately before unlinking it, never delete directories, and never delete remote
 assets.
 
 `--json` writes one newline-terminated deterministic envelope to stdout. `diff` exits 0 only when every entry is
-`matching`; `upload-all` exits nonzero when an entry fails. `--dry-run` performs comparison only and does not upload or
-delete. `--wait` and `--no-wait` cannot be combined. `--delete --no-wait` is rejected.
+`matching`; `upload-all` exits nonzero when an entry fails. `--dry-run` reports planned reconciliation and performs no
+mutation, upload, or delete. `--wait` and `--no-wait` cannot be combined. `--delete --no-wait` is rejected.
 
 Use `ASSETS_API_URL`, `ASSETS_TOKEN`, `ASSETS_PROJECT`, and `ASSETS_ENVIRONMENT` for non-interactive calls. `--json`
 writes one newline-terminated deterministic envelope to stdout. Failed commands return a nonzero exit code.
