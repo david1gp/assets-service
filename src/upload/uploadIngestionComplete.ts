@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as v from "valibot"
+import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
 import { assetBasenameCreate } from "../asset/assetBasenameCreate.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersDatabaseColumnsCreate } from "../asset/foldersDatabaseColumnsCreate.js"
@@ -151,6 +152,14 @@ export const uploadIngestionComplete = async (
   if (assetClass === "document" && documentMediaTypeRead(filename.output) !== verification.data.mediaType)
     return resultErrorCreate(op, "Document media type does not match its filename extension")
 
+  if (upload.assetId !== null) {
+    const targetAsset = db.select().from(assetTable).where(eq(assetTable.id, upload.assetId)).get()
+    if (targetAsset === undefined || targetAsset.projectId !== upload.projectId)
+      return resultErrorCreate(op, "The upload target asset was not found")
+    if (targetAsset.class !== assetClass)
+      return resultErrorCreate(op, "The upload media type does not match the target asset class")
+  }
+
   const sourceRevisionId = `source-${upload.id}`
   const sourceObjectKey = `sources/${sourceRevisionId}/${filename.output}`
   const sourceLocation = storageObjectLocationCreate(binding.data, "private-source", sourceObjectKey)
@@ -182,6 +191,8 @@ export const uploadIngestionComplete = async (
           },
         }
       }
+      if (currentUpload.assetId !== upload.assetId)
+        return resultErrorCreate(op, "The upload target asset changed during ingestion")
 
       const existingAsset = currentUpload.assetId
         ? transaction.select().from(assetTable).where(eq(assetTable.id, currentUpload.assetId)).get()
@@ -202,6 +213,10 @@ export const uploadIngestionComplete = async (
                 candidate.folder2 === columns.data.folder2 &&
                 candidate.folder3 === columns.data.folder3,
             )
+      if (currentUpload.assetId !== null && existingAsset === undefined)
+        return resultErrorCreate(op, "The upload target asset was not found")
+      if (existingAsset !== undefined && existingAsset.projectId !== currentUpload.projectId)
+        return resultErrorCreate(op, "The upload target asset was not found")
       if (existingAsset !== undefined && existingAsset.class !== assetClass)
         return resultErrorCreate(op, "Upload asset class does not match the existing asset")
 
@@ -554,15 +569,6 @@ function outputDefinitionsEnsure(
 
 function dependencyCreate(id: string, jobId: string, dependsOnJobId: string, createdAt: string) {
   return { id, jobId, dependsOnJobId, createdAt }
-}
-
-function assetClassFromMediaType(mediaType: string): "image" | "video" | "font" | "document" | undefined {
-  if (mediaType.startsWith("image/")) return "image"
-  if (mediaType.startsWith("video/")) return "video"
-  if (mediaType.startsWith("font/")) return "font"
-  if (Object.values(documentExtensionMediaTypes).includes(mediaType as (typeof documentExtensionMediaTypes)[string]))
-    return "document"
-  return undefined
 }
 
 function documentMediaTypeRead(filename: string): string | undefined {

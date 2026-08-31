@@ -5,10 +5,12 @@ import type { UploadCompletionRequest } from "../api-client/uploadCompletionRequ
 import { uploadCompletionRequestSchema } from "../api-client/uploadCompletionRequestSchema.js"
 import type { UploadIntentRequest } from "../api-client/uploadIntentRequestSchema.js"
 import { uploadIntentRequestSchema } from "../api-client/uploadIntentRequestSchema.js"
+import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
+import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -121,6 +123,13 @@ export const uploadApiRepositoryCreate = (
       return resultErrorCreate(op, "The upload environment was not bound to the project")
     const binding = storageBindingResolve(environment, projectId)
     if (!binding.success) return binding
+    if (parsed.output.assetId !== undefined) {
+      const targetAsset = db.select().from(assetTable).where(eq(assetTable.id, parsed.output.assetId)).get()
+      if (targetAsset === undefined || targetAsset.projectId !== projectId)
+        return resultErrorCreate(op, "The upload target asset was not found")
+      if (targetAsset.class !== assetClassFromMediaType(parsed.output.mediaType))
+        return resultErrorCreate(op, "The upload media type does not match the target asset class")
+    }
     const uploadId = parsed.output.uploadId ?? `upload-${crypto.randomUUID()}`
     const folders = parsed.output.folders
     const existing = db.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
@@ -137,7 +146,7 @@ export const uploadApiRepositoryCreate = (
         id: uploadId,
         projectId,
         environmentId: environment.id,
-        assetId: null,
+        assetId: parsed.output.assetId ?? null,
         sourceRevisionId: null,
         uploaderId: uploaderId ?? null,
         notificationEligible: uploaderId !== undefined,
@@ -272,6 +281,7 @@ function uploadRequestMatches(
   return (
     upload.projectId === projectId &&
     upload.environmentId === environmentId &&
+    upload.assetId === (input.assetId ?? null) &&
     upload.originalFilename === input.originalFilename &&
     upload.folder1 === (input.folders[0] ?? null) &&
     upload.folder2 === (input.folders[1] ?? null) &&

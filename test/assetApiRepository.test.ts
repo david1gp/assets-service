@@ -21,6 +21,7 @@ import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDef
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
+import { uploadTable } from "../src/infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
@@ -395,6 +396,125 @@ describe("asset API persistence", () => {
         },
       ])
       expect(connection.db.select().from(assetTable).all()).toHaveLength(2)
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("persists an explicit upload target and creates a revision without moving the asset", async () => {
+    const connection = databaseCreate()
+    try {
+      const storage = memoryStorageAdapterCreate({ now: () => new Date(now) })
+      const repository = uploadApiRepositoryCreate(connection.db, storage, { now: () => new Date(now) })
+      const environment = connection.db.select().from(environmentTable).get()
+      if (environment === undefined) return
+      const environmentInput = {
+        id: environment.id,
+        projectId: environment.projectId,
+        name: environment.name,
+        r2Bucket: environment.r2Bucket,
+        r2Prefix: environment.r2Prefix,
+        publicBaseUrl: environment.publicBaseUrl,
+        createdAt: environment.createdAt,
+        updatedAt: environment.updatedAt,
+      }
+      const intent = await repository.uploadIntentCreate("project-1", environmentInput, {
+        uploadId: "upload-replacement",
+        assetId: "asset-1",
+        originalFilename: "replacement.png",
+        folders: ["replacement"],
+        integrationNote: "Replacement",
+        byteSize: bytes.byteLength,
+        mediaType: "image/png",
+      })
+      expect(intent.success).toBe(true)
+      expect(connection.db.select().from(uploadTable).get()).toMatchObject({
+        id: "upload-replacement",
+        assetId: "asset-1",
+      })
+      if (!intent.success) return
+
+      const binding = storageBindingResolve(environmentInput)
+      if (!binding.success) return
+      const staging = storageObjectLocationCreate(binding.data, "private-staging", "uploads/upload-replacement")
+      if (!staging.success) return
+      expect((await storage.putImmutable({ location: staging.data, bytes, mediaType: "image/png" })).success).toBe(true)
+
+      const checksum = contentSha256Create(bytes)
+      const completed = await repository.uploadCompletionComplete("project-1", "upload-replacement", {
+        sha256: checksum,
+      })
+      expect(completed).toMatchObject({
+        success: true,
+        data: {
+          assetId: "asset-1",
+          sourceRevisionId: "source-upload-replacement",
+          status: "accepted",
+        },
+      })
+      expect(connection.db.select().from(assetTable).all()).toHaveLength(1)
+      expect(connection.db.select().from(assetTable).get()).toMatchObject({
+        id: "asset-1",
+        folder1: "home",
+        folder2: null,
+        folder3: null,
+        filename: "hero.jpg",
+        currentSourceRevisionId: "source-upload-replacement",
+      })
+      expect(connection.db.select().from(sourceRevisionTable).all()).toMatchObject([
+        { id: "source-1", assetId: "asset-1", revision: 1 },
+        {
+          id: "source-upload-replacement",
+          assetId: "asset-1",
+          revision: 2,
+          originalFilename: "replacement.png",
+          mediaType: "image/png",
+          sha256: checksum,
+        },
+      ])
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("rejects nonexistent, cross-project, and class-incompatible upload targets", async () => {
+    const connection = databaseCreate()
+    try {
+      const repository = uploadApiRepositoryCreate(connection.db, memoryStorageAdapterCreate(), {
+        now: () => new Date(now),
+      })
+      const environment = connection.db.select().from(environmentTable).get()
+      if (environment === undefined) return
+      const input = {
+        originalFilename: "replacement.png",
+        folders: ["home"],
+        integrationNote: "Replacement",
+        byteSize: bytes.byteLength,
+        mediaType: "image/png",
+      }
+      const missing = await repository.uploadIntentCreate("project-1", environment, {
+        ...input,
+        assetId: "asset-missing",
+      })
+      const crossProject = await repository.uploadIntentCreate(
+        "project-2",
+        { ...environment, projectId: "project-2" },
+        { ...input, assetId: "asset-1" },
+      )
+      const incompatible = await repository.uploadIntentCreate("project-1", environment, {
+        ...input,
+        assetId: "asset-1",
+        originalFilename: "replacement.pdf",
+        mediaType: "application/pdf",
+      })
+
+      expect(missing).toMatchObject({ success: false, errorMessage: "The upload target asset was not found" })
+      expect(crossProject).toMatchObject({ success: false, errorMessage: "The upload target asset was not found" })
+      expect(incompatible).toMatchObject({
+        success: false,
+        errorMessage: "The upload media type does not match the target asset class",
+      })
+      expect(connection.db.select().from(uploadTable).all()).toHaveLength(0)
     } finally {
       databaseClose(connection)
     }

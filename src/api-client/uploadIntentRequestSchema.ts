@@ -12,6 +12,7 @@ import { sha256Schema } from "../schemas/sha256Schema.js"
 export const uploadIntentRequestSchema = v.pipe(
   v.strictObject({
     uploadId: v.optional(idSchema),
+    assetId: v.optional(idSchema),
     environment: v.optional(environmentNameSchema),
     originalFilename: assetFilenameSchema,
     folders: foldersSchema,

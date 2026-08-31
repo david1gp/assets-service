@@ -9,6 +9,7 @@ import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
+import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
@@ -370,6 +371,151 @@ describe("asset ingestion workflow", () => {
     } finally {
       databaseClose(opened.data)
       if (temporaryRoot.length > 0) await rm(temporaryRoot, { force: true, recursive: true })
+    }
+  })
+
+  test("ingests an explicit replacement as a new revision without changing asset folders", async () => {
+    const opened = databaseOpen(":memory:")
+    expect(opened.success).toBe(true)
+    if (!opened.success) return
+
+    try {
+      expect(databaseMigrate(opened.data).success).toBe(true)
+      expect(
+        databaseRecordInsert(opened.data.db, organizationTable, {
+          id: "org-explicit-replacement",
+          name: "Explicit replacement",
+          slug: "explicit-replacement",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(opened.data.db, projectTable, {
+          id: "project-explicit-replacement",
+          organizationId: "org-explicit-replacement",
+          name: "Explicit replacement",
+          slug: "explicit-replacement",
+          defaultEnvironment: "development",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(opened.data.db, environmentTable, {
+          id: "environment-explicit-replacement",
+          projectId: "project-explicit-replacement",
+          name: "development",
+          r2Bucket: "assets-development",
+          r2Prefix: "projects/project-explicit-replacement",
+          publicBaseUrl: "https://assets.example.test",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseTransactionRun(opened.data.db, (transaction) => {
+          const asset = databaseRecordInsert(transaction, assetTable, {
+            id: "asset-explicit-replacement",
+            projectId: "project-explicit-replacement",
+            class: "image",
+            folder1: "existing",
+            folder2: "nested",
+            folder3: null,
+            filename: "hero.jpg",
+            basename: "hero",
+            currentSourceRevisionId: "source-explicit-replacement-1",
+            integrationNote: "Hero",
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!asset.success) return asset
+          const source = databaseRecordInsert(transaction, sourceRevisionTable, {
+            id: "source-explicit-replacement-1",
+            assetId: "asset-explicit-replacement",
+            revision: 1,
+            class: "image",
+            originalFilename: "hero.jpg",
+            mediaType: "image/jpeg",
+            byteSize: 10,
+            sha256: "a".repeat(64),
+            objectKey: "sources/source-explicit-replacement-1/hero.jpg",
+            createdAt: now,
+          })
+          if (!source.success) return source
+          return databaseRecordInsert(transaction, uploadTable, {
+            id: "upload-explicit-replacement",
+            projectId: "project-explicit-replacement",
+            environmentId: "environment-explicit-replacement",
+            assetId: "asset-explicit-replacement",
+            sourceRevisionId: null,
+            originalFilename: "replacement.png",
+            folder1: "different",
+            folder2: null,
+            folder3: null,
+            integrationNote: "Replacement",
+            stagingObjectKey:
+              "projects/project-explicit-replacement/private/staging/uploads/upload-explicit-replacement",
+            byteSize: bytes.byteLength,
+            mediaType: "image/png",
+            sha256: contentSha256Create(bytes),
+            status: "pending",
+            failureReason: null,
+            verifiedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }).success,
+      ).toBe(true)
+
+      const storage = memoryStorageAdapterCreate()
+      const environment = opened.data.db.select().from(environmentTable).get()
+      if (environment === undefined) return
+      const binding = storageBindingResolve(environment)
+      expect(binding.success).toBe(true)
+      if (!binding.success) return
+      const staging = storageObjectLocationCreate(
+        binding.data,
+        "private-staging",
+        "uploads/upload-explicit-replacement",
+      )
+      expect(staging.success).toBe(true)
+      if (!staging.success) return
+      expect((await storage.putImmutable({ location: staging.data, bytes, mediaType: "image/png" })).success).toBe(true)
+
+      const ingestion = await uploadIngestionComplete(opened.data.db, storage, {
+        uploadId: "upload-explicit-replacement",
+        now,
+      })
+
+      expect(ingestion).toMatchObject({
+        success: true,
+        data: {
+          assetId: "asset-explicit-replacement",
+          sourceRevisionId: "source-upload-explicit-replacement",
+        },
+      })
+      expect(opened.data.db.select().from(assetTable).all()).toMatchObject([
+        {
+          id: "asset-explicit-replacement",
+          folder1: "existing",
+          folder2: "nested",
+          folder3: null,
+          filename: "hero.jpg",
+          currentSourceRevisionId: "source-upload-explicit-replacement",
+        },
+      ])
+      expect(opened.data.db.select().from(sourceRevisionTable).all()).toMatchObject([
+        { id: "source-explicit-replacement-1", assetId: "asset-explicit-replacement", revision: 1 },
+        {
+          id: "source-upload-explicit-replacement",
+          assetId: "asset-explicit-replacement",
+          revision: 2,
+          originalFilename: "replacement.png",
+        },
+      ])
+    } finally {
+      databaseClose(opened.data)
     }
   })
 })

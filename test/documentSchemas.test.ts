@@ -61,6 +61,7 @@ test("document schemas accept only the supported passthrough contract", () => {
   for (const [index, documentCase] of documentCases.entries()) {
     const uploadIntent = {
       originalFilename: `guide.${documentCase.extension}`,
+      assetId: "asset-document",
       folders: [],
       integrationNote: "document",
       byteSize: 8,

@@ -47,6 +47,44 @@ test("assets API client validates upload intent before fetching", async () => {
   expect(fetchCount).toBe(0)
 })
 
+test("assets API client sends an explicit upload target", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({
+        uploadId: "upload-1",
+        status: "pending",
+        intent: {
+          method: "PUT",
+          url: "https://upload.example.test/upload-1",
+          key: "staging/upload-1",
+          expiresAt: "2026-08-17T00:10:00.000Z",
+          headers: { "content-length": "3", "content-type": "image/png" },
+          mediaType: "image/png",
+          byteSize: 3,
+        },
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const intent = await clientResult.data.uploadIntentCreate("project-1", {
+    assetId: "asset-1",
+    originalFilename: "replacement.png",
+    folders: ["ignored"],
+    integrationNote: "Replacement",
+    byteSize: 3,
+    mediaType: "image/png",
+  })
+
+  expect(intent.success).toBe(true)
+  expect(request).toBeDefined()
+  expect(await request?.json()).toMatchObject({ assetId: "asset-1" })
+})
+
 test("assets API client reads all matching assets across pages and preserves filters", async () => {
   const assetCreate = (id: string) => ({
     id,

@@ -15,6 +15,7 @@ import type { UploadApiRepository } from "../src/upload/uploadApiRepository.js"
 
 const now = 1_700_000_000
 let lastUploaderId: string | undefined
+let lastUploadAssetId: string | undefined
 const project = {
   id: "project-1",
   organizationId: "org-1",
@@ -159,8 +160,9 @@ const assetRepositoryCreate = (): AssetApiRepository => ({
 })
 
 const uploadRepositoryCreate = (): UploadApiRepository => ({
-  uploadIntentCreate: async (_projectId, _environment, _input, uploaderId) => {
+  uploadIntentCreate: async (_projectId, _environment, input, uploaderId) => {
     lastUploaderId = uploaderId
+    lastUploadAssetId = input.assetId
     return {
       success: true,
       data: {
@@ -199,6 +201,7 @@ const deletionRepositoryCreate = (): DeletionApiRepository => ({
 
 const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   lastUploaderId = undefined
+  lastUploadAssetId = undefined
   const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => sessionId })
   const stateStore = memoryPkceStateStoreCreate({ now: () => now * 1000 })
   const authenticationConfig = {
@@ -293,6 +296,7 @@ describe("asset API routes", () => {
         method: "POST",
         body: JSON.stringify({
           originalFilename: "hero.jpg",
+          assetId: "asset-1",
           folders: ["home"],
           integrationNote: "Hero",
           byteSize: 10,
@@ -314,6 +318,7 @@ describe("asset API routes", () => {
     expect(history.status).toBe(200)
     expect(intent.status).toBe(201)
     expect(lastUploaderId).toBe("human-1")
+    expect(lastUploadAssetId).toBe("asset-1")
     expect(completion.status).toBe(202)
     expect(otherProject.status).toBe(404)
     expect(((await history.json()) as { data: unknown }).data).toEqual({ sourceHistory: [source], outputHistory: [] })
