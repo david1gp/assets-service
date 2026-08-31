@@ -1,9 +1,9 @@
-import type { Environment } from "../project/environmentSchema.js"
-import type { Result } from "../schemas/resultSchema.js"
 import type { UploadCompletionRequest } from "../api-client/uploadCompletionRequestSchema.js"
 import type { UploadCompletionResponse } from "../api-client/uploadCompletionResponseSchema.js"
 import type { UploadIntentRequest } from "../api-client/uploadIntentRequestSchema.js"
 import type { UploadIntentResponse } from "../api-client/uploadIntentResponseSchema.js"
+import type { Environment } from "../project/environmentSchema.js"
+import type { Result } from "../schemas/resultSchema.js"
 import type { Upload } from "./uploadSchema.js"
 
 export type UploadApiRepository = {
@@ -12,6 +12,7 @@ export type UploadApiRepository = {
     environment: Environment,
     input: UploadIntentRequest,
     uploaderId?: string,
+    notificationEligible?: boolean,
   ) => Promise<Result<UploadIntentResponse>>
   uploadCompletionComplete: (
     projectId: string,

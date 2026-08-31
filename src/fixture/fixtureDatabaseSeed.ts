@@ -294,6 +294,7 @@ export const fixtureDatabaseSeed = (
         .insert(outputVersionTable)
         .values({
           id: `version-${definition.id}`,
+          projectId: seed.projectId,
           outputDefinitionId: definition.id,
           assetId: definition.assetId,
           sourceRevisionId: `source-${definition.assetId}`,
@@ -353,6 +354,7 @@ export const fixtureDatabaseSeed = (
       .insert(outputVersionTable)
       .values({
         id: "version-output-intro",
+        projectId: seed.projectId,
         outputDefinitionId: "output-intro",
         assetId: "asset-intro",
         sourceRevisionId: "source-asset-intro",
@@ -408,6 +410,7 @@ export const fixtureDatabaseSeed = (
       .insert(outputVersionTable)
       .values({
         id: "version-output-guide",
+        projectId: seed.projectId,
         outputDefinitionId: "output-guide",
         assetId: "asset-guide",
         sourceRevisionId: "source-asset-guide",
@@ -463,6 +466,7 @@ export const fixtureDatabaseSeed = (
       .insert(outputVersionTable)
       .values({
         id: "version-output-inter",
+        projectId: seed.projectId,
         outputDefinitionId: "output-inter",
         assetId: "asset-inter",
         sourceRevisionId: "source-asset-inter",

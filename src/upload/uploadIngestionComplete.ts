@@ -1,28 +1,31 @@
-import { and, asc, eq } from "drizzle-orm"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { and, asc, eq } from "drizzle-orm"
 import * as v from "valibot"
-import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
 import { assetBasenameCreate } from "../asset/assetBasenameCreate.js"
+import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersDatabaseColumnsCreate } from "../asset/foldersDatabaseColumnsCreate.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
+import { auditActionCatalog } from "../audit/auditActionCatalog.js"
 import { documentExtensionMediaTypes } from "../document/documentExtensionMediaTypes.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
+import { auditEventTable } from "../infrastructure/db/schema/auditEventTable.js"
 import { blobTable } from "../infrastructure/db/schema/blobTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { jobDependencyTable } from "../infrastructure/db/schema/jobDependencyTable.js"
 import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
+import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
+import type { AssetClass } from "../schemas/assetClassSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import type { AssetClass } from "../schemas/assetClassSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import { storageCopyImmutable } from "../storage/storageCopyImmutable.js"
@@ -81,6 +84,7 @@ export const uploadIngestionComplete = async (
           assetId: acceptedAssetId,
           assetClass: acceptedAsset.class,
           now,
+          preservedDefinitionIds: input.outputDefinitions?.map((definition) => definition.id),
         })
         if (!defaults.success) return defaults
         const workflow = transaction
@@ -249,6 +253,39 @@ export const uploadIngestionComplete = async (
           updatedAt: now,
         })
         if (!insertedAsset.success) return insertedAsset
+
+        const project = transaction
+          .select()
+          .from(projectTable)
+          .where(eq(projectTable.id, currentUpload.projectId))
+          .get()
+        if (project === undefined) return resultErrorCreate(op, "The upload project was not found")
+        const auditId = `audit-asset-created-${assetId}`
+        const auditValues = {
+          id: auditId,
+          organizationId: project.organizationId,
+          projectId: currentUpload.projectId,
+          actorId: currentUpload.uploaderId ?? "system:upload",
+          action: auditActionCatalog[0],
+          resourceType: "asset",
+          resourceId: assetId,
+          details: { uploadId: currentUpload.id },
+        }
+        const existingAudit = transaction.select().from(auditEventTable).where(eq(auditEventTable.id, auditId)).get()
+        if (existingAudit !== undefined) {
+          const matches =
+            existingAudit.organizationId === auditValues.organizationId &&
+            existingAudit.projectId === auditValues.projectId &&
+            existingAudit.actorId === auditValues.actorId &&
+            existingAudit.action === auditValues.action &&
+            existingAudit.resourceType === auditValues.resourceType &&
+            existingAudit.resourceId === auditValues.resourceId &&
+            JSON.stringify(existingAudit.details) === JSON.stringify(auditValues.details)
+          if (!matches) return resultErrorCreate(op, "The asset creation audit event did not match the upload")
+        } else {
+          const audit = databaseRecordInsert(transaction, auditEventTable, { ...auditValues, createdAt: now })
+          if (!audit.success) return audit
+        }
       } else {
         const updatedAsset = transaction
           .update(assetTable)
@@ -284,7 +321,13 @@ export const uploadIngestionComplete = async (
       const existingBlob = transaction
         .select()
         .from(blobTable)
-        .where(and(eq(blobTable.storage, "private"), eq(blobTable.objectKey, sourceObjectKey)))
+        .where(
+          and(
+            eq(blobTable.projectId, currentUpload.projectId),
+            eq(blobTable.storage, "private"),
+            eq(blobTable.objectKey, sourceObjectKey),
+          ),
+        )
         .get()
       if (existingBlob === undefined) {
         const insertedBlob = databaseRecordInsert(transaction, blobTable, {
@@ -324,7 +367,12 @@ export const uploadIngestionComplete = async (
         if (!insertedDefinition.success) return insertedDefinition
       }
 
-      const defaults = outputDefinitionsEnsure(transaction, { assetId, assetClass, now })
+      const defaults = outputDefinitionsEnsure(transaction, {
+        assetId,
+        assetClass,
+        now,
+        preservedDefinitionIds: outputDefinitions.map((definition) => definition.id),
+      })
       if (!defaults.success) return defaults
 
       const workflowId = `workflow-upload-${upload.id}`
@@ -545,13 +593,36 @@ function workflowJobsEnsure(
 
 function outputDefinitionsEnsure(
   db: AssetDatabase,
-  input: { assetId: string; assetClass: AssetClass; now: string },
+  input: {
+    assetId: string
+    assetClass: AssetClass
+    now: string
+    preservedDefinitionIds?: readonly string[]
+  },
 ): Result<null> {
+  const defaultId = `output-${input.assetId}-default`
   const existing = db.select().from(outputDefinitionTable).where(eq(outputDefinitionTable.assetId, input.assetId)).all()
+  const managedDefault = existing.find((definition) => definition.id === defaultId)
+  if (managedDefault !== undefined && !input.preservedDefinitionIds?.includes(defaultId)) {
+    db.update(outputDefinitionTable)
+      .set({
+        kind: input.assetClass,
+        key: "default",
+        width: input.assetClass === "image" ? 1920 : null,
+        height: input.assetClass === "image" ? 1080 : null,
+        format: input.assetClass === "image" ? "avif" : input.assetClass === "font" ? "woff2" : null,
+        quality: input.assetClass === "image" ? 80 : null,
+        showAiLabel: null,
+        updatedAt: input.now,
+      })
+      .where(eq(outputDefinitionTable.id, defaultId))
+      .run()
+    return { success: true, data: null }
+  }
   if (existing.length > 0) return { success: true, data: null }
 
   const inserted = databaseRecordInsert(db, outputDefinitionTable, {
-    id: `output-${input.assetId}-default`,
+    id: defaultId,
     assetId: input.assetId,
     kind: input.assetClass,
     key: "default",

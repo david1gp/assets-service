@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import * as v from "valibot"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
+import { assetDetailResponseSchema } from "../src/api-client/assetDetailResponseSchema.js"
+import { assetHistoryResponseSchema } from "../src/api-client/assetHistoryResponseSchema.js"
+import { assetListResponseSchema } from "../src/api-client/assetListResponseSchema.js"
 import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
 import type { AssetApiRepository } from "../src/asset/assetApiRepository.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
@@ -15,6 +19,7 @@ import type { UploadApiRepository } from "../src/upload/uploadApiRepository.js"
 
 const now = 1_700_000_000
 let lastUploaderId: string | undefined
+let lastNotificationEligible: boolean | undefined
 let lastUploadAssetId: string | undefined
 const project = {
   id: "project-1",
@@ -160,8 +165,9 @@ const assetRepositoryCreate = (): AssetApiRepository => ({
 })
 
 const uploadRepositoryCreate = (): UploadApiRepository => ({
-  uploadIntentCreate: async (_projectId, _environment, input, uploaderId) => {
+  uploadIntentCreate: async (_projectId, _environment, input, uploaderId, notificationEligible) => {
     lastUploaderId = uploaderId
+    lastNotificationEligible = notificationEligible
     lastUploadAssetId = input.assetId
     return {
       success: true,
@@ -201,6 +207,7 @@ const deletionRepositoryCreate = (): DeletionApiRepository => ({
 
 const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   lastUploaderId = undefined
+  lastNotificationEligible = undefined
   lastUploadAssetId = undefined
   const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => sessionId })
   const stateStore = memoryPkceStateStoreCreate({ now: () => now * 1000 })
@@ -254,14 +261,19 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   }
 }
 
-const sessionCookieRead = async (options: ApiAppOptions, role: "contributor" | "admin") => {
+const sessionCookieRead = async (
+  options: ApiAppOptions,
+  role: "contributor" | "admin",
+  organizationAdmin = false,
+  subjectId = "human-1",
+) => {
   const session: AuthenticationSession = {
     principal: {
-      subjectId: "human-1",
+      subjectId,
       organizationId: "org-1",
-      organizationAdmin: false,
+      organizationAdmin,
       method: "human_session",
-      grants: [{ projectId: "zitadel-1", roles: [role] }],
+      grants: organizationAdmin ? [] : [{ projectId: "zitadel-1", roles: [role] }],
       issuedAt: now - 60,
       expiresAt: now + 600,
     },
@@ -281,6 +293,46 @@ const requestCreate = (path: string, cookie: string, init: RequestInit = {}) =>
   })
 
 describe("asset API routes", () => {
+  test("keeps output ownership out of list, detail, and history responses", async () => {
+    const options = optionsCreate()
+    const repository = options.assetApiRepository
+    if (repository === undefined) throw new Error("The asset repository was not configured")
+    const outputDetail = {
+      ...detail,
+      outputHistory: [{ definition: outputDefinition, versions: [outputVersion] }],
+    }
+    options.assetApiRepository = {
+      ...repository,
+      assetsRead: () => ({ success: true, data: [{ ...asset, sourcePath: "home/hero.jpg", outputCount: 1 }] }),
+      assetRead: () => ({ success: true, data: outputDetail }),
+    }
+    const app = apiAppCreate(options)
+    const cookie = await sessionCookieRead(options, "contributor")
+    const list = await app.fetch(requestCreate("/api/v1/projects/project-service/assets?include=history", cookie))
+    const detailResponse = await app.fetch(requestCreate("/api/v1/projects/project-service/assets/asset-1", cookie))
+    const history = await app.fetch(requestCreate("/api/v1/projects/project-service/assets/asset-1/history", cookie))
+
+    expect(list.status).toBe(200)
+    expect(detailResponse.status).toBe(200)
+    expect(history.status).toBe(200)
+    const listData = ((await list.json()) as { data: unknown }).data
+    const detailData = ((await detailResponse.json()) as { data: unknown }).data
+    const historyData = ((await history.json()) as { data: unknown }).data
+    expect(v.safeParse(assetListResponseSchema, listData).success).toBe(true)
+    expect(v.safeParse(assetDetailResponseSchema, detailData).success).toBe(true)
+    expect(v.safeParse(assetHistoryResponseSchema, historyData).success).toBe(true)
+    expect(
+      (listData as { assets: [{ outputHistory: [{ versions: [Record<string, unknown>] }] }] }).assets[0]
+        .outputHistory[0].versions[0],
+    ).not.toHaveProperty("projectId")
+    expect(
+      (detailData as { outputHistory: [{ versions: [Record<string, unknown>] }] }).outputHistory[0].versions[0],
+    ).not.toHaveProperty("projectId")
+    expect(
+      (historyData as { outputHistory: [{ versions: [Record<string, unknown>] }] }).outputHistory[0].versions[0],
+    ).not.toHaveProperty("projectId")
+  })
+
   test("keeps asset reads project-scoped and exposes upload and history operations", async () => {
     const options = optionsCreate()
     const app = apiAppCreate(options)
@@ -318,6 +370,7 @@ describe("asset API routes", () => {
     expect(history.status).toBe(200)
     expect(intent.status).toBe(201)
     expect(lastUploaderId).toBe("human-1")
+    expect(lastNotificationEligible).toBe(true)
     expect(lastUploadAssetId).toBe("asset-1")
     expect(completion.status).toBe(202)
     expect(otherProject.status).toBe(404)
@@ -329,6 +382,115 @@ describe("asset API routes", () => {
       outputHistory: [],
       metadata: null,
     })
+  })
+
+  test("persists an administrator upload actor without enabling customer notifications", async () => {
+    const options = optionsCreate()
+    const app = apiAppCreate(options)
+    const cookie = await sessionCookieRead(options, "admin")
+    const intent = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/uploads/intent", cookie, {
+        method: "POST",
+        body: JSON.stringify({
+          originalFilename: "hero.jpg",
+          assetId: "asset-1",
+          folders: ["home"],
+          integrationNote: "Hero",
+          byteSize: 10,
+          mediaType: "image/jpeg",
+        }),
+      }),
+    )
+
+    expect(intent.status).toBe(201)
+    expect(lastUploaderId).toBe("human-1")
+    expect(lastNotificationEligible).toBe(false)
+  })
+
+  test("persists an organization administrator upload actor without enabling customer notifications", async () => {
+    const options = optionsCreate()
+    const app = apiAppCreate(options)
+    const cookie = await sessionCookieRead(options, "contributor", true, "organization-admin-1")
+    const intent = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/uploads/intent", cookie, {
+        method: "POST",
+        body: JSON.stringify({
+          originalFilename: "hero.jpg",
+          assetId: "asset-1",
+          folders: ["home"],
+          integrationNote: "Hero",
+          byteSize: 10,
+          mediaType: "image/jpeg",
+        }),
+      }),
+    )
+
+    expect(intent.status).toBe(201)
+    expect(lastUploaderId).toBe("organization-admin-1")
+    expect(lastNotificationEligible).toBe(false)
+  })
+
+  test("attributes service-bearer uploads independently from notification eligibility", async () => {
+    for (const [role, notificationEligible] of [
+      ["assets.uploader", true],
+      ["assets.admin", false],
+    ] as const) {
+      const options = optionsCreate()
+      options.authentication.serviceBearer = {
+        issuer: options.authentication.config.issuer,
+        audience: options.authentication.config.audience,
+        jwksClient: options.authentication.jwksClient,
+        organizationId: "org-1",
+        serviceAccountClientId: "unused",
+        projectId: "zitadel-1",
+        now: () => now * 1000,
+        patFetcher: async (input) => {
+          if (String(input).endsWith("/users/me")) {
+            return new Response(
+              JSON.stringify({
+                user: {
+                  id: "service-account-1",
+                  state: "USER_STATE_ACTIVE",
+                  details: { resourceOwner: "org-1" },
+                  machine: { name: "Assets Service" },
+                },
+              }),
+            )
+          }
+          return new Response(
+            JSON.stringify({
+              result: [
+                {
+                  projectId: "zitadel-1",
+                  orgId: "org-1",
+                  state: "USER_GRANT_STATE_ACTIVE",
+                  roleKeys: [role],
+                },
+              ],
+            }),
+          )
+        },
+      }
+      const app = apiAppCreate(options)
+      const intent = await app.fetch(
+        requestCreate("/api/v1/projects/project-service/uploads/intent", "", {
+          method: "POST",
+          headers: { authorization: "Bearer service-token" },
+          body: JSON.stringify({
+            originalFilename: "hero.jpg",
+            assetId: "asset-1",
+            folders: ["home"],
+            integrationNote: "Hero",
+            byteSize: 10,
+            mediaType: "image/jpeg",
+          }),
+        }),
+      )
+
+      expect(intent.status).toBe(201)
+      expect(lastUploaderId).toBe("service-account-1")
+      expect(lastNotificationEligible).toBe(notificationEligible)
+    }
   })
 
   test("keeps uploader reads separate from administrator mutations", async () => {

@@ -6,11 +6,12 @@ import { uploadCompletionRequestSchema } from "../api-client/uploadCompletionReq
 import type { UploadIntentRequest } from "../api-client/uploadIntentRequestSchema.js"
 import { uploadIntentRequestSchema } from "../api-client/uploadIntentRequestSchema.js"
 import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
+import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
-import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
+import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -20,10 +21,9 @@ import { storageObjectLocationCreate } from "../storage/storageObjectLocationCre
 import { storageStagingObjectKeyCreate } from "../storage/storageStagingObjectKeyCreate.js"
 import { storageUploadIntentComplete } from "../storage/storageUploadIntentComplete.js"
 import { storageUploadIntentCreate } from "../storage/storageUploadIntentCreate.js"
+import type { UploadApiRepository } from "./uploadApiRepository.js"
 import { uploadIngestionComplete } from "./uploadIngestionComplete.js"
 import { uploadMediaTypeCheck } from "./uploadMediaTypeCheck.js"
-import type { UploadApiRepository } from "./uploadApiRepository.js"
-import { foldersDatabaseColumnsRead } from "../asset/foldersDatabaseColumnsRead.js"
 import { uploadSchema } from "./uploadSchema.js"
 
 type UploadApiRepositoryCreateOptions = {
@@ -113,6 +113,7 @@ export const uploadApiRepositoryCreate = (
     environment: Parameters<UploadApiRepository["uploadIntentCreate"]>[1],
     input: UploadIntentRequest,
     uploaderId?: string,
+    notificationEligible?: boolean,
   ): Promise<Result<import("../api-client/uploadIntentResponseSchema.js").UploadIntentResponse>> => {
     const op = "uploadApiRepositoryIntentCreate"
     const parsed = v.safeParse(uploadIntentRequestSchema, input)
@@ -149,7 +150,7 @@ export const uploadApiRepositoryCreate = (
         assetId: parsed.output.assetId ?? null,
         sourceRevisionId: null,
         uploaderId: uploaderId ?? null,
-        notificationEligible: uploaderId !== undefined,
+        notificationEligible: notificationEligible ?? uploaderId !== undefined,
         originalFilename: parsed.output.originalFilename,
         folder1: folders[0] ?? null,
         folder2: folders[1] ?? null,
