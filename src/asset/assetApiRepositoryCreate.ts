@@ -27,6 +27,7 @@ import { outputVersionSchema } from "../output/outputVersionSchema.js"
 import type { AssetClass } from "../schemas/assetClassSchema.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
+import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { structureFolderRepositoryCreate } from "../structure/structureFolderRepositoryCreate.js"
@@ -99,20 +100,20 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
       const versionRecords = db
         .select()
         .from(outputVersionTable)
-        .where(eq(outputVersionTable.outputDefinitionId, outputRecord.id))
+        .where(
+          and(
+            eq(outputVersionTable.projectId, record.projectId),
+            eq(outputVersionTable.outputDefinitionId, outputRecord.id),
+          ),
+        )
         .orderBy(asc(outputVersionTable.version), asc(outputVersionTable.id))
         .all()
       const versions: Array<AssetOutputHistory["versions"][number]> = []
       for (const versionRecord of versionRecords) {
-        const { width, height, ...versionRest } = versionRecord
-        const version = v.safeParse(outputVersionSchema, {
-          ...versionRest,
-          ...(width === null ? {} : { width }),
-          ...(height === null ? {} : { height }),
-        })
+        const version = outputVersionPublicRead(versionRecord)
         if (!version.success)
           return resultErrorCreate("assetApiRepositoryVersionRead", "The stored output version was invalid")
-        versions.push(version.output)
+        versions.push(version.data)
       }
       outputHistory.push({ definition: definition.data, versions })
     }
@@ -425,10 +426,34 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     if (insertedRecords.some((record) => record === undefined))
       return resultErrorCreate("assetApiRepositoryOutputsSet", "The output set was invalid")
     const replaced = databaseTransactionRun(db, (transaction) => {
-      transaction.delete(outputDefinitionTable).where(eq(outputDefinitionTable.assetId, assetId)).run()
+      // Preserve identities for retained keys so output history and managed defaults remain attached.
+      const requestedKeys = new Set(insertedRecords.flatMap((record) => (record === undefined ? [] : [record.key])))
+      for (const definition of existing) {
+        if (!requestedKeys.has(definition.key))
+          transaction.delete(outputDefinitionTable).where(eq(outputDefinitionTable.id, definition.id)).run()
+      }
       for (const record of insertedRecords) {
         if (record === undefined) return resultErrorCreate("assetApiRepositoryOutputsSet", "The output set was invalid")
-        transaction.insert(outputDefinitionTable).values(record).run()
+        const currentDefinition = existing.find((definition) => definition.key === record.key)
+        if (currentDefinition === undefined) {
+          transaction.insert(outputDefinitionTable).values(record).run()
+          continue
+        }
+        if (outputDefinitionsEqual(definitionToInput(currentDefinition), definitionToInput(record))) continue
+        transaction
+          .update(outputDefinitionTable)
+          .set({
+            kind: record.kind,
+            key: record.key,
+            width: record.width,
+            height: record.height,
+            format: record.format,
+            quality: record.quality,
+            showAiLabel: record.showAiLabel,
+            updatedAt: now,
+          })
+          .where(eq(outputDefinitionTable.id, currentDefinition.id))
+          .run()
       }
       transaction.update(assetTable).set({ updatedAt: now }).where(eq(assetTable.id, assetId)).run()
       return { success: true, data: null } as const
@@ -647,6 +672,23 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
   }
 }
 
+function outputVersionPublicRead(
+  record: typeof outputVersionTable.$inferSelect,
+): Result<import("../output/outputVersionSchema.js").OutputVersion> {
+  const projectId = v.safeParse(idSchema, record.projectId)
+  if (!projectId.success)
+    return resultErrorCreate("assetApiRepositoryVersionRead", "The stored output version was invalid")
+  const { projectId: _projectId, width, height, ...versionRest } = record
+  const version = v.safeParse(outputVersionSchema, {
+    ...versionRest,
+    ...(width === null ? {} : { width }),
+    ...(height === null ? {} : { height }),
+  })
+  if (!version.success)
+    return resultErrorCreate("assetApiRepositoryVersionRead", "The stored output version was invalid")
+  return { success: true, data: version.output }
+}
+
 function assetMetadataSourceRead(
   db: AssetDatabase,
   projectIdentifier: string,
@@ -667,7 +709,7 @@ function assetMetadataSourceRead(
     db
       .select()
       .from(outputVersionTable)
-      .where(eq(outputVersionTable.assetId, detail.id))
+      .where(and(eq(outputVersionTable.projectId, projectIdentifier), eq(outputVersionTable.assetId, detail.id)))
       .all()
       .map((version) => [version.id, version] as const),
   )
@@ -857,7 +899,7 @@ function outputDefinitionsEqual(
 }
 
 function definitionToInput(
-  definition: typeof outputDefinitionTable.$inferSelect,
+  definition: typeof outputDefinitionTable.$inferInsert,
 ): import("../api-client/outputDefinitionInputSchema.js").OutputDefinitionInput {
   if (definition.kind === "image") {
     return {

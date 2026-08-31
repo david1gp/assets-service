@@ -3,12 +3,14 @@ import { sqliteTable, text, integer, uniqueIndex, index, check } from "drizzle-o
 
 import { assetTable } from "./assetTable.js"
 import { outputDefinitionTable } from "./outputDefinitionTable.js"
+import { projectTable } from "./projectTable.js"
 import { sourceRevisionTable } from "./sourceRevisionTable.js"
 
 export const outputVersionTable = sqliteTable(
   "output_versions",
   {
     id: text("id").primaryKey(),
+    projectId: text("project_id").references(() => projectTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
     outputDefinitionId: text("output_definition_id")
       .notNull()
       .references(() => outputDefinitionTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
@@ -34,7 +36,8 @@ export const outputVersionTable = sqliteTable(
   (table) => [
     uniqueIndex("output_versions_definition_version_unique").on(table.outputDefinitionId, table.version),
     uniqueIndex("output_versions_current_unique").on(table.outputDefinitionId).where(sql`${table.current} = 1`),
-    uniqueIndex("output_versions_object_key_unique").on(table.objectKey),
+    uniqueIndex("output_versions_project_object_key_unique").on(table.projectId, table.objectKey),
+    index("output_versions_project_index").on(table.projectId),
     index("output_versions_asset_index").on(table.assetId),
     index("output_versions_source_revision_index").on(table.sourceRevisionId),
     check("output_versions_version_check", sql`${table.version} > 0`),

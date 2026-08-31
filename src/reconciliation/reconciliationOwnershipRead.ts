@@ -128,7 +128,13 @@ function blobOwnershipRead(
   blob: typeof blobTable.$inferSelect,
 ): Result<{ referenceId: string; kind: "source" | "output" | "manifest" } | null> {
   const asset =
-    blob.assetId === null ? undefined : db.select().from(assetTable).where(eq(assetTable.id, blob.assetId)).get()
+    blob.assetId === null
+      ? undefined
+      : db
+          .select()
+          .from(assetTable)
+          .where(and(eq(assetTable.projectId, blob.projectId), eq(assetTable.id, blob.assetId)))
+          .get()
   if (blob.kind !== "manifest" && (asset === undefined || asset.projectId !== blob.projectId))
     return { success: true, data: null }
   if (blob.kind === "source" && blob.sourceRevisionId !== null) {
@@ -139,7 +145,11 @@ function blobOwnershipRead(
   }
   if (blob.kind === "output" && blob.outputVersionId !== null) {
     if (asset === undefined) return { success: true, data: null }
-    const version = db.select().from(outputVersionTable).where(eq(outputVersionTable.id, blob.outputVersionId)).get()
+    const version = db
+      .select()
+      .from(outputVersionTable)
+      .where(and(eq(outputVersionTable.projectId, blob.projectId), eq(outputVersionTable.id, blob.outputVersionId)))
+      .get()
     if (version?.assetId === asset.id && version.objectKey === blob.objectKey)
       return { success: true, data: { referenceId: version.id, kind: "output" } }
   }
@@ -174,7 +184,11 @@ function blobDeletionEligibilityRead(
       : { eligible: true, reason: "unreferenced_catalog_manifest" }
   }
 
-  const version = db.select().from(outputVersionTable).where(eq(outputVersionTable.id, reference.referenceId)).get()
+  const version = db
+    .select()
+    .from(outputVersionTable)
+    .where(and(eq(outputVersionTable.projectId, blob.projectId), eq(outputVersionTable.id, reference.referenceId)))
+    .get()
   if (version === undefined) return { eligible: false, reason: "output_version_is_missing" }
   const catalog = db
     .select()
@@ -200,6 +214,7 @@ function blobDeletionEligibilityRead(
       .where(
         and(
           eq(blobTable.storage, "public"),
+          eq(blobTable.projectId, blob.projectId),
           eq(blobTable.objectKey, blob.objectKey),
           eq(blobTable.outputVersionId, version.id),
         ),

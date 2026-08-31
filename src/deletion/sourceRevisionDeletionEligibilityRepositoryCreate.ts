@@ -151,7 +151,13 @@ export const sourceRevisionDeletionEligibilityRepositoryCreate = (
         const currentOutputs = transaction
           .select()
           .from(outputVersionTable)
-          .where(and(eq(outputVersionTable.assetId, source.asset.id), eq(outputVersionTable.current, true)))
+          .where(
+            and(
+              eq(outputVersionTable.projectId, source.project.id),
+              eq(outputVersionTable.assetId, source.asset.id),
+              eq(outputVersionTable.current, true),
+            ),
+          )
           .all()
         const definitionIds = new Set(definitions.map((definition) => definition.id))
         checks.lineageMatchingCurrentOutputs =

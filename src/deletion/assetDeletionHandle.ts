@@ -231,12 +231,18 @@ function deletionRemotePlanRead(db: AssetDatabase, asset: typeof assetTable.$inf
   }
   const environmentByName = new Map(environments.map((environment) => [environment.name, environment]))
   const sources = db.select().from(sourceRevisionTable).where(eq(sourceRevisionTable.assetId, asset.id)).all()
-  const versions = db.select().from(outputVersionTable).where(eq(outputVersionTable.assetId, asset.id)).all()
+  const versions = db
+    .select()
+    .from(outputVersionTable)
+    .where(and(eq(outputVersionTable.projectId, asset.projectId), eq(outputVersionTable.assetId, asset.id)))
+    .all()
   const sourceIds = sources.map((source) => source.id)
   const versionIds = versions.map((version) => version.id)
-  const blobConditions = [eq(blobTable.assetId, asset.id)]
-  if (sourceIds.length > 0) blobConditions.push(inArray(blobTable.sourceRevisionId, sourceIds))
-  if (versionIds.length > 0) blobConditions.push(inArray(blobTable.outputVersionId, versionIds))
+  const blobConditions = [and(eq(blobTable.projectId, asset.projectId), eq(blobTable.assetId, asset.id))]
+  if (sourceIds.length > 0)
+    blobConditions.push(and(eq(blobTable.projectId, asset.projectId), inArray(blobTable.sourceRevisionId, sourceIds)))
+  if (versionIds.length > 0)
+    blobConditions.push(and(eq(blobTable.projectId, asset.projectId), inArray(blobTable.outputVersionId, versionIds)))
   const blobs = db
     .select()
     .from(blobTable)
@@ -575,7 +581,7 @@ function deletionFinalize(
   const versionIds = transaction
     .select({ id: outputVersionTable.id })
     .from(outputVersionTable)
-    .where(eq(outputVersionTable.assetId, asset.id))
+    .where(and(eq(outputVersionTable.projectId, asset.projectId), eq(outputVersionTable.assetId, asset.id)))
     .all()
     .map(({ id }) => id)
   const uploadIds = transaction
@@ -633,7 +639,11 @@ function deletionFinalize(
     transaction
       .delete(blobTable)
       .where(
-        and(eq(blobTable.storage, "private"), eq(blobTable.objectKey, replacement.oldGeneration.manifestObjectKey)),
+        and(
+          eq(blobTable.projectId, asset.projectId),
+          eq(blobTable.storage, "private"),
+          eq(blobTable.objectKey, replacement.oldGeneration.manifestObjectKey),
+        ),
       )
       .run()
     transaction.delete(catalogGenerationTable).where(eq(catalogGenerationTable.id, replacement.oldGeneration.id)).run()
@@ -641,9 +651,15 @@ function deletionFinalize(
   transaction.delete(manifestTable).where(eq(manifestTable.assetId, asset.id)).run()
   if (sourceIds.length > 0)
     transaction.delete(backupReceiptTable).where(inArray(backupReceiptTable.sourceRevisionId, sourceIds)).run()
-  const assetBlobConditions = [eq(blobTable.assetId, asset.id)]
-  if (sourceIds.length > 0) assetBlobConditions.push(inArray(blobTable.sourceRevisionId, sourceIds))
-  if (versionIds.length > 0) assetBlobConditions.push(inArray(blobTable.outputVersionId, versionIds))
+  const assetBlobConditions = [and(eq(blobTable.projectId, asset.projectId), eq(blobTable.assetId, asset.id))]
+  if (sourceIds.length > 0)
+    assetBlobConditions.push(
+      and(eq(blobTable.projectId, asset.projectId), inArray(blobTable.sourceRevisionId, sourceIds)),
+    )
+  if (versionIds.length > 0)
+    assetBlobConditions.push(
+      and(eq(blobTable.projectId, asset.projectId), inArray(blobTable.outputVersionId, versionIds)),
+    )
   transaction
     .delete(blobTable)
     .where(or(...assetBlobConditions))
@@ -657,7 +673,10 @@ function deletionFinalize(
         .run()
     transaction.delete(uploadTable).where(inArray(uploadTable.id, uploadIds)).run()
   }
-  transaction.delete(outputVersionTable).where(eq(outputVersionTable.assetId, asset.id)).run()
+  transaction
+    .delete(outputVersionTable)
+    .where(and(eq(outputVersionTable.projectId, asset.projectId), eq(outputVersionTable.assetId, asset.id)))
+    .run()
   transaction.delete(outputDefinitionTable).where(eq(outputDefinitionTable.assetId, asset.id)).run()
   transaction
     .delete(workflowTable)

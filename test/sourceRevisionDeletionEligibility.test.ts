@@ -112,6 +112,7 @@ test("source revision deletion eligibility proves every current safety condition
         if (!definition.success) return definition
         const version = databaseRecordInsert(transaction, outputVersionTable, {
           id: "version-eligibility",
+          projectId: "project-eligibility",
           outputDefinitionId: "output-eligibility",
           assetId: "asset-eligibility",
           sourceRevisionId,

@@ -67,6 +67,15 @@ const setup = async (r2Prefix = "projects/project-delete") => {
     createdAt: now,
     updatedAt: now,
   })
+  insert(projectTable, {
+    id: "project-delete-other",
+    organizationId: "org-delete",
+    name: "Other delete",
+    slug: "other-delete",
+    defaultEnvironment: "development",
+    createdAt: now,
+    updatedAt: now,
+  })
   insert(environmentTable, {
     id: "environment-delete",
     projectId: "project-delete",
@@ -121,6 +130,7 @@ const setup = async (r2Prefix = "projects/project-delete") => {
   })
   insert(outputVersionTable, {
     id: "version-delete",
+    projectId: "project-delete",
     outputDefinitionId: "output-delete",
     assetId: "asset-delete",
     version: 1,
@@ -268,6 +278,21 @@ const setup = async (r2Prefix = "projects/project-delete") => {
       createdAt: now,
     })
   }
+  insert(blobTable, {
+    id: "blob-manifest-other-project",
+    projectId: "project-delete-other",
+    assetId: null,
+    sourceRevisionId: null,
+    outputVersionId: null,
+    storage: "private",
+    environment: "development",
+    kind: "manifest",
+    objectKey: "catalogs/development/old.json",
+    byteSize: 1,
+    sha256: "f".repeat(64),
+    mediaType: "application/json",
+    createdAt: now,
+  })
 
   const environment = db.select().from(environmentTable).get()
   if (environment === undefined) throw new Error("environment missing")
@@ -335,7 +360,10 @@ describe("complete asset deletion", () => {
       expect(fixture.db.select().from(assetTable).all()).toHaveLength(0)
       expect(fixture.db.select().from(sourceRevisionTable).all()).toHaveLength(0)
       expect(fixture.db.select().from(outputVersionTable).all()).toHaveLength(0)
-      expect(fixture.db.select().from(blobTable).all()).toMatchObject([{ kind: "manifest", assetId: null }])
+      expect(fixture.db.select().from(blobTable).all()).toMatchObject([
+        { id: "blob-manifest-other-project", kind: "manifest", assetId: null },
+        { projectId: "project-delete", kind: "manifest", assetId: null },
+      ])
       expect(fixture.db.select().from(backupReceiptTable).all()).toHaveLength(0)
       expect(fixture.db.select().from(catalogOutputTable).all()).toHaveLength(0)
       expect(fixture.db.select().from(manifestTable).all()).toHaveLength(1)

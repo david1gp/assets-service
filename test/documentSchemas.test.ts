@@ -196,6 +196,7 @@ test("document constraints survive the SQLite migration", () => {
     expect(
       databaseRecordInsert(opened.data.db, outputVersionTable, {
         id: "version-document",
+        projectId: "project-document",
         outputDefinitionId: "output-document",
         assetId: "asset-document",
         version: 1,
@@ -261,6 +262,7 @@ test("document constraints survive the SQLite migration", () => {
           if (!definition.success) return definition
           return databaseRecordInsert(transaction, outputVersionTable, {
             id: `version-document-migration-${index}`,
+            projectId: "project-document",
             outputDefinitionId: `output-document-migration-${index}`,
             assetId,
             version: 1,
@@ -311,6 +313,7 @@ test("document constraints survive the SQLite migration", () => {
     expect(
       databaseRecordInsert(opened.data.db, outputVersionTable, {
         id: "version-document-invalid",
+        projectId: "project-document",
         outputDefinitionId: "output-document",
         assetId: "asset-document",
         version: 2,
@@ -347,6 +350,7 @@ test("document constraints survive the SQLite migration", () => {
       expect(
         databaseRecordInsert(opened.data.db, outputVersionTable, {
           id: `version-document-invalid-${index}`,
+          projectId: "project-document",
           outputDefinitionId: "output-document",
           assetId: "asset-document",
           version: 10 + index,

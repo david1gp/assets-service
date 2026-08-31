@@ -32,7 +32,7 @@ export const blobTable = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("blobs_storage_object_key_unique").on(table.storage, table.objectKey),
+    uniqueIndex("blobs_project_storage_object_key_unique").on(table.projectId, table.storage, table.objectKey),
     index("blobs_project_index").on(table.projectId),
     index("blobs_asset_index").on(table.assetId),
     index("blobs_source_revision_index").on(table.sourceRevisionId),

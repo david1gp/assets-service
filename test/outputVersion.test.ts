@@ -104,6 +104,7 @@ describe("output version allocation", () => {
 
       const first = outputVersionRepositoryAllocate(opened.data.db, {
         id: "version-1",
+        projectId: "project-versions",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
         sourceRevisionId: "source-versions",
@@ -121,6 +122,7 @@ describe("output version allocation", () => {
 
       const reused = outputVersionRepositoryAllocate(opened.data.db, {
         id: "version-unused",
+        projectId: "project-versions",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
         sourceRevisionId: "source-versions",
@@ -141,6 +143,7 @@ describe("output version allocation", () => {
 
       const changed = outputVersionRepositoryAllocate(opened.data.db, {
         id: "version-2",
+        projectId: "project-versions",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
         sourceRevisionId: "source-versions",
@@ -166,6 +169,7 @@ describe("output version allocation", () => {
 
       const moved = outputVersionRepositoryAllocate(opened.data.db, {
         id: "version-move",
+        projectId: "project-versions",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
         sourceRevisionId: "source-versions",
@@ -183,6 +187,7 @@ describe("output version allocation", () => {
       expect(moved).toMatchObject({ success: true, data: { outcome: "allocated", record: { version: 3 } } })
       const sameBytesFromNewSource = outputVersionRepositoryAllocate(opened.data.db, {
         id: "version-new-source",
+        projectId: "project-versions",
         outputDefinitionId: "output-versions",
         assetId: "asset-versions",
         sourceRevisionId: "source-versions-new",
@@ -203,6 +208,7 @@ describe("output version allocation", () => {
       expect(
         outputVersionRepositoryAllocate(opened.data.db, {
           id: "version-move",
+          projectId: "project-versions",
           outputDefinitionId: "output-versions",
           assetId: "asset-versions",
           sourceRevisionId: "source-versions",
@@ -218,6 +224,81 @@ describe("output version allocation", () => {
           objectKeyCreate: (version) => `images/landing/hero_default_v${version}.webp`,
         }),
       ).toMatchObject({ success: true, data: { outcome: "reused", record: { version: 3 } } })
+
+      const otherProjectSeeded = databaseTransactionRun(opened.data.db, (transaction) => {
+        const project = databaseRecordInsert(transaction, projectTable, {
+          id: "project-versions-other",
+          organizationId: "org-versions",
+          name: "Other versions",
+          slug: "other-versions",
+          defaultEnvironment: "development",
+          createdAt: "2026-08-17T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        })
+        if (!project.success) return project
+        const asset = databaseRecordInsert(transaction, assetTable, {
+          id: "asset-versions-other",
+          projectId: project.data.id,
+          class: "image",
+          folder1: "home",
+          folder2: null,
+          folder3: null,
+          filename: "hero.jpg",
+          basename: "hero",
+          currentSourceRevisionId: "source-versions-other",
+          integrationNote: "",
+          createdAt: "2026-08-17T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        })
+        if (!asset.success) return asset
+        const source = databaseRecordInsert(transaction, sourceRevisionTable, {
+          id: "source-versions-other",
+          assetId: asset.data.id,
+          revision: 1,
+          class: "image",
+          originalFilename: "hero.jpg",
+          mediaType: "image/jpeg",
+          byteSize: 5,
+          sha256: "a".repeat(64),
+          objectKey: "sources/asset-versions-other/v1/hero.jpg",
+          createdAt: "2026-08-17T00:00:00.000Z",
+        })
+        if (!source.success) return source
+        return databaseRecordInsert(transaction, outputDefinitionTable, {
+          id: "output-versions-other",
+          assetId: asset.data.id,
+          kind: "image",
+          key: "default",
+          width: 100,
+          height: 50,
+          format: "webp",
+          quality: 80,
+          showAiLabel: null,
+          createdAt: "2026-08-17T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        })
+      })
+      expect(otherProjectSeeded.success).toBe(true)
+      const otherProjectAllocation = outputVersionRepositoryAllocate(opened.data.db, {
+        id: "version-other-project",
+        projectId: "project-versions-other",
+        outputDefinitionId: "output-versions-other",
+        assetId: "asset-versions-other",
+        sourceRevisionId: "source-versions-other",
+        byteSize: 5,
+        sha256: "a".repeat(64),
+        mediaType: "image/webp",
+        extension: "webp",
+        toolchainVersion: "test",
+        width: 100,
+        height: 50,
+        createdAt: "2026-08-17T00:00:00.000Z",
+        objectKeyCreate: (version) => `images/home/hero_default_v${version}.webp`,
+      })
+      expect(otherProjectAllocation).toMatchObject({
+        success: true,
+        data: { outcome: "allocated", record: { projectId: "project-versions-other", version: 1 } },
+      })
     } finally {
       databaseClose(opened.data)
     }

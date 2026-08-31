@@ -190,6 +190,7 @@ describe("projectRepository.projectsRead", () => {
       })
       recordInsertRequired(connection.db, outputVersionTable, {
         id: "output-version-1",
+        projectId: "project-1",
         outputDefinitionId: "output-1",
         assetId: "asset-1",
         sourceRevisionId: "source-1-v2",

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
@@ -10,8 +10,9 @@ import { outputVersionDecisionCreate } from "./outputVersionDecisionCreate.js"
 
 type OutputVersionAllocationInput = Omit<
   typeof outputVersionTable.$inferInsert,
-  "version" | "objectKey" | "current" | "sourceRevisionId"
+  "version" | "objectKey" | "current" | "sourceRevisionId" | "projectId"
 > & {
+  projectId: string
   sourceRevisionId: string
   objectKeyCreate: (version: number) => string
   current?: boolean
@@ -32,12 +33,18 @@ export const outputVersionRepositoryAllocate = (
     const existingVersions = transaction
       .select()
       .from(outputVersionTable)
-      .where(eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId))
+      .where(
+        and(
+          eq(outputVersionTable.projectId, input.projectId),
+          eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId),
+        ),
+      )
       .orderBy(asc(outputVersionTable.version))
       .all()
     const existingById = transaction.select().from(outputVersionTable).where(eq(outputVersionTable.id, input.id)).get()
     if (existingById !== undefined) {
       if (
+        existingById.projectId !== input.projectId ||
         existingById.outputDefinitionId !== input.outputDefinitionId ||
         existingById.sha256 !== input.sha256 ||
         existingById.sourceRevisionId !== input.sourceRevisionId
@@ -65,7 +72,12 @@ export const outputVersionRepositoryAllocate = (
         transaction
           .update(outputVersionTable)
           .set({ current: false })
-          .where(eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId))
+          .where(
+            and(
+              eq(outputVersionTable.projectId, input.projectId),
+              eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId),
+            ),
+          )
           .run()
         transaction
           .update(outputVersionTable)
@@ -87,14 +99,19 @@ export const outputVersionRepositoryAllocate = (
     const objectKeyOwner = transaction
       .select({ id: outputVersionTable.id })
       .from(outputVersionTable)
-      .where(eq(outputVersionTable.objectKey, objectKey))
+      .where(and(eq(outputVersionTable.projectId, input.projectId), eq(outputVersionTable.objectKey, objectKey)))
       .get()
     if (objectKeyOwner !== undefined) return resultErrorCreate(op, `Immutable object key already exists: ${objectKey}`)
 
     transaction
       .update(outputVersionTable)
       .set({ current: false })
-      .where(eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId))
+      .where(
+        and(
+          eq(outputVersionTable.projectId, input.projectId),
+          eq(outputVersionTable.outputDefinitionId, input.outputDefinitionId),
+        ),
+      )
       .run()
 
     const inserted = databaseRecordInsert(transaction, outputVersionTable, {

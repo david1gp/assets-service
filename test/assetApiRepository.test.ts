@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
+import * as v from "valibot"
 
 import { assetApiRepositoryCreate } from "../src/asset/assetApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../src/catalog/catalogApiRepositoryCreate.js"
@@ -11,6 +12,7 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { auditEventTable } from "../src/infrastructure/db/schema/auditEventTable.js"
 import { catalogGenerationTable } from "../src/infrastructure/db/schema/catalogGenerationTable.js"
 import { catalogOutputTable } from "../src/infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
@@ -24,10 +26,12 @@ import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevis
 import { uploadTable } from "../src/infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
+import { outputVersionSchema } from "../src/output/outputVersionSchema.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 import { storageBindingResolve } from "../src/storage/storageBindingResolve.js"
 import { storageObjectLocationCreate } from "../src/storage/storageObjectLocationCreate.js"
 import { uploadApiRepositoryCreate } from "../src/upload/uploadApiRepositoryCreate.js"
+import { uploadIngestionComplete } from "../src/upload/uploadIngestionComplete.js"
 
 const now = "2026-08-17T00:00:00.000Z"
 const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
@@ -125,6 +129,144 @@ const databaseCreate = () => {
 }
 
 describe("asset API persistence", () => {
+  test("retains output project ownership in the database while projecting public history versions", () => {
+    const connection = databaseCreate()
+    try {
+      expect(
+        databaseRecordInsert(connection.db, outputDefinitionTable, {
+          id: "output-asset-1-default",
+          assetId: "asset-1",
+          kind: "image",
+          key: "default",
+          width: 100,
+          height: 50,
+          format: "webp",
+          quality: null,
+          showAiLabel: null,
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, outputVersionTable, {
+          id: "version-asset-1-default",
+          projectId: "project-1",
+          outputDefinitionId: "output-asset-1-default",
+          assetId: "asset-1",
+          sourceRevisionId: "source-1",
+          version: 1,
+          byteSize: 100,
+          sha256: "b".repeat(64),
+          mediaType: "image/webp",
+          extension: "webp",
+          objectKey: "outputs/asset-1/default.webp",
+          toolchainVersion: "test",
+          width: 100,
+          height: 50,
+          current: true,
+          createdAt: now,
+        }).success,
+      ).toBe(true)
+
+      const repository = assetApiRepositoryCreate(connection.db)
+      const list = repository.assetsRead("project-1")
+      const detail = repository.assetRead("project-1", "asset-1")
+      const stored = connection.db
+        .select({ projectId: outputVersionTable.projectId })
+        .from(outputVersionTable)
+        .where(eq(outputVersionTable.id, "version-asset-1-default"))
+        .get()
+
+      expect(stored).toEqual({ projectId: "project-1" })
+      expect(list).toMatchObject({
+        success: true,
+        data: [{ outputCount: 1 }],
+      })
+      expect(detail).toMatchObject({
+        success: true,
+        data: { outputHistory: [{ versions: [{ id: "version-asset-1-default" }] }] },
+      })
+      if (!detail.success || detail.data === null) return
+      const version = detail.data.outputHistory[0]?.versions[0]
+      expect(version).toBeDefined()
+      expect(v.safeParse(outputVersionSchema, version).success).toBe(true)
+      expect(version).not.toHaveProperty("projectId")
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("updates a stale canonical output in place while preserving custom output definitions", () => {
+    const connection = databaseCreate()
+    try {
+      const managed = {
+        id: "output-asset-1-default",
+        assetId: "asset-1",
+        kind: "image" as const,
+        key: "default",
+        width: 1280,
+        height: 720,
+        format: "webp" as const,
+        quality: 60,
+        showAiLabel: true,
+        createdAt: "2026-08-16T00:00:00.000Z",
+        updatedAt: "2026-08-16T00:00:00.000Z",
+      }
+      const custom = {
+        id: "output-asset-1-mobile",
+        assetId: "asset-1",
+        kind: "image" as const,
+        key: "mobile",
+        width: 640,
+        height: 360,
+        format: "png" as const,
+        quality: 70,
+        showAiLabel: false,
+        createdAt: "2026-08-16T00:00:00.000Z",
+        updatedAt: "2026-08-16T00:00:00.000Z",
+      }
+      expect(databaseRecordInsert(connection.db, outputDefinitionTable, managed).success).toBe(true)
+      expect(databaseRecordInsert(connection.db, outputDefinitionTable, custom).success).toBe(true)
+
+      const repaired = assetApiRepositoryCreate(connection.db).assetOutputsSet("project-1", "asset-1", {
+        outputs: [
+          {
+            kind: "image",
+            key: "default",
+            width: 1920,
+            height: 1080,
+            format: "avif",
+            quality: 80,
+          },
+          {
+            kind: "image",
+            key: "mobile",
+            width: 640,
+            height: 360,
+            format: "png",
+            quality: 70,
+            showAiLabel: false,
+          },
+        ],
+      })
+      expect(repaired.success).toBe(true)
+      const rows = connection.db.select().from(outputDefinitionTable).all()
+      expect(rows.find((row) => row.id === custom.id)).toEqual(custom)
+      expect(rows.find((row) => row.id === managed.id)).toMatchObject({
+        ...managed,
+        width: 1920,
+        height: 1080,
+        format: "avif",
+        quality: 80,
+        showAiLabel: null,
+        createdAt: managed.createdAt,
+        updatedAt: expect.not.stringMatching(managed.updatedAt),
+      })
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
   test("scopes inventory, preserves history, enqueues output workflows, and makes mutations idempotent", () => {
     const connection = databaseCreate()
     try {
@@ -199,7 +341,7 @@ describe("asset API persistence", () => {
     }
   })
 
-  test("creates missing asset metadata from the current catalog output when setting alt", () => {
+  test("creates missing asset metadata without mutating the current catalog output when setting alt", () => {
     const connection = databaseCreate()
     try {
       connection.db.delete(assetMetadataTable).where(eq(assetMetadataTable.assetId, "asset-1")).run()
@@ -219,6 +361,7 @@ describe("asset API persistence", () => {
       expect(output.success).toBe(true)
       const version = databaseRecordInsert(connection.db, outputVersionTable, {
         id: "version-asset-1-default",
+        projectId: "project-1",
         outputDefinitionId: "output-asset-1-default",
         assetId: "asset-1",
         sourceRevisionId: "source-1",
@@ -303,12 +446,13 @@ describe("asset API persistence", () => {
       const lists = catalogRepository.catalogListsRead("project-1", "development", {})
       expect(lists).toMatchObject({
         success: true,
-        data: { imageList: expect.stringContaining('"alt": "Catalog alt"') },
+        data: { imageList: expect.stringContaining('"alt": null') },
       })
+      expect(lists).toMatchObject({ data: { imageList: expect.not.stringContaining("Catalog alt") } })
       const current = catalogRepository.catalogCurrentRead("project-1", "development")
       expect(current).toMatchObject({
         success: true,
-        data: { catalog: { outputs: [{ metadata: { ...catalogMetadata, alt: "Catalog alt" } }] } },
+        data: { catalog: { outputs: [{ metadata: catalogMetadata }] } },
       })
     } finally {
       databaseClose(connection)
@@ -358,6 +502,7 @@ describe("asset API persistence", () => {
           byteSize: bytes.byteLength,
           mediaType: "image/png",
         },
+        "actor-1",
       )
       expect(intent.success).toBe(true)
       if (!intent.success) return
@@ -378,8 +523,31 @@ describe("asset API persistence", () => {
       const checksum = contentSha256Create(bytes)
       const completed = await repository.uploadCompletionComplete("project-1", "upload-1", { sha256: checksum })
       const repeated = await repository.uploadCompletionComplete("project-1", "upload-1", { sha256: checksum })
+      const ingestionRetry = await uploadIngestionComplete(connection.db, storage, { uploadId: "upload-1", now })
+      const repeatedIngestionRetry = await uploadIngestionComplete(connection.db, storage, {
+        uploadId: "upload-1",
+        now,
+      })
       expect(completed).toMatchObject({ success: true, data: { uploadId: "upload-1", status: "accepted" } })
       expect(repeated).toEqual(completed)
+      expect(ingestionRetry).toMatchObject({
+        success: true,
+        data: { uploadId: "upload-1", assetId: "asset-upload-1", sourceRevisionId: "source-upload-1" },
+      })
+      expect(repeatedIngestionRetry).toEqual(ingestionRetry)
+      expect(connection.db.select().from(auditEventTable).all()).toEqual([
+        {
+          id: "audit-asset-created-asset-upload-1",
+          organizationId: "org-1",
+          projectId: "project-1",
+          actorId: "actor-1",
+          action: "asset.created",
+          resourceType: "asset",
+          resourceId: "asset-upload-1",
+          details: { uploadId: "upload-1" },
+          createdAt: expect.any(String),
+        },
+      ])
       expect(connection.db.select().from(outputDefinitionTable).all()).toMatchObject([
         {
           id: "output-asset-upload-1-default",
@@ -396,6 +564,73 @@ describe("asset API persistence", () => {
         },
       ])
       expect(connection.db.select().from(assetTable).all()).toHaveLength(2)
+      expect(connection.db.select().from(auditEventTable).all()).toHaveLength(1)
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
+  test("rejects a conflicting deterministic asset creation audit event", async () => {
+    const connection = databaseCreate()
+    try {
+      const storage = memoryStorageAdapterCreate({ now: () => new Date(now) })
+      const repository = uploadApiRepositoryCreate(connection.db, storage, { now: () => new Date(now) })
+      const environment = connection.db.select().from(environmentTable).get()
+      if (environment === undefined) return
+      const environmentInput = {
+        id: environment.id,
+        projectId: environment.projectId,
+        name: environment.name,
+        r2Bucket: environment.r2Bucket,
+        r2Prefix: environment.r2Prefix,
+        publicBaseUrl: environment.publicBaseUrl,
+        createdAt: environment.createdAt,
+        updatedAt: environment.updatedAt,
+      }
+      const intent = await repository.uploadIntentCreate(
+        "project-1",
+        environmentInput,
+        {
+          uploadId: "upload-conflicting-audit",
+          originalFilename: "new.png",
+          folders: ["new"],
+          integrationNote: "New asset",
+          byteSize: bytes.byteLength,
+          mediaType: "image/png",
+        },
+        "actor-1",
+      )
+      expect(intent.success).toBe(true)
+      if (!intent.success) return
+
+      const binding = storageBindingResolve(environmentInput)
+      if (!binding.success) return
+      const staging = storageObjectLocationCreate(binding.data, "private-staging", "uploads/upload-conflicting-audit")
+      if (!staging.success) return
+      expect((await storage.putImmutable({ location: staging.data, bytes, mediaType: "image/png" })).success).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, auditEventTable, {
+          id: "audit-asset-created-asset-upload-conflicting-audit",
+          organizationId: "org-1",
+          projectId: "project-1",
+          actorId: "different-actor",
+          action: "asset.created",
+          resourceType: "asset",
+          resourceId: "asset-upload-conflicting-audit",
+          details: { uploadId: "upload-conflicting-audit" },
+          createdAt: now,
+        }).success,
+      ).toBe(true)
+
+      const checksum = contentSha256Create(bytes)
+      const result = await repository.uploadCompletionComplete("project-1", "upload-conflicting-audit", {
+        sha256: checksum,
+      })
+      expect(result).toMatchObject({
+        success: false,
+        errorMessage: "The asset creation audit event did not match the upload",
+      })
+      expect(connection.db.select().from(assetTable).all()).toHaveLength(1)
     } finally {
       databaseClose(connection)
     }
@@ -431,6 +666,8 @@ describe("asset API persistence", () => {
       expect(connection.db.select().from(uploadTable).get()).toMatchObject({
         id: "upload-replacement",
         assetId: "asset-1",
+        uploaderId: null,
+        notificationEligible: false,
       })
       if (!intent.success) return
 

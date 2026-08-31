@@ -362,6 +362,7 @@ describe("structure folder repository", () => {
       expect(
         databaseRecordInsert(connection.db, outputVersionTable, {
           id: "version-1",
+          projectId: "project-1",
           outputDefinitionId: "definition-1",
           assetId: "asset-1",
           sourceRevisionId: "source-1",
