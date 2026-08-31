@@ -24,6 +24,7 @@ const project = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
+const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
 const binding = {
   id: "binding-1",
   projectId: "project-1",
@@ -112,7 +113,7 @@ const outputVersion = {
 }
 
 const projectRepositoryCreate = (): ProjectRepository => ({
-  projectsRead: () => ({ success: true, data: [project] }),
+  projectsRead: () => ({ success: true, data: [projectListItem] }),
   projectRead: (identifier) => ({
     success: true,
     data: identifier === "project-service" || identifier === "project-1" ? project : null,

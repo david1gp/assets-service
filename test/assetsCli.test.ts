@@ -216,7 +216,13 @@ const projectResolutionFetcherCreate = (
     requests.push(request)
     const url = new URL(request.url)
     if (url.pathname === "/api/v1/projects")
-      return projectsResponse ?? envelopeResponseCreate({ projects, page: { limit: 100, nextCursor: null } })
+      return (
+        projectsResponse ??
+        envelopeResponseCreate({
+          projects: projects.map((project) => ({ ...project, assetCount: 0, totalFileSize: 0 })),
+          page: { limit: 100, nextCursor: null },
+        })
+      )
     const projectPrefix = "/api/v1/projects/"
     if (url.pathname.startsWith(projectPrefix) && !url.pathname.endsWith("/assets")) {
       const project = projects.find(

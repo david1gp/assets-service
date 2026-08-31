@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import * as v from "valibot"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
 import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
+import { projectListResponseSchema } from "../src/api-client/projectListResponseSchema.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
 import { memorySessionStoreCreate } from "../src/authentication/memorySessionStoreCreate.js"
 import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.js"
@@ -55,6 +57,7 @@ const project = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
+const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
 
 const binding = {
   id: "binding-1",
@@ -93,7 +96,7 @@ const authenticationConfig = {
 }
 
 const projectRepositoryCreate = (): ProjectRepository => ({
-  projectsRead: () => ({ success: true, data: [project] }),
+  projectsRead: () => ({ success: true, data: [projectListItem] }),
   projectRead: () => ({ success: true, data: project }),
   projectBindingRead: () => ({ success: true, data: binding }),
   environmentsRead: () => ({ success: true, data: [environment] }),
@@ -266,6 +269,26 @@ describe("HTTP API", () => {
     expect(adminSettings.status).toBe(200)
   })
 
+  test("returns aggregate metrics in the project list contract", async () => {
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectsRead: () => ({ success: true, data: [{ ...projectListItem, assetCount: 2, totalFileSize: 50 }] }),
+    }
+    const app = apiAppCreate(options)
+    const cookie = await sessionCreate(options)
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie } }),
+    )
+    const body = (await response.json()) as { data: unknown }
+    const parsed = v.safeParse(projectListResponseSchema, body.data)
+
+    expect(response.status).toBe(200)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.output.projects[0]).toMatchObject({ assetCount: 2, totalFileSize: 50 })
+  })
+
   test("normalizes omitted and empty R2 prefixes in settings input", async () => {
     const options = optionsCreate()
     const received: string[][] = []
@@ -319,7 +342,7 @@ describe("HTTP API", () => {
       ...options.projectRepository,
       projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
         requestedOrganizationAdmin = organizationAdmin
-        return { success: true, data: [project] }
+        return { success: true, data: [projectListItem] }
       },
     }
     const app = apiAppCreate(options)
@@ -335,7 +358,7 @@ describe("HTTP API", () => {
       ...regularOptions.projectRepository,
       projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
         requestedOrganizationAdmin = organizationAdmin
-        return { success: true, data: [project] }
+        return { success: true, data: [projectListItem] }
       },
     }
     const regularApp = apiAppCreate(regularOptions)

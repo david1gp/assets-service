@@ -1,11 +1,15 @@
-import { and, asc, eq, inArray, or } from "drizzle-orm"
+import { and, asc, count, eq, inArray, or, sql } from "drizzle-orm"
 import * as v from "valibot"
 
+import { type ProjectListItem, projectListItemSchema } from "../api-client/projectListItemSchema.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
+import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
+import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { organizationTable } from "../infrastructure/db/schema/organizationTable.js"
 import { projectBindingTable } from "../infrastructure/db/schema/projectBindingTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
+import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { type Environment, environmentSchema } from "./environmentSchema.js"
@@ -15,7 +19,6 @@ import type { ProjectRepository } from "./projectRepository.js"
 import { type Project, projectSchema } from "./projectSchema.js"
 import { type ProjectSettings, projectSettingsSchema } from "./projectSettingsSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "./projectSettingsUpdateSchema.js"
-import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 
 type ProjectRecord = typeof projectTable.$inferSelect
 type EnvironmentRecord = typeof environmentTable.$inferSelect
@@ -25,6 +28,17 @@ type ProjectBindingRecord = typeof projectBindingTable.$inferSelect
 const projectRead = (record: ProjectRecord): Result<Project> => {
   const parsed = v.safeParse(projectSchema, record)
   if (!parsed.success) return resultErrorCreate("projectRepositoryProjectRead", "The stored project was invalid")
+  return { success: true, data: parsed.output }
+}
+
+const projectListItemRead = (
+  record: ProjectRecord,
+  assetCount: number,
+  totalFileSize: number,
+): Result<ProjectListItem> => {
+  const parsed = v.safeParse(projectListItemSchema, { ...record, assetCount, totalFileSize })
+  if (!parsed.success)
+    return resultErrorCreate("projectRepositoryProjectListItemRead", "The stored project list item was invalid")
   return { success: true, data: parsed.output }
 }
 
@@ -126,24 +140,37 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     organizationId: string,
     zitadelProjectIds: readonly string[],
     organizationAdmin = false,
-  ): Result<readonly Project[]> => {
+  ): Result<readonly ProjectListItem[]> => {
     if (!organizationAdmin && zitadelProjectIds.length === 0) return { success: true, data: [] }
     try {
       const projectFilter = organizationAdmin
         ? undefined
         : inArray(projectBindingTable.zitadelProjectId, [...zitadelProjectIds])
       const records = db
-        .select({ project: projectTable })
+        .select({
+          project: projectTable,
+          assetCount: count(assetTable.id),
+          totalFileSize: sql<number>`coalesce(sum(${sourceRevisionTable.byteSize}), 0)`,
+        })
         .from(projectTable)
         .innerJoin(projectBindingTable, eq(projectBindingTable.projectId, projectTable.id))
+        .leftJoin(assetTable, eq(assetTable.projectId, projectTable.id))
+        .leftJoin(
+          sourceRevisionTable,
+          and(
+            eq(sourceRevisionTable.id, assetTable.currentSourceRevisionId),
+            eq(sourceRevisionTable.assetId, assetTable.id),
+          ),
+        )
         .where(
           and(eq(projectTable.organizationId, organizationId), ...(projectFilter === undefined ? [] : [projectFilter])),
         )
+        .groupBy(projectTable.id)
         .orderBy(asc(projectTable.name), asc(projectTable.id))
         .all()
-      const projects: Project[] = []
+      const projects: ProjectListItem[] = []
       for (const record of records) {
-        const project = projectRead(record.project)
+        const project = projectListItemRead(record.project, record.assetCount, record.totalFileSize)
         if (!project.success) return project
         projects.push(project.data)
       }

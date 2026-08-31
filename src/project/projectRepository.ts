@@ -1,3 +1,4 @@
+import type { ProjectListItem } from "../api-client/projectListItemSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { Environment } from "./environmentSchema.js"
 import type { Organization } from "./organizationSchema.js"
@@ -11,7 +12,7 @@ export type ProjectRepository = {
     organizationId: string,
     zitadelProjectIds: readonly string[],
     organizationAdmin?: boolean,
-  ) => Result<readonly Project[]>
+  ) => Result<readonly ProjectListItem[]>
   projectRead: (projectIdentifier: string) => Result<Project | null>
   projectBindingRead: (projectIdentifier: string) => Result<ProjectBinding | null>
   environmentsRead: (projectId: string) => Result<readonly Environment[]>
