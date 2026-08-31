@@ -9,7 +9,6 @@ export const jobPayloadSchema = v.strictObject({
   uploadId: v.optional(idSchema),
   environmentId: v.optional(idSchema),
   deletionId: v.optional(idSchema),
-  legacyImportId: v.optional(idSchema),
   values: v.optional(jsonObjectSchema),
 })
 

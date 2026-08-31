@@ -38,7 +38,6 @@ import { apiBackupRoutesRegister } from "./apiBackupRoutesRegister.js"
 import { apiCatalogRoutesRegister } from "./apiCatalogRoutesRegister.js"
 import { apiDeletionStatusRoutesRegister } from "./apiDeletionStatusRoutesRegister.js"
 import { apiErrorResponseCreate } from "./apiErrorResponseCreate.js"
-import { apiImportRoutesRegister } from "./apiImportRoutesRegister.js"
 import { apiProjectRoleMiddlewareCreate } from "./apiProjectRoleMiddlewareCreate.js"
 import { apiRequestAuthenticationRead } from "./apiRequestAuthenticationRead.js"
 import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
@@ -234,9 +233,6 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/catalogs\/[^/]+\/generations\/[^/]+\/lists$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/manifests$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/manifests\/[^/]+$/, methods: ["GET"] },
-    { pattern: /^\/api\/v1\/projects\/[^/]+\/imports$/, methods: ["GET", "POST"] },
-    { pattern: /^\/api\/v1\/projects\/[^/]+\/imports\/[^/]+$/, methods: ["GET"] },
-    { pattern: /^\/api\/v1\/projects\/[^/]+\/imports\/[^/]+\/status$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/audit-events$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/audit-events\/[^/]+$/, methods: ["GET"] },
   ]
@@ -1181,11 +1177,6 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     repository: options.assetApiRepository,
     authenticationMiddleware,
     uploaderMiddleware,
-    adminMiddleware,
-  })
-  apiImportRoutesRegister(app, {
-    executor: options.legacyImportExecutor,
-    authenticationMiddleware,
     adminMiddleware,
   })
   apiAuditRoutesRegister(app, {

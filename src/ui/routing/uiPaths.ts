@@ -11,6 +11,5 @@ export const uiPaths = {
   jobs: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/jobs`,
   backups: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/backups`,
   catalog: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/catalog`,
-  imports: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/imports`,
   audit: (projectId: string) => `/projects/${encodeURIComponent(projectId)}/audit`,
 } as const

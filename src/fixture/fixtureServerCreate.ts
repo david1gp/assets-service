@@ -4,11 +4,9 @@ import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
 import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
-import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
-import { memoryStorageAdapterCreate } from "../infrastructure/storage/memoryStorageAdapter.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
@@ -72,11 +70,6 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     backupApiRepository: backupApiRepositoryCreate(connection.data.db),
     catalogApiRepository: catalogApiRepositoryCreate(connection.data.db),
     auditApiRepository: auditApiRepositoryCreate(connection.data.db),
-    legacyImportExecutor: legacyImportExecutorCreate({
-      db: connection.data.db,
-      storage: memoryStorageAdapterCreate(),
-      sourceRoots: [],
-    }),
     readinessCheck: () => ({ success: true, data: true }),
   })
 

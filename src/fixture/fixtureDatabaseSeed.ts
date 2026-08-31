@@ -12,7 +12,6 @@ import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
 import { deletionStateTable } from "../infrastructure/db/schema/deletionStateTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { jobTable } from "../infrastructure/db/schema/jobTable.js"
-import { legacyImportTable } from "../infrastructure/db/schema/legacyImportTable.js"
 import { organizationTable } from "../infrastructure/db/schema/organizationTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTable.js"
@@ -47,8 +46,7 @@ const hash = (seed: string) => seed.repeat(64).slice(0, 64)
 /**
  * Writes a small but complete project into an empty database: one image, one
  * video, one font, and one document asset with outputs, source revisions,
- * metadata, jobs, backup receipts, a catalog generation, a legacy import, and
- * audit events.
+ * metadata, jobs, backup receipts, a catalog generation, and audit events.
  */
 export const fixtureDatabaseSeed = (
   db: AssetDatabase,
@@ -779,24 +777,6 @@ export const fixtureDatabaseSeed = (
         rendererVersion: "fixture-1",
         generatedAt: at(7),
         updatedAt: at(7),
-      })
-      .run()
-
-    transaction
-      .insert(legacyImportTable)
-      .values({
-        id: "import-1",
-        projectId: seed.projectId,
-        actorId: seed.subjectId,
-        root: "/srv/legacy/contentoren",
-        environment: "development",
-        atomicity: "all_or_nothing",
-        status: "succeeded",
-        importedCount: 4,
-        conflicts: [],
-        createdAt: at(8),
-        updatedAt: at(9),
-        completedAt: at(9),
       })
       .run()
 

@@ -107,7 +107,6 @@ const sessionSchema = v.strictObject({
 const optionNames = new Set([
   "alt",
   "api-url",
-  "atomicity",
   "class",
   "config",
   "document-list",
@@ -184,7 +183,6 @@ const commandHelp = {
     "doctor --environment <development|production>",
     "diff [root]",
     "upload-all [root] --integration-note <text>",
-    "import <root>",
     "upload <file> --path <folder/file> --integration-note <text>",
     "list",
     "show <asset-key>",
@@ -224,7 +222,6 @@ const commandHelp = {
     "--dry-run",
     "--delete",
     "--token-stdin",
-    "--atomicity",
     "--show-ai-label",
     "--path",
     "--note",
@@ -635,7 +632,6 @@ const commandRootRead = (parsed: ParsedCommand): string | undefined => {
   if (
     parsed.command === "diff" ||
     parsed.command === "upload-all" ||
-    parsed.command === "import" ||
     (parsed.command === "config" && parsed.subcommand === "show")
   )
     return parsed.positionals[0] ?? "."
@@ -1749,19 +1745,9 @@ const commandRun = async (
   }
 
   if (
-    ![
-      "diff",
-      "upload-all",
-      "import",
-      "upload",
-      "list",
-      "lists",
-      "show",
-      "outputs",
-      "metadata",
-      "move",
-      "delete",
-    ].includes(parsed.command)
+    !["diff", "upload-all", "upload", "list", "lists", "show", "outputs", "metadata", "move", "delete"].includes(
+      parsed.command,
+    )
   )
     return { result: resultFailure("assetsCliCommand", `Unknown command ${parsed.command}`) }
 
@@ -1813,38 +1799,6 @@ const commandRun = async (
       result: { success: true, data: output },
       exitCode: output.entries.every((entry) => entry.status === "matching") ? 0 : 1,
       humanOutput: diffHumanOutputRead(output),
-    }
-  }
-
-  if (parsed.command === "import") {
-    const positional = positionalRequire(parsed, 1)
-    if (!positional.success) return { result: positional }
-    const allowed = optionAllowed(parsed, ["atomicity", "show-ai-label", "wait", "no-wait", "poll-interval"])
-    if (!allowed.success) return { result: allowed }
-    if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
-      return { result: resultFailure("assetsCliImport", "--wait and --no-wait cannot be used together") }
-    const atomicity = optionRead(parsed, "atomicity")
-    if (
-      atomicity !== undefined &&
-      atomicity !== "all_or_nothing" &&
-      atomicity !== "best_effort" &&
-      atomicity !== "partial"
-    )
-      return { result: resultFailure("assetsCliImport", "--atomicity must be all_or_nothing or best_effort") }
-    const input = {
-      root: positional.data[0],
-      ...(selected.data.environment === undefined ? {} : { environment: selected.data.environment }),
-      ...(atomicity === undefined ? {} : { atomicity: atomicity === "partial" ? "best_effort" : atomicity }),
-      ...(flagRead(parsed, "show-ai-label") ? { showAiLabel: true } : {}),
-    }
-    const imported = await client.importRequestCreate(projectId, input)
-    if (!imported.success) return { result: imported }
-    if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait")) return { result: imported }
-    const status = await client.importWait(projectId, imported.data.import.id)
-    if (!status.success) return { result: status }
-    return {
-      result: { success: true, data: { import: status.data } },
-      exitCode: status.data.status === "succeeded" ? 0 : 1,
     }
   }
 

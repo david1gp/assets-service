@@ -100,7 +100,11 @@ const migrationFolderCreate = (includeStructureMigration: boolean) => {
   mkdirSync(metaFolder)
   for (const filename of readdirSync(sourceFolder)) {
     if (!filename.endsWith(".sql")) continue
-    if (!includeStructureMigration && (filename.startsWith("0009_") || filename.startsWith("0010_"))) continue
+    if (
+      !includeStructureMigration &&
+      (filename.startsWith("0009_") || filename.startsWith("0010_") || filename.startsWith("0011_"))
+    )
+      continue
     copyFileSync(join(sourceFolder, filename), join(migrationFolder, filename))
   }
   const journal = JSON.parse(readFileSync(join(sourceFolder, "meta", "_journal.json"), "utf8")) as {
@@ -109,7 +113,10 @@ const migrationFolderCreate = (includeStructureMigration: boolean) => {
   }
   if (!includeStructureMigration)
     journal.entries = journal.entries.filter(
-      (entry) => entry.tag !== "0009_structure_folders" && entry.tag !== "0010_backup_remote_path_migration_runs",
+      (entry) =>
+        entry.tag !== "0009_structure_folders" &&
+        entry.tag !== "0010_backup_remote_path_migration_runs" &&
+        entry.tag !== "0011_remove_legacy_imports",
     )
   writeFileSync(join(metaFolder, "_journal.json"), JSON.stringify(journal))
   return migrationFolder
@@ -166,6 +173,34 @@ describe("structure folder repository", () => {
           }).success,
         ).toBe(true)
       }
+      for (const [id, role] of [
+        ["grant-admin", "assets.admin"],
+        ["grant-uploader", "assets.uploader"],
+      ] as const) {
+        legacy.connection.client
+          .prepare(
+            "INSERT INTO project_grants (id, project_id, organization_id, subject_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(id, "project-1", "org-1", `subject-${id}`, role, now, now)
+      }
+      legacy.connection.client
+        .prepare(
+          "INSERT INTO legacy_imports (id, project_id, actor_id, root, environment, atomicity, status, imported_count, conflicts, created_at, updated_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          "legacy-import-1",
+          "project-1",
+          "actor-1",
+          "/",
+          "development",
+          "best_effort",
+          "succeeded",
+          0,
+          "[]",
+          now,
+          now,
+          now,
+        )
       const assets = [
         ["asset-root", "project-1", "shared", null, null],
         ["asset-child", "project-1", "shared", "child", null],
@@ -213,6 +248,20 @@ describe("structure folder repository", () => {
       try {
         const migrated = databaseMigrate(legacy.connection, structureMigrationFolder)
         expect(migrated).toEqual({ success: true, data: null })
+        expect(
+          legacy.connection.client.query("SELECT id, role FROM project_grants ORDER BY id").all() as Array<{
+            id: string
+            role: string
+          }>,
+        ).toEqual([
+          { id: "grant-admin", role: "admin" },
+          { id: "grant-uploader", role: "contributor" },
+        ])
+        expect(
+          legacy.connection.client
+            .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'legacy_imports'")
+            .all(),
+        ).toEqual([])
       } finally {
         rmSync(structureMigrationFolder, { recursive: true, force: true })
       }

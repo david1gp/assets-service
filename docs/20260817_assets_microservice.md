@@ -27,8 +27,8 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 - [x] 3. Implement folder/key/version/hash invariants, processing adapters for image/video/font behavior, and deterministic list rendering.
 - [x] 4. Implement R2 staging/public storage, signed upload intents, object verification, rclone backup, Zitadel auth/session/JWKS authorization, and integration doctors.
 - [x] 5. Implement durable workflow/job leasing, ingestion, backup-before-publication, output generation, retries, dependencies, and recovery.
-- [x] 6. Implement HTTP API routes for projects, uploads, assets, outputs, metadata, moves, deletion, jobs, backups, catalogs, imports, and health.
-- [x] 7. Implement complete deletion, legacy import, Telegram outbox delivery, reconciliation, cleanup, and SQLite backup/restore.
+- [x] 6. Implement HTTP API routes for projects, uploads, assets, outputs, metadata, moves, deletion, jobs, backups, catalogs, and health.
+- [x] 7. Implement complete deletion, Telegram outbox delivery, reconciliation, cleanup, and SQLite backup/restore.
 - [x] 8. Implement the remote CLI with deterministic envelopes and catalog generation/checking.
 - [x] 9. Complete backend integration, fixture, authorization, idempotency, and failure-ordering tests; document configuration and operations.
 - [x] 10. Implement the SolidJS admin SPA, connect all required flows, and browser-verify responsive/accessibility states.
@@ -37,7 +37,7 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 ## Paths
 
 - `src/schemas`, `src/config`, `src/domain`, `src/infrastructure`
-- `src/asset`, `src/upload`, `src/output`, `src/metadata`, `src/catalog`, `src/project`, `src/import`
+- `src/asset`, `src/upload`, `src/output`, `src/metadata`, `src/catalog`, `src/project`
 - `src/processing`, `src/workflow`, `src/backup`, `src/notification`, `src/authentication`, `src/deletion`
 - `src/api`, `src/api-client`, `src/cli`, `src/entrypoints`, `src/ui`
 - `drizzle`, `ops`, `public`, `test`, `tests`
@@ -53,11 +53,11 @@ Implement the assets microservice specified by `../assets-optimizer/docs/2026081
 - Asset naming/version/hash invariants, byte-oriented image/video/font processing adapters, and deterministic canonical list rendering are implemented.
 - R2 upload/storage, verified `gdrive_beta` backup, Zitadel authentication/authorization, durable sessions, and redacted integration doctors are implemented behind testable adapters.
 - Durable resource-bounded jobs now cover verified ingestion, processing, backup-before-publication, immutable manifests, notification outbox events, cleanup, retries, and restart-safe idempotency.
-- The authenticated Hono API now exposes project-scoped auth, project, upload, asset, output, metadata, move, deletion-request, workflow, backup, catalog, import-request, audit, and health contracts.
-- Complete deletion, read-only legacy import, Telegram outbox delivery, safe reconciliation, and WAL-safe SQLite snapshot/restore operations are implemented and tested.
+- The authenticated Hono API now exposes project-scoped auth, project, upload, asset, output, metadata, move, deletion-request, workflow, backup, catalog, audit, and health contracts.
+- Complete deletion, Telegram outbox delivery, safe reconciliation, and WAL-safe SQLite snapshot/restore operations are implemented and tested.
 - The remote CLI now provides deterministic command semantics and generated-list checking.
 - Backend integration, authorization, idempotency, failure ordering, fixture coverage, and production operation documentation are complete.
-- The SolidJS admin SPA now covers login/session/logout, projects, editable project/environment binding settings, the flat asset inventory, direct upload with workflow status, asset detail with an atomic output-set editor and public/backup/workflow/deletion detail, jobs, backups, catalog, imports, audit, and not-found handling; the built SPA is served from the API origin behind an API-safe fallback.
+- The SolidJS admin SPA now covers login/session/logout, projects, editable project/environment binding settings, the flat asset inventory, direct upload with workflow status, asset detail with an atomic output-set editor and public/backup/workflow/deletion detail, jobs, backups, catalog, audit, and not-found handling; the built SPA is served from the API origin behind an API-safe fallback.
 - A test-only seeded fixture server (`bun run fixture:server`, http://127.0.0.1:3021) serves the built SPA and a seeded API from one origin using an isolated database and a local session adapter; production authentication is unchanged.
 - Uploads accept only media types that are detectable from bytes and processable; `image/svg+xml` is refused at the intent with HTTP 400, the file picker narrows to the same allowlist, and the form states the rule.
 - Red, green, and amber colors come from app-owned tone helpers and class overrides that clear WCAG AA in both themes, without editing `./ui`.

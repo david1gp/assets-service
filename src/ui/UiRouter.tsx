@@ -4,7 +4,6 @@ import { UiAssetListPage } from "./pages/UiAssetListPage.jsx"
 import { UiAuditPage } from "./pages/UiAuditPage.jsx"
 import { UiBackupsPage } from "./pages/UiBackupsPage.jsx"
 import { UiCatalogPage } from "./pages/UiCatalogPage.jsx"
-import { UiImportsPage } from "./pages/UiImportsPage.jsx"
 import { UiJobsPage } from "./pages/UiJobsPage.jsx"
 import { UiLoginPage } from "./pages/UiLoginPage.jsx"
 import { UiNotFoundPage } from "./pages/UiNotFoundPage.jsx"
@@ -29,7 +28,6 @@ export function UiRouter() {
         <Route path="/projects/:projectId/jobs" component={UiJobsPage} />
         <Route path="/projects/:projectId/backups" component={UiBackupsPage} />
         <Route path="/projects/:projectId/catalog" component={UiCatalogPage} />
-        <Route path="/projects/:projectId/imports" component={UiImportsPage} />
         <Route path="/projects/:projectId/audit" component={UiAuditPage} />
         <Route path="*" component={UiNotFoundPage} />
       </Router>

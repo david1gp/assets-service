@@ -1,60 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import sharp from "sharp"
 import { catalogListsRender } from "../../src/catalog/catalogListsRender.js"
 import { fontProcess } from "../../src/processing/fontProcess.js"
-import { legacyImportPlanCreate } from "../../src/import/legacyImportPlanCreate.js"
 import { imageProcess } from "../../src/processing/imageProcess.js"
 import { videoProcess } from "../../src/processing/videoProcess.js"
 
 const fixtureRoot = join(import.meta.dir, "../fixtures/contentoren")
 
 describe("backend verification fixtures", () => {
-  test("imports the checked-in Contentoren tree with merged transforms and generated metadata", async () => {
-    const planned = await legacyImportPlanCreate(fixtureRoot, { showAiLabel: false })
-    expect(planned.success).toBe(true)
-    if (!planned.success) return
-
-    expect(planned.data.conflicts).toEqual([])
-    expect(planned.data.groups.map((group) => `${group.class}:${group.folders.join("/")}:${group.basename}`)).toEqual([
-      "document:guides:guide",
-      "font:ui:Inter-Regular",
-      "image:home:hero",
-      "video:home:intro",
-    ])
-    const image = planned.data.groups.find((group) => group.class === "image")
-    expect(image).toMatchObject({
-      folders: ["home"],
-      basename: "hero",
-      alt: "Contentoren hero AI: generated · fixture",
-    })
-    expect(image?.outputs.map((output) => output.key)).toEqual(["100x100_webp_ai_generated", "500x500_webp"])
-    expect(image?.outputs.every((output) => output.kind !== "image" || output.showAiLabel === false)).toBe(true)
-  })
-
-  test("reports all source checksum conflicts without changing the fixture", async () => {
-    const root = await mkdtemp(join(tmpdir(), "assets-service-contentoren-conflict-"))
-    try {
-      await cp(fixtureRoot, root, { recursive: true })
-      const wrongPath = join(root, "images", "home", "100x100_webp_ai_generated", "hero.svg")
-      await writeFile(wrongPath, '<svg xmlns="http://www.w3.org/2000/svg"/>\n')
-      const planned = await legacyImportPlanCreate(root)
-      expect(planned.success).toBe(true)
-      if (!planned.success) return
-      expect(planned.data.conflicts).toContainEqual(
-        expect.objectContaining({
-          code: "source_checksum_conflict",
-          candidates: ["images/home/100x100_webp_ai_generated/hero.svg", "images/home/500x500_webp/hero.svg"],
-        }),
-      )
-      expect(await readFile(join(fixtureRoot, "images/home/500x500_webp/hero.svg"), "utf8")).toContain("#2d5b8a")
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
   test("keeps optimizer image bounds, EXIF orientation, and AI-label byte behavior", async () => {
     const source = await sharp({
       create: { width: 2, height: 4, channels: 3, background: { r: 220, g: 220, b: 220 } },

@@ -32,13 +32,6 @@ export const serviceConfigRead = (environment: NodeJS.ProcessEnv = process.env):
     rcloneBackupRoot: environment.ASSETS_RCLONE_BACKUP_ROOT ?? "backups",
     rcloneTimeoutMs: Number(environment.ASSETS_RCLONE_TIMEOUT_MS ?? "300000"),
     ffprobeExecutable: environment.ASSETS_FFPROBE_EXECUTABLE ?? "ffprobe",
-    ...(environment.ASSETS_LEGACY_IMPORT_ROOTS === undefined
-      ? {}
-      : {
-          legacyImportRoots: environment.ASSETS_LEGACY_IMPORT_ROOTS.split(",")
-            .map((root) => root.trim())
-            .filter((root) => root.length > 0),
-        }),
   })
 
   if (!parsed.success) return resultErrorCreate("serviceConfigRead", v.summarize(parsed.issues))

@@ -12,7 +12,6 @@ import { deletionStateTable } from "./deletionStateTable.js"
 import { environmentTable } from "./environmentTable.js"
 import { jobDependencyTable } from "./jobDependencyTable.js"
 import { jobTable } from "./jobTable.js"
-import { legacyImportTable } from "./legacyImportTable.js"
 import { manifestTable } from "./manifestTable.js"
 import { organizationTable } from "./organizationTable.js"
 import { outboxEventTable } from "./outboxEventTable.js"
@@ -42,7 +41,6 @@ export const databaseSchema = {
   environmentTable,
   jobDependencyTable,
   jobTable,
-  legacyImportTable,
   manifestTable,
   organizationTable,
   outboxEventTable,

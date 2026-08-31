@@ -28,7 +28,6 @@ operational R2 settings below remain environment-configured.
 | `ASSETS_RCLONE_EXECUTABLE`, `ASSETS_RCLONE_TIMEOUT_MS` | rclone process settings |
 | `ASSETS_RCLONE_REMOTE`, `ASSETS_RCLONE_BACKUP_ROOT` | Must be `gdrive_beta` and `backups` |
 | `ASSETS_FFPROBE_EXECUTABLE` | Video metadata probe |
-| `ASSETS_LEGACY_IMPORT_ROOTS` | Comma-separated, explicitly allowed import roots |
 
 R2 uses separate private staging/source and public output namespaces. Public versioned and hash-named objects must keep
 `public, max-age=31536000, immutable`. Private objects use `no-store`. `r2Prefix` is optional: leave it empty for a

@@ -122,8 +122,8 @@ describe("fixture server", () => {
     expect(response.status).toBe(401)
   })
 
-  test("exposes jobs, backups, catalog, imports, and audit data", async () => {
-    for (const path of ["workflows", "jobs", "backups", "imports", "audit-events"]) {
+  test("exposes jobs, backups, catalog, and audit data", async () => {
+    for (const path of ["workflows", "jobs", "backups", "audit-events"]) {
       const response = await get(`/api/v1/projects/${server.seed.serviceProjectId}/${path}`)
       expect(response.status).toBe(200)
     }

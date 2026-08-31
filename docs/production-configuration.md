@@ -32,7 +32,6 @@ runtime. They do not need startup allowlisting or project-specific entries in th
 optional: use an empty value for a dedicated bucket and retain a non-empty value to namespace objects in a shared
 bucket. The service-level R2 values above are used for operational tooling; they do not override project environment
 settings.
-`ASSETS_LEGACY_IMPORT_ROOTS` is an optional comma-separated list of absolute read-only import roots.
 
 ## R2 and rclone
 

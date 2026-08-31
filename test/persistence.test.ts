@@ -59,7 +59,6 @@ describe("SQLite persistence", () => {
         "environments",
         "job_dependencies",
         "jobs",
-        "legacy_imports",
         "manifests",
         "organizations",
         "outbox_events",

@@ -34,7 +34,6 @@ bun run release  # git-cliff changelog + tag
 ```bash
 bun run assets --help
 bun run assets doctor --environment development
-bun run assets import ./images --atomicity all_or_nothing
 bun run assets upload ./card.png --path home/card.png --integration-note "Home card"
 bun run assets list --kind image --include outputs,metadata,history
 bun run assets lists --dir src/app/assets

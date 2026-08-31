@@ -26,7 +26,6 @@ export const sqliteDatabaseIntegrityVerify = (databasePath: string): Result<null
       "catalogs",
       "jobs",
       "outbox_events",
-      "legacy_imports",
       "deletion_states",
       "reconciliation_runs",
     ]

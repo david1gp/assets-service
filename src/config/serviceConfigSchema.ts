@@ -22,7 +22,6 @@ export const serviceConfigSchema = v.strictObject({
   rcloneBackupRoot: v.literal("backups"),
   rcloneTimeoutMs: v.pipe(v.number(), v.integer(), v.minValue(1)),
   ffprobeExecutable: v.pipe(v.string(), v.minLength(1)),
-  legacyImportRoots: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
 })
 
 export type ServiceConfig = v.InferOutput<typeof serviceConfigSchema>

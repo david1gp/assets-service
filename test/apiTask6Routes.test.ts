@@ -8,7 +8,6 @@ import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.j
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 import type { ProjectRepository } from "../src/project/projectRepository.js"
 import type { WorkflowApiRepository } from "../src/workflow/workflowApiRepository.js"
-import type { LegacyImportExecutor } from "../src/import/legacyImportExecutor.js"
 import type { BackupApiRepository } from "../src/backup/backupApiRepository.js"
 import type { CatalogApiRepository } from "../src/catalog/catalogApiRepository.js"
 import type { AuditApiRepository } from "../src/audit/auditApiRepository.js"
@@ -143,8 +142,6 @@ const deletionState = {
 }
 
 type Received = {
-  projectId?: string
-  actorId?: string
   auditAction?: string
   eligibility?: { projectId: string; environment: string; sourceRevisionId: string }
 }
@@ -199,27 +196,6 @@ const workflowRepositoryCreate = (): WorkflowApiRepository => ({
     success: true,
     data: { job: { ...job, status: "cancelled" }, workflow: { ...workflow, status: "cancelled" } },
   }),
-})
-
-const importExecutorCreate = (received: { projectId?: string; actorId?: string }): LegacyImportExecutor => ({
-  legacyImportRequestCreate: (projectId, actorId) => {
-    received.projectId = projectId
-    received.actorId = actorId
-    return {
-      success: true,
-      data: {
-        id: "import-1",
-        projectId,
-        status: "queued",
-        importedCount: 0,
-        conflicts: [],
-        createdAt: "2026-08-17T00:00:00.000Z",
-        updatedAt: "2026-08-17T00:00:00.000Z",
-        completedAt: null,
-      },
-    }
-  },
-  legacyImportStatusRead: () => ({ success: true, data: null }),
 })
 
 const backupRepositoryCreate = (): BackupApiRepository => ({
@@ -335,7 +311,6 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
     auditApiRepository: auditRepositoryCreate(received),
     uploadApiRepository: uploadRepositoryCreate(),
     deletionApiRepository: deletionRepositoryCreate(received),
-    legacyImportExecutor: importExecutorCreate(received),
     requestIdCreate: () => "task-6-request",
   }
 }
@@ -402,8 +377,6 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/catalogs/development/history"],
       ["/api/v1/projects/project-service/catalogs/development/lists"],
       ["/api/v1/projects/project-service/manifests"],
-      ["/api/v1/projects/project-service/imports"],
-      ["/api/v1/projects/project-service/imports/import-1"],
       ["/api/v1/projects/project-service/audit-events"],
       ["/api/v1/projects/project-service/audit-events/audit-1"],
     ]
@@ -446,35 +419,23 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/assets/asset-1/deletion-request", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/workflows/workflow-1/retry", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/jobs/job-1/cancel", { method: "POST", body: "{}" }],
-      ["/api/v1/projects/project-service/imports", { method: "POST", body: "{}" }],
       ["/api/v1/projects/project-service/audit-events", {}],
     ]
     const responses = await Promise.all(requests.map(([path, init]) => app.fetch(requestCreate(path, uploader, init))))
     expect(responses.map((response) => response.status)).toEqual(requests.map(() => 403))
   })
 
-  test("uses the task 7 import boundary and exposes readiness aliases", async () => {
-    const received: { projectId?: string; actorId?: string } = {}
-    const options = optionsCreate("admin", received)
+  test("exposes readiness aliases", async () => {
+    const options = optionsCreate("admin", {})
     const app = apiAppCreate(options)
-    const admin = await sessionCreate(options, "admin")
-    const imported = await app.fetch(
-      requestCreate("/api/v1/projects/project-service/imports", admin, {
-        method: "POST",
-        body: JSON.stringify({ root: "/legacy", atomicity: "best_effort" }),
-      }),
-    )
     const ready = await app.fetch(new Request("https://assets.example.test/api/v1/health/readiness"))
 
-    expect(imported.status).toBe(202)
-    expect(received).toEqual({ projectId: "project-1", actorId: "actor-1" })
     expect(ready.status).toBe(200)
     expect(await ready.json()).toMatchObject({ data: { status: "ready", checks: { database: "ready" } } })
   })
 
   test("exposes repository-backed backup, catalog, upload, deletion, and audit reads", async () => {
-    const received: { projectId?: string; actorId?: string } = {}
-    const options = optionsCreate("admin", received)
+    const options = optionsCreate("admin", {})
     const app = apiAppCreate(options)
     const admin = await sessionCreate(options, "admin")
     const paths = [

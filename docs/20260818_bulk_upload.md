@@ -6,7 +6,7 @@ Add remote CLI commands that compare and upload project assets from `./images`, 
 
 ## Decisions
 
-- Add `assets diff [root]` and `assets upload-all [root]`; keep the existing single-file `assets upload` and server-side legacy `assets import` semantics unchanged.
+- Add `assets diff [root]` and `assets upload-all [root]`; keep the existing single-file `assets upload` semantics unchanged.
 - Default `root` to `.` and default source directories to `./images`, `./videos`, `./documents`, and `./fonts`. Allow one source directory per class to be changed or disabled in project configuration and overridden for one CLI invocation.
 - Scan configured source directories recursively in deterministic lexical order. Resolve configured paths relative to the project root and reject overlapping class roots.
 - Treat configured class roots as class markers, not logical folders. Strip the configured class root when deriving the upload path, preserve its project-relative path as `sourcePath`, and enforce the existing maximum of three logical folders.
@@ -33,7 +33,7 @@ Add remote CLI commands that compare and upload project assets from `./images`, 
 
 - [x] 1. Extend core schemas and SQLite constraints for the `document` asset class, with explicit passthrough output definitions and document MIME/extension validation.
 - [x] 2. Add byte-preserving document processing, workflow jobs, publication, and focused workflow tests.
-- [x] 3. Add document catalog entries, generated `documentList`, legacy import parity, fixtures, and focused tests.
+- [x] 3. Add document catalog entries, generated `documentList`, fixtures, and focused tests.
 - [x] 4. Add source-revision lineage to output versions and implement a read-only API/client contract that returns deletion eligibility for an exact current source revision.
 - [x] 5. Add shared project source configuration with the four default directories, per-class changed or disabled paths, CLI overrides, and overlap validation.
 - [x] 6. Implement deterministic configured-root scanning, path mapping, preflight validation, file fingerprinting, remote manifest loading with history, and diff classification as reusable CLI modules.

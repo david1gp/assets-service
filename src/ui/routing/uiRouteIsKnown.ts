@@ -1,4 +1,4 @@
-const projectSections = ["settings", "assets", "upload", "jobs", "backups", "catalog", "imports", "audit"]
+const projectSections = ["settings", "assets", "upload", "jobs", "backups", "catalog", "audit"]
 
 /**
  * Tells whether a pathname matches a route of this SPA. Unknown paths render the

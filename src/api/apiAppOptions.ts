@@ -3,7 +3,6 @@ import type { AuditApiRepository } from "../audit/auditApiRepository.js"
 import type { BackupApiRepository } from "../backup/backupApiRepository.js"
 import type { CatalogApiRepository } from "../catalog/catalogApiRepository.js"
 import type { DeletionApiRepository } from "../deletion/deletionApiRepository.js"
-import type { LegacyImportExecutor } from "../import/legacyImportExecutor.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
@@ -22,7 +21,6 @@ export type ApiAppOptions = {
   backupApiRepository?: BackupApiRepository
   catalogApiRepository?: CatalogApiRepository
   auditApiRepository?: AuditApiRepository
-  legacyImportExecutor?: LegacyImportExecutor
   readinessCheck?: () => Result<true> | Promise<Result<true>>
   requestIdCreate?: (request: Request) => string
 }

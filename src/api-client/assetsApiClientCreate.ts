@@ -35,9 +35,6 @@ import { generatedListsResponseSchema } from "./generatedListsResponseSchema.js"
 import { jobActionRequestSchema } from "./jobActionRequestSchema.js"
 import { jobListResponseSchema } from "./jobListResponseSchema.js"
 import { jobResponseSchema } from "./jobResponseSchema.js"
-import { legacyImportListResponseSchema } from "./legacyImportListResponseSchema.js"
-import { legacyImportRequestSchema } from "./legacyImportRequestSchema.js"
-import { legacyImportResponseSchema } from "./legacyImportResponseSchema.js"
 import { metadataSetRequestSchema } from "./metadataSetRequestSchema.js"
 import { metadataUnsetRequestSchema } from "./metadataUnsetRequestSchema.js"
 import { moveAssetRequestSchema } from "./moveAssetRequestSchema.js"
@@ -120,11 +117,6 @@ const auditEventListInputSchema = v.strictObject({
   action: v.optional(auditActionFilterSchema),
   resourceType: v.optional(v.pipe(v.string(), v.maxLength(128))),
   resourceId: v.optional(idSchema),
-})
-
-const importListInputSchema = v.strictObject({
-  ...pageInputSchema.entries,
-  status: v.optional(v.picklist(["queued", "running", "succeeded", "failed", "cancelled"])),
 })
 
 const environmentsResponseSchema = v.strictObject({ environments: v.array(environmentSchema) })
@@ -666,23 +658,6 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientWorkflowStatusRead",
     })
 
-  const importRequestCreate = (projectId: string, input: unknown) =>
-    requestRead({
-      path: `/projects/${encodeURIComponent(projectId)}/imports`,
-      method: "POST",
-      body: input,
-      bodySchema: legacyImportRequestSchema,
-      responseSchema: legacyImportResponseSchema,
-      operation: "assetsApiClientImportRequestCreate",
-    })
-
-  const importStatusRead = (projectId: string, importId: string) =>
-    requestRead({
-      path: `/projects/${encodeURIComponent(projectId)}/imports/${encodeURIComponent(importId)}/status`,
-      responseSchema: legacyImportResponseSchema,
-      operation: "assetsApiClientImportStatusRead",
-    })
-
   const catalogCurrentRead = (projectId: string, environment: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/catalogs/${encodeURIComponent(environment)}/current`,
@@ -845,22 +820,6 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     })
   }
 
-  const importListRead = (projectId: string, query: { cursor?: number; limit?: number; status?: string } = {}) => {
-    const valid = schemaParse(
-      importListInputSchema,
-      query,
-      "assetsApiClientImportListRead",
-      "The import query was invalid",
-    )
-    if (!valid.success) return valid
-    return requestRead({
-      path: `/projects/${encodeURIComponent(projectId)}/imports`,
-      query: valid.data as Query,
-      responseSchema: legacyImportListResponseSchema,
-      operation: "assetsApiClientImportListRead",
-    })
-  }
-
   const auditEventListRead = (
     projectId: string,
     query: {
@@ -885,20 +844,6 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       responseSchema: auditEventListResponseSchema,
       operation: "assetsApiClientAuditEventListRead",
     })
-  }
-
-  const importWait = async (
-    projectId: string,
-    importId: string,
-  ): Promise<Result<import("../import/legacyImportStatusSchema.js").LegacyImportStatus>> => {
-    for (let attempt = 0; attempt < maxPolls; attempt += 1) {
-      const status = await importStatusRead(projectId, importId)
-      if (!status.success) return status
-      if (["succeeded", "failed", "cancelled"].includes(status.data.import.status))
-        return { success: true, data: status.data.import }
-      await sleep(pollIntervalMilliseconds)
-    }
-    return resultFailure("assetsApiClientImportWait", "The import did not finish before the polling limit")
   }
 
   const workflowWait = async (projectId: string, workflowId: string) => {
@@ -969,9 +914,6 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     jobRead,
     jobRetry,
     jobCancel,
-    importRequestCreate,
-    importStatusRead,
-    importListRead,
     catalogCurrentRead,
     catalogCurrentOptionalRead,
     catalogListsRead,
@@ -979,7 +921,6 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     catalogHistoryRead,
     backupListRead,
     auditEventListRead,
-    importWait,
     workflowWait,
     deletionWait,
   }

@@ -14,7 +14,6 @@ import { canonicalJsonStringify } from "../catalog/canonicalJsonStringify.js"
 import { catalogEntryPropertyCreate } from "../catalog/catalogEntryPropertyCreate.js"
 import { catalogSchema } from "../catalog/catalogSchema.js"
 import { assetDeletionHandle } from "../deletion/assetDeletionHandle.js"
-import { legacyImportProgressReconcile } from "../import/legacyImportProgressReconcile.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseRecordInsert } from "../infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
@@ -758,16 +757,6 @@ async function publishAssetHandle(
 
   const published = await catalogPublish(input.db, input.storage, context.data, outputs, input.clock?.() ?? new Date())
   if (!published.success) return published
-  const payload = jobPayloadRead(job)
-  if (!payload.success) return payload
-  if (payload.data.legacyImportId !== undefined) {
-    const progress = legacyImportProgressReconcile(input.db, {
-      importId: payload.data.legacyImportId,
-      currentJobId: job.id,
-      now: input.clock?.().toISOString() ?? new Date().toISOString(),
-    })
-    if (!progress.success) return progress
-  }
   return { success: true, data: null }
 }
 

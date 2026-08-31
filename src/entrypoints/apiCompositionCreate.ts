@@ -7,7 +7,6 @@ import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.j
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
 import type { ServiceRuntimeConfig } from "../config/serviceRuntimeConfig.js"
 import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCreate.js"
-import { legacyImportExecutorCreate } from "../import/legacyImportExecutorCreate.js"
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
@@ -54,11 +53,6 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const backupApiRepository = backupApiRepositoryCreate(connection.data.db)
   const catalogApiRepository = catalogApiRepositoryCreate(connection.data.db)
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
-  const legacyImportExecutor = legacyImportExecutorCreate({
-    db: connection.data.db,
-    storage,
-    sourceRoots: config.service.legacyImportRoots,
-  })
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })
   const serviceBearer = config.zitadel.serviceAccountClientId
@@ -85,7 +79,6 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     backupApiRepository,
     catalogApiRepository,
     auditApiRepository,
-    legacyImportExecutor,
     authentication: {
       config: config.zitadel,
       stateStore: stateStore.data,
