@@ -37,4 +37,4 @@ Add a safe `assets settings migrate` command that can move one project environme
 - [x] 7. Add focused repository, storage, workflow, API, CLI, and failure-path tests.
 - [x] 8. Update CLI and operations documentation and run the repository verification suite and production build.
 - [x] 9. Commit, push, deploy, and ready both remote projects with the matching migration CLI without publishing a package release.
-- [ ] 10. Plan, apply, and verify both migrations; Abikur attempt 4 (`storage-migration-45d27793-fcfc-4200-bad9-ffedd58a25e8`) copied/verified 220 objects but the temporary custom-domain probe returned 404, so no cutover occurred. Diagnose domain probe routing before attempt 5.
+- [x] 10. Complete both migrations: Abikur attempt 5 verified 220 objects and Template attempt 1 verified 569 objects; both cutovers succeeded, custom domains are active, and source plus unrelated destination objects remain preserved.
