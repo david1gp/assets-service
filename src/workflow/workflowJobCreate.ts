@@ -20,9 +20,13 @@ export const workflowJobCreate = (input: WorkflowJobCreateInput): JobTableInsert
   attempts: 0,
   retryLimit: input.retryLimit,
   leaseOwner: null,
+  leaseToken: null,
   leaseExpiresAt: null,
   heartbeatAt: null,
-  idempotencyKey: `asset-processing:${input.workflowId}:${input.kind}:${input.payload.outputDefinitionId ?? "asset"}`,
+  idempotencyKey:
+    input.kind === "migrate_storage"
+      ? `storage-migration:${input.workflowId}`
+      : `asset-processing:${input.workflowId}:${input.kind}:${input.payload.outputDefinitionId ?? "asset"}`,
   payloadSchemaVersion: 1,
   payload: input.payload,
   error: null,
@@ -40,6 +44,7 @@ type JobTableInsert = {
   attempts: number
   retryLimit: number
   leaseOwner: null
+  leaseToken: null
   leaseExpiresAt: null
   heartbeatAt: null
   idempotencyKey: string

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, gt } from "drizzle-orm"
 
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
@@ -11,6 +11,7 @@ import { workflowStatusReconcile } from "./workflowStatusReconcile.js"
 type JobRepositoryCompleteInput = {
   jobId: string
   workerId: string
+  leaseToken: string
   now?: Date | string
 }
 
@@ -27,13 +28,20 @@ export const jobRepositoryComplete = (db: AssetDatabase, input: JobRepositoryCom
         .set({
           status: "succeeded",
           leaseOwner: null,
+          leaseToken: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
           error: null,
           updatedAt: now,
         })
         .where(
-          and(eq(jobTable.id, input.jobId), eq(jobTable.status, "running"), eq(jobTable.leaseOwner, input.workerId)),
+          and(
+            eq(jobTable.id, input.jobId),
+            eq(jobTable.status, "running"),
+            eq(jobTable.leaseOwner, input.workerId),
+            eq(jobTable.leaseToken, input.leaseToken),
+            gt(jobTable.leaseExpiresAt, now),
+          ),
         )
         .returning()
         .get()

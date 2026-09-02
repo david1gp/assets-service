@@ -20,6 +20,7 @@ import { jobRepositoryFail } from "../src/workflow/jobRepositoryFail.js"
 import { jobRepositoryHeartbeat } from "../src/workflow/jobRepositoryHeartbeat.js"
 import { jobRepositoryRecoverExpiredLeases } from "../src/workflow/jobRepositoryRecoverExpiredLeases.js"
 import { workflowEngineCreate } from "../src/workflow/workflowEngineCreate.js"
+import { workflowApiRepositoryCreate } from "../src/workflow/workflowApiRepositoryCreate.js"
 import { workflowRepositoryEnqueue } from "../src/workflow/workflowRepositoryEnqueue.js"
 import { workflowResourcePoolCreate } from "../src/workflow/workflowResourcePoolCreate.js"
 
@@ -40,6 +41,7 @@ const jobCreate = (id: string, workflowId: string, idempotencyKey = id, retryLim
   attempts: 0,
   retryLimit,
   leaseOwner: null,
+  leaseToken: null,
   leaseExpiresAt: null,
   heartbeatAt: null,
   idempotencyKey,
@@ -128,17 +130,26 @@ describe("durable workflow execution", () => {
       expect(resultDataRead(jobRepositoryClaim(database.connection.db, { workerId: "worker-other", now }))).toBeNull()
       expect(
         resultDataRead(
-          jobRepositoryComplete(database.connection.db, { jobId: first.id, workerId: "worker-blocked", now }),
+          jobRepositoryComplete(database.connection.db, {
+            jobId: first.id,
+            workerId: "worker-blocked",
+            leaseToken: blocked?.leaseToken ?? "",
+            now,
+          }),
         ),
       ).toMatchObject({
         status: "succeeded",
       })
-      expect(resultDataRead(jobRepositoryClaim(database.connection.db, { workerId: "worker-other", now }))?.id).toBe(
-        second.id,
-      )
+      const secondClaim = resultDataRead(jobRepositoryClaim(database.connection.db, { workerId: "worker-other", now }))
+      expect(secondClaim?.id).toBe(second.id)
       expect(
         resultDataRead(
-          jobRepositoryComplete(database.connection.db, { jobId: second.id, workerId: "worker-other", now }),
+          jobRepositoryComplete(database.connection.db, {
+            jobId: second.id,
+            workerId: "worker-other",
+            leaseToken: secondClaim?.leaseToken ?? "",
+            now,
+          }),
         ),
       ).toMatchObject({
         status: "succeeded",
@@ -189,14 +200,16 @@ describe("durable workflow execution", () => {
       expect(
         resultDataRead(workflowRepositoryEnqueue(database.connection.db, { workflow, jobs: [job] })).jobs[0]?.id,
       ).toBe(job.id)
-      expect(
-        resultDataRead(jobRepositoryClaim(database.connection.db, { workerId: "worker-a", now, leaseMs: 1_000 }))?.id,
-      ).toBe(job.id)
+      const firstClaim = resultDataRead(
+        jobRepositoryClaim(database.connection.db, { workerId: "worker-a", now, leaseMs: 1_000 }),
+      )
+      expect(firstClaim?.id).toBe(job.id)
       expect(
         resultDataRead(
           jobRepositoryHeartbeat(database.connection.db, {
             jobId: job.id,
             workerId: "worker-a",
+            leaseToken: firstClaim?.leaseToken ?? "",
             now: "2026-08-17T00:00:00.500Z",
             leaseMs: 1_000,
           }),
@@ -208,19 +221,19 @@ describe("durable workflow execution", () => {
       expect(
         resultDataRead(jobRepositoryRecoverExpiredLeases(database.connection.db, { now: "2026-08-17T00:00:02.000Z" })),
       ).toBe(1)
-      expect(
-        resultDataRead(
-          jobRepositoryClaim(database.connection.db, {
-            workerId: "worker-b",
-            now: "2026-08-17T00:00:02.000Z",
-            leaseMs: 1_000,
-          }),
-        )?.attempts,
-      ).toBe(2)
+      const secondClaim = resultDataRead(
+        jobRepositoryClaim(database.connection.db, {
+          workerId: "worker-b",
+          now: "2026-08-17T00:00:02.000Z",
+          leaseMs: 1_000,
+        }),
+      )
+      expect(secondClaim?.attempts).toBe(2)
       const failed = resultDataRead(
         jobRepositoryFail(database.connection.db, {
           jobId: job.id,
           workerId: "worker-b",
+          leaseToken: secondClaim?.leaseToken ?? "",
           now: "2026-08-17T00:00:02.000Z",
           backoffMs: 500,
           error: { code: "job_failed", message: "temporary", retryable: true },
@@ -236,19 +249,19 @@ describe("durable workflow execution", () => {
           }),
         ),
       ).toBeNull()
-      expect(
-        resultDataRead(
-          jobRepositoryClaim(database.connection.db, {
-            workerId: "worker-c",
-            now: "2026-08-17T00:00:02.500Z",
-          }),
-        )?.attempts,
-      ).toBe(3)
+      const thirdClaim = resultDataRead(
+        jobRepositoryClaim(database.connection.db, {
+          workerId: "worker-c",
+          now: "2026-08-17T00:00:02.500Z",
+        }),
+      )
+      expect(thirdClaim?.attempts).toBe(3)
       expect(
         resultDataRead(
           jobRepositoryFail(database.connection.db, {
             jobId: job.id,
             workerId: "worker-c",
+            leaseToken: thirdClaim?.leaseToken ?? "",
             now: "2026-08-17T00:00:02.500Z",
             error: { code: "job_failed", message: "permanent", retryable: false },
           }),
@@ -260,12 +273,15 @@ describe("durable workflow execution", () => {
       resultDataRead(
         workflowRepositoryEnqueue(database.connection.db, { workflow: permanentWorkflow, jobs: [permanentJob] }),
       )
-      resultDataRead(jobRepositoryClaim(database.connection.db, { workerId: "worker-permanent", now }))
+      const permanentClaim = resultDataRead(
+        jobRepositoryClaim(database.connection.db, { workerId: "worker-permanent", now }),
+      )
       expect(
         resultDataRead(
           jobRepositoryFail(database.connection.db, {
             jobId: permanentJob.id,
             workerId: "worker-permanent",
+            leaseToken: permanentClaim?.leaseToken ?? "",
             now,
             error: { code: "job_failed", message: "validation failed", retryable: false },
           }),
@@ -308,11 +324,18 @@ describe("durable workflow execution", () => {
       const claimedIds = claims.flatMap((claim) => (claim.success && claim.data !== null ? [claim.data.id] : []))
       expect(new Set(claimedIds).size).toBe(2)
       for (const claim of claims) {
-        if (claim.success && claim.data !== null && claim.data.leaseOwner !== null) {
+        if (
+          claim.success &&
+          claim.data !== null &&
+          claim.data.leaseOwner !== null &&
+          claim.data.leaseToken !== null &&
+          claim.data.leaseToken !== undefined
+        ) {
           resultDataRead(
             jobRepositoryComplete(database.connection.db, {
               jobId: claim.data.id,
               workerId: claim.data.leaseOwner,
+              leaseToken: claim.data.leaseToken,
               now,
             }),
           )
@@ -396,5 +419,37 @@ describe("durable workflow execution", () => {
     expect(pool.acquire("cleanup")).toBe(true)
     pool.release("image")
     expect(pool.acquire("image")).toBe(true)
+  })
+
+  test("reads storage migration workflows with null asset ids and applies kind and asset filters", async () => {
+    const database = await databaseCreate()
+    try {
+      const inserted = databaseRecordInsert(database.connection.db, workflowTable, {
+        id: "workflow-storage-migration",
+        projectId: database.projectId,
+        assetId: null,
+        kind: "storage_migration",
+        status: "queued",
+        createdAt: now,
+        updatedAt: now,
+      })
+      expect(inserted.success).toBe(true)
+      const repository = workflowApiRepositoryCreate(database.connection.db)
+
+      expect(repository.workflowsRead(database.projectId, { kind: "storage_migration" })).toMatchObject({
+        success: true,
+        data: { items: [{ id: "workflow-storage-migration", assetId: null, kind: "storage_migration" }] },
+      })
+      expect(repository.workflowsRead(database.projectId, { assetId: "asset-1" })).toMatchObject({
+        success: true,
+        data: { items: [] },
+      })
+      expect(repository.workflowRead(database.projectId, "workflow-storage-migration")).toMatchObject({
+        success: true,
+        data: { workflow: { assetId: null, kind: "storage_migration" }, jobs: [] },
+      })
+    } finally {
+      await databaseDestroy(database.databasePath, database.connection)
+    }
   })
 })

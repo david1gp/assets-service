@@ -33,6 +33,7 @@ export const jobRepositoryCancel = (db: AssetDatabase, input: JobRepositoryCance
         .set({
           status: "cancelled",
           leaseOwner: null,
+          leaseToken: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
           updatedAt: now,

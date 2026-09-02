@@ -10,6 +10,7 @@ import type { Job } from "./jobSchema.js"
 type JobRepositoryHeartbeatInput = {
   jobId: string
   workerId: string
+  leaseToken: string
   now?: Date | string
   leaseMs?: number
 }
@@ -35,6 +36,7 @@ export const jobRepositoryHeartbeat = (db: AssetDatabase, input: JobRepositoryHe
             eq(jobTable.id, input.jobId),
             eq(jobTable.status, "running"),
             eq(jobTable.leaseOwner, input.workerId),
+            eq(jobTable.leaseToken, input.leaseToken),
             gt(jobTable.leaseExpiresAt, now),
           ),
         )

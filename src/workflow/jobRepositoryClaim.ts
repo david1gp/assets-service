@@ -66,6 +66,7 @@ export const jobRepositoryClaim = (db: AssetDatabase, input: JobRepositoryClaimI
           status: "running",
           attempts: sql`${jobTable.attempts} + 1`,
           leaseOwner: input.workerId,
+          leaseToken: crypto.randomUUID(),
           leaseExpiresAt,
           heartbeatAt: now,
           error: null,

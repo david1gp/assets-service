@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, gt } from "drizzle-orm"
 
 import type { StructuredError } from "../api/structuredErrorSchema.js"
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
@@ -12,6 +12,7 @@ import { workflowStatusReconcile } from "./workflowStatusReconcile.js"
 type JobRepositoryFailInput = {
   jobId: string
   workerId: string
+  leaseToken: string
   error: StructuredError
   now?: Date | string
   backoffMs?: number
@@ -27,7 +28,13 @@ export const jobRepositoryFail = (db: AssetDatabase, input: JobRepositoryFailInp
     (transaction) => {
       const current = transaction.select().from(jobTable).where(eq(jobTable.id, input.jobId)).get()
       if (current === undefined) return resultErrorCreate("jobRepositoryFail", `Job not found: ${input.jobId}`)
-      if (current.status !== "running" || current.leaseOwner !== input.workerId) {
+      if (
+        current.status !== "running" ||
+        current.leaseOwner !== input.workerId ||
+        current.leaseToken !== input.leaseToken ||
+        current.leaseExpiresAt === null ||
+        Date.parse(current.leaseExpiresAt) <= Date.parse(now)
+      ) {
         return resultErrorCreate("jobRepositoryFail", "The job lease is no longer owned")
       }
 
@@ -41,13 +48,20 @@ export const jobRepositoryFail = (db: AssetDatabase, input: JobRepositoryFailInp
           status: retryable ? "retryable" : "dead",
           availableAt: retryable ? new Date(new Date(now).getTime() + backoffMs).toISOString() : now,
           leaseOwner: null,
+          leaseToken: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
           error: { ...input.error, retryable },
           updatedAt: now,
         })
         .where(
-          and(eq(jobTable.id, input.jobId), eq(jobTable.status, "running"), eq(jobTable.leaseOwner, input.workerId)),
+          and(
+            eq(jobTable.id, input.jobId),
+            eq(jobTable.status, "running"),
+            eq(jobTable.leaseOwner, input.workerId),
+            eq(jobTable.leaseToken, input.leaseToken),
+            gt(jobTable.leaseExpiresAt, now),
+          ),
         )
         .returning()
         .get()

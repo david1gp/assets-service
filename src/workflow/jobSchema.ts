@@ -17,6 +17,7 @@ export const jobSchema = v.strictObject({
   attempts: v.pipe(v.number(), v.integer(), v.minValue(0)),
   retryLimit: v.pipe(v.number(), v.integer(), v.minValue(0)),
   leaseOwner: v.nullable(v.string()),
+  leaseToken: v.optional(v.nullable(v.string())),
   leaseExpiresAt: v.nullable(isoDateSchema),
   heartbeatAt: v.nullable(isoDateSchema),
   idempotencyKey: v.pipe(v.string(), v.minLength(1)),

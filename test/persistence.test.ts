@@ -1,10 +1,11 @@
-import { mkdir, rm } from "node:fs/promises"
-
 import { describe, expect, test } from "bun:test"
+import { mkdir, rm } from "node:fs/promises"
 
 import { auditEventRepositoryAppend } from "../src/audit/auditEventRepositoryAppend.js"
 import { backupReceiptRepositoryCreate } from "../src/backup/backupReceiptRepositoryCreate.js"
 import { manifestRepositoryCreate } from "../src/catalog/manifestRepositoryCreate.js"
+import { deletionStateRepositoryRead } from "../src/deletion/deletionStateRepositoryRead.js"
+import { deletionStateRepositoryUpsert } from "../src/deletion/deletionStateRepositoryUpsert.js"
 import { outboxEventRepositoryEnqueue } from "../src/events/outboxEventRepositoryEnqueue.js"
 import { outboxEventRepositoryMarkDelivered } from "../src/events/outboxEventRepositoryMarkDelivered.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
@@ -20,8 +21,6 @@ import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { resultErrorCreate } from "../src/schemas/resultErrorCreate.js"
-import { deletionStateRepositoryRead } from "../src/deletion/deletionStateRepositoryRead.js"
-import { deletionStateRepositoryUpsert } from "../src/deletion/deletionStateRepositoryUpsert.js"
 
 describe("SQLite persistence", () => {
   test("initializes WAL and foreign keys, migrates every persisted model, and rolls back failed transactions", async () => {
@@ -69,6 +68,7 @@ describe("SQLite persistence", () => {
         "projects",
         "reconciliation_runs",
         "source_revisions",
+        "storage_migrations",
         "structure_folders",
         "uploads",
         "workflows",

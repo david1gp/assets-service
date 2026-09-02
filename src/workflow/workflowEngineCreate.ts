@@ -1,4 +1,5 @@
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
+import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { JobHandler } from "./jobHandler.js"
 import { jobRepositoryClaim } from "./jobRepositoryClaim.js"
@@ -73,23 +74,31 @@ export const workflowEngineCreate = (input: WorkflowEngineCreateInput) => {
   const executeClaimedJobOwned = async (job: Job, leaseOwner: string): Promise<Result<boolean>> => {
     const handler = input.handlerRegistry.resolve(job.kind)
     if (handler === undefined) return { success: true, data: false }
+    if (job.leaseToken === null || job.leaseToken === undefined)
+      return resultErrorCreate("workflowEngineExecute", "Claimed job has no lease token")
+    const leaseToken = job.leaseToken
 
     const jobController = new AbortController()
     let heartbeatFailed = false
+    const heartbeat = () => {
+      const result = jobRepositoryHeartbeat(input.db, {
+        jobId: job.id,
+        workerId: leaseOwner,
+        leaseToken,
+        now: clock(),
+        leaseMs,
+      })
+      if (!result.success) {
+        heartbeatFailed = true
+        jobController.abort()
+      }
+      return result
+    }
     const heartbeatLoop = (async () => {
       while (!jobController.signal.aborted) {
         await sleep(heartbeatMs, jobController.signal)
         if (jobController.signal.aborted) return
-        const heartbeat = jobRepositoryHeartbeat(input.db, {
-          jobId: job.id,
-          workerId: leaseOwner,
-          now: clock(),
-          leaseMs,
-        })
-        if (!heartbeat.success) {
-          heartbeatFailed = true
-          jobController.abort()
-        }
+        heartbeat()
       }
     })()
 
@@ -98,9 +107,9 @@ export const workflowEngineCreate = (input: WorkflowEngineCreateInput) => {
       handlerResult = await handler(job, {
         workerId: leaseOwner,
         signal: jobController.signal,
-        heartbeat: () =>
-          jobRepositoryHeartbeat(input.db, { jobId: job.id, workerId: leaseOwner, now: clock(), leaseMs }),
+        heartbeat,
         isCancelled: () => jobController.signal.aborted,
+        isLeaseLost: () => heartbeatFailed,
       })
     } catch (error) {
       handlerResult = { success: false, op: "jobHandler", errorMessage: errorMessageRead(error) }
@@ -109,7 +118,12 @@ export const workflowEngineCreate = (input: WorkflowEngineCreateInput) => {
     jobController.abort()
     await heartbeatLoop
     if (handlerResult.success) {
-      const completed = jobRepositoryComplete(input.db, { jobId: job.id, workerId: leaseOwner, now: clock() })
+      const completed = jobRepositoryComplete(input.db, {
+        jobId: job.id,
+        workerId: leaseOwner,
+        leaseToken,
+        now: clock(),
+      })
       if (!completed.success && (heartbeatFailed || completed.errorMessage === "The job lease is no longer owned")) {
         return { success: true, data: true }
       }
@@ -120,6 +134,7 @@ export const workflowEngineCreate = (input: WorkflowEngineCreateInput) => {
     const failed = jobRepositoryFail(input.db, {
       jobId: job.id,
       workerId: leaseOwner,
+      leaseToken,
       error: {
         code: "job_failed",
         message: handlerResult.errorMessage,

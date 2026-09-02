@@ -17,7 +17,9 @@ export const workflowTable = sqliteTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    kind: text("kind", { enum: ["asset_processing", "catalog_generation", "deletion", "cleanup"] }).notNull(),
+    kind: text("kind", {
+      enum: ["asset_processing", "catalog_generation", "deletion", "cleanup", "storage_migration"],
+    }).notNull(),
     status: text("status", { enum: ["queued", "running", "succeeded", "failed", "cancelled"] }).notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -28,7 +30,7 @@ export const workflowTable = sqliteTable(
     index("workflows_source_revision_index").on(table.sourceRevisionId),
     check(
       "workflows_kind_check",
-      sql`${table.kind} IN ('asset_processing', 'catalog_generation', 'deletion', 'cleanup')`,
+      sql`${table.kind} IN ('asset_processing', 'catalog_generation', 'deletion', 'cleanup', 'storage_migration')`,
     ),
     check("workflows_status_check", sql`${table.status} IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')`),
   ],

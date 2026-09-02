@@ -4,6 +4,7 @@ import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { databaseTransactionRun } from "../infrastructure/db/databaseTransactionRun.js"
 import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
+import { storageMigrationTable } from "../migration/storageMigrationTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
@@ -36,6 +37,7 @@ export const workflowRepositoryCancel = (
         .set({
           status: "cancelled",
           leaseOwner: null,
+          leaseToken: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
           updatedAt: now,
@@ -44,6 +46,29 @@ export const workflowRepositoryCancel = (
           and(eq(jobTable.workflowId, input.workflowId), inArray(jobTable.status, ["queued", "running", "retryable"])),
         )
         .run()
+
+      const migrationJob = transaction
+        .select({ payload: jobTable.payload })
+        .from(jobTable)
+        .where(and(eq(jobTable.workflowId, input.workflowId), eq(jobTable.kind, "migrate_storage")))
+        .get()
+      const migrationId = migrationJob?.payload.storageMigrationId
+      if (typeof migrationId === "string")
+        transaction
+          .update(storageMigrationTable)
+          .set({
+            status: "cancelled",
+            lastError: "The storage migration was cancelled",
+            updatedAt: now,
+            completedAt: now,
+          })
+          .where(
+            and(
+              eq(storageMigrationTable.id, migrationId),
+              inArray(storageMigrationTable.status, ["queued", "running"]),
+            ),
+          )
+          .run()
 
       const updated = transaction
         .update(workflowTable)

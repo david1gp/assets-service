@@ -12,6 +12,7 @@ export const jobKindSchema = v.picklist([
   "notify_customer_upload",
   "cleanup_local_files",
   "delete_asset",
+  "migrate_storage",
 ])
 
 export type JobKind = v.InferOutput<typeof jobKindSchema>

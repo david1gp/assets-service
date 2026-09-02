@@ -100,11 +100,7 @@ const migrationFolderCreate = (includeStructureMigration: boolean) => {
   mkdirSync(metaFolder)
   for (const filename of readdirSync(sourceFolder)) {
     if (!filename.endsWith(".sql")) continue
-    if (
-      !includeStructureMigration &&
-      (filename.startsWith("0009_") || filename.startsWith("0010_") || filename.startsWith("0011_"))
-    )
-      continue
+    if (!includeStructureMigration && Number.parseInt(filename, 10) >= 9) continue
     copyFileSync(join(sourceFolder, filename), join(migrationFolder, filename))
   }
   const journal = JSON.parse(readFileSync(join(sourceFolder, "meta", "_journal.json"), "utf8")) as {
@@ -112,12 +108,7 @@ const migrationFolderCreate = (includeStructureMigration: boolean) => {
     [key: string]: unknown
   }
   if (!includeStructureMigration)
-    journal.entries = journal.entries.filter(
-      (entry) =>
-        entry.tag !== "0009_structure_folders" &&
-        entry.tag !== "0010_backup_remote_path_migration_runs" &&
-        entry.tag !== "0011_remove_legacy_imports",
-    )
+    journal.entries = journal.entries.filter((entry) => Number.parseInt(entry.tag, 10) < 9)
   writeFileSync(join(metaFolder, "_journal.json"), JSON.stringify(journal))
   return migrationFolder
 }

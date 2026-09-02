@@ -24,6 +24,7 @@ export const jobTable = sqliteTable(
         "notify_customer_upload",
         "cleanup_local_files",
         "delete_asset",
+        "migrate_storage",
       ],
     }).notNull(),
     status: text("status", { enum: ["queued", "running", "succeeded", "retryable", "dead", "cancelled"] }).notNull(),
@@ -32,6 +33,7 @@ export const jobTable = sqliteTable(
     attempts: integer("attempts").notNull(),
     retryLimit: integer("retry_limit").notNull(),
     leaseOwner: text("lease_owner"),
+    leaseToken: text("lease_token"),
     leaseExpiresAt: text("lease_expires_at"),
     heartbeatAt: text("heartbeat_at"),
     idempotencyKey: text("idempotency_key").notNull(),
@@ -47,7 +49,7 @@ export const jobTable = sqliteTable(
     index("jobs_workflow_index").on(table.workflowId),
     check(
       "jobs_kind_check",
-      sql`${table.kind} IN ('verify_original', 'backup_original', 'plan_outputs', 'process_image_output', 'copy_video_output', 'process_font_output', 'process_document_output', 'publish_asset', 'notify_customer_upload', 'cleanup_local_files', 'delete_asset')`,
+      sql`${table.kind} IN ('verify_original', 'backup_original', 'plan_outputs', 'process_image_output', 'copy_video_output', 'process_font_output', 'process_document_output', 'publish_asset', 'notify_customer_upload', 'cleanup_local_files', 'delete_asset', 'migrate_storage')`,
     ),
     check(
       "jobs_status_check",

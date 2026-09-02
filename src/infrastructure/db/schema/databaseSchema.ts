@@ -1,9 +1,10 @@
+import { backupRemotePathMigrationRunTable } from "../../../migration/backupRemotePathMigrationRunTable.js"
+import { storageMigrationTable } from "../../../migration/storageMigrationTable.js"
 import { assetMetadataTable } from "./assetMetadataTable.js"
 import { assetStructureFolderMembershipTable } from "./assetStructureFolderMembershipTable.js"
 import { assetTable } from "./assetTable.js"
 import { auditEventTable } from "./auditEventTable.js"
 import { backupReceiptTable } from "./backupReceiptTable.js"
-import { backupRemotePathMigrationRunTable } from "../../../migration/backupRemotePathMigrationRunTable.js"
 import { blobTable } from "./blobTable.js"
 import { catalogGenerationTable } from "./catalogGenerationTable.js"
 import { catalogOutputTable } from "./catalogOutputTable.js"
@@ -52,6 +53,7 @@ export const databaseSchema = {
   reconciliationRunTable,
   sourceRevisionTable,
   structureFolderTable,
+  storageMigrationTable,
   uploadTable,
   workflowTable,
 }

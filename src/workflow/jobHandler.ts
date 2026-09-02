@@ -8,5 +8,6 @@ export type JobHandler = (
     signal: AbortSignal
     heartbeat: () => Result<Job>
     isCancelled: () => boolean
+    isLeaseLost: () => boolean
   },
 ) => Result<unknown> | Promise<Result<unknown>>

@@ -39,6 +39,7 @@ export const jobRepositoryRecoverExpiredLeases = (
             status: retryable ? "retryable" : "dead",
             availableAt: now,
             leaseOwner: null,
+            leaseToken: null,
             leaseExpiresAt: null,
             heartbeatAt: null,
             error: jobErrorCreate("The job lease expired", retryable),
