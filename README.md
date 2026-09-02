@@ -182,11 +182,12 @@ change, the workflow probes the target, inventories and immutably copies the sou
 destination and public URL, and changes project settings last. A domain-only change performs no object copy.
 
 The idempotency key is derived from the project, environment, and requested target binding. Repeating the same command
-does not create a duplicate migration: queued or running work is reused, and a terminal result is returned rather than
-restarted. Concurrent storage-setting changes or another active migration can block the start. A failure before cutover
-leaves the source settings authoritative; any already-copied destination objects remain. There is no automatic rollback
-or cleanup. For a completed cutover, any rollback must be separately approved and restore the recorded source bucket,
-prefix, and public base URL; the migration itself never deletes source objects or destination objects.
+reuses queued, running, and succeeded attempts. Failed or cancelled attempts remain in history; repeating the same
+command after one creates a new numbered retry attempt. Concurrent storage-setting changes or another active migration
+can block the start. A failure before cutover leaves the source settings authoritative; any already-copied destination
+objects remain. There is no automatic rollback or cleanup. For a completed cutover, any rollback must be separately
+approved and restore the recorded source bucket, prefix, and public base URL; the migration itself never deletes source
+objects or destination objects.
 
 ### Bulk project upload
 
