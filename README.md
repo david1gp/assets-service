@@ -117,6 +117,39 @@ bun run assets settings update [--project <id-or-name>] \
 role for the selected project. `--project` accepts a project ID or name; otherwise normal project resolution applies
 (`ASSETS_PROJECT`, saved CLI configuration, or the sole accessible project).
 
+### Remote project registration
+
+Organization administrators can register a project and its complete initial service configuration through the
+authenticated remote CLI. The command requires one explicit binding and both environment bindings. It requires a human
+session whose authenticated principal has organization-admin authority for the selected organization; service-account
+authentication is rejected. The authenticated administrator is also recorded as an initial `project_grants` database
+row for the new project. Runtime authorization remains based on the authenticated Zitadel claims, not that database row.
+The `--zitadel-project-id` value records the existing binding only; this command does not provision anything in Zitadel.
+Use `ASSETS_SESSION_COOKIE` for the authenticated human session; an `ASSETS_TOKEN` bearer credential is treated as
+service-account authentication and is rejected. It creates a missing configured database organization or attaches the
+project to the matching existing organization. Repeating the exact request returns the existing registration; different
+values for an existing registration are rejected.
+
+```bash
+bun run assets projects create \
+  --organization <key|id|slug> \
+  --name <name> \
+  --slug <slug> \
+  --default-environment <development|production> \
+  --service-project-id <id> \
+  --zitadel-project-id <id> \
+  --development-r2-bucket <bucket> \
+  --development-r2-prefix <prefix> \
+  --development-public-base-url <url> \
+  --production-r2-bucket <bucket> \
+  --production-r2-prefix <prefix> \
+  --production-public-base-url <url> \
+  [--json]
+```
+
+The command does not use `--project` or `--environment`: project and default-environment values must be supplied
+explicitly. Quote an empty prefix (`--development-r2-prefix ""`) when a dedicated bucket should use its root.
+
 Updates are targeted merges. The CLI first reads the complete project settings document, changes only the selected
 environment, and writes the complete document back. Omitted fields and all other environments remain unchanged. The
 R2 prefix is optional; pass an explicitly empty value to clear it: `--r2-prefix ""`.

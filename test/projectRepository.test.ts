@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, rm } from "node:fs/promises"
+import { eq } from "drizzle-orm"
 import type { InferInsertModel } from "drizzle-orm"
 import type { AnySQLiteTable } from "drizzle-orm/sqlite-core"
 
@@ -10,10 +11,12 @@ import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
 import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
+import { projectGrantTable } from "../src/infrastructure/db/schema/projectGrantTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
@@ -27,6 +30,28 @@ const project = {
   defaultEnvironment: "development" as const,
   createdAt: timestamp,
   updatedAt: timestamp,
+}
+
+const projectCreateInput = {
+  organization: { id: "org-new", name: "New organization", slug: "new-organization" },
+  name: "Registered project",
+  slug: "registered-project",
+  defaultEnvironment: "development" as const,
+  binding: { zitadelProjectId: "zitadel-registered", serviceProjectId: "service-registered" },
+  environments: [
+    {
+      name: "development" as const,
+      r2Bucket: "assets-development",
+      r2Prefix: "registered/development",
+      publicBaseUrl: "https://development.assets.example.test",
+    },
+    {
+      name: "production" as const,
+      r2Bucket: "assets-production",
+      r2Prefix: "registered/production",
+      publicBaseUrl: "https://assets.example.test",
+    },
+  ],
 }
 
 const databasePathCreate = () => `data/project-repository-${crypto.randomUUID()}.sqlite`
@@ -66,6 +91,16 @@ const repositoryCreate = async () => {
     updatedAt: timestamp,
   })
 
+  return { databasePath, connection: opened.data, repository: projectRepositoryCreate(opened.data.db) }
+}
+
+const emptyRepositoryCreate = async () => {
+  await mkdir("data", { recursive: true })
+  const databasePath = databasePathCreate()
+  const opened = databaseOpen(databasePath)
+  if (!opened.success) throw new Error(opened.errorMessage)
+  const migrated = databaseMigrate(opened.data)
+  if (!migrated.success) throw new Error(migrated.errorMessage)
   return { databasePath, connection: opened.data, repository: projectRepositoryCreate(opened.data.db) }
 }
 
@@ -267,6 +302,94 @@ describe("projectRepository.projectsRead", () => {
       expect(secondGrant.success && secondGrant.data.map((item) => item.id)).toEqual(["project-2"])
       expect(combinedGrants.success && combinedGrants.data.map((item) => item.id)).toEqual(["project-1", "project-2"])
       expect(foreignGrant.success && foreignGrant.data).toEqual([])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+})
+
+describe("projectRepository.projectCreate", () => {
+  test("creates an organization, project binding, both environments, and an admin grant record atomically", async () => {
+    const { databasePath, connection, repository } = await emptyRepositoryCreate()
+    try {
+      const first = repository.projectCreate(projectCreateInput, "admin-1")
+      expect(first.success).toBe(true)
+      if (!first.success) return
+      expect(first.data.created).toBe(true)
+      expect(first.data.project.organization?.slug).toBe("new-organization")
+      expect(first.data.project.environments.map((environment) => environment.name).sort()).toEqual([
+        "development",
+        "production",
+      ])
+
+      const projectId = first.data.project.project.id
+      expect(connection.db.select().from(organizationTable).all()).toHaveLength(1)
+      expect(connection.db.select().from(projectTable).all()).toHaveLength(1)
+      expect(connection.db.select().from(projectBindingTable).all()).toHaveLength(1)
+      expect(
+        connection.db.select().from(environmentTable).where(eq(environmentTable.projectId, projectId)).all(),
+      ).toHaveLength(2)
+      expect(
+        connection.db.select().from(projectGrantTable).where(eq(projectGrantTable.projectId, projectId)).all(),
+      ).toMatchObject([{ subjectId: "admin-1", role: "admin" }])
+
+      const repeated = repository.projectCreate(projectCreateInput, "admin-2")
+      expect(repeated).toMatchObject({
+        success: true,
+        data: { created: false, project: { project: { id: projectId } } },
+      })
+      expect(
+        connection.db.select().from(projectGrantTable).where(eq(projectGrantTable.projectId, projectId)).all(),
+      ).toMatchObject([{ subjectId: "admin-1", role: "admin" }])
+
+      const changed = repository.projectCreate({ ...projectCreateInput, name: "Changed" }, "admin-1")
+      expect(changed.success).toBe(false)
+      if (!changed.success) expect(changed.errorMessage).toContain("already exists")
+      expect(connection.db.select().from(projectTable).all()).toHaveLength(1)
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("attaches a new project to an existing organization", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      const created = repository.projectCreate(
+        {
+          ...projectCreateInput,
+          organization: { id: "org-1", name: "Renamed locally", slug: "example" },
+          slug: "attached-project",
+          binding: { zitadelProjectId: "zitadel-attached", serviceProjectId: "service-attached" },
+        },
+        "admin-1",
+      )
+      expect(created.success).toBe(true)
+      if (!created.success) return
+      expect(created.data.project.organization?.id).toBe("org-1")
+      expect(connection.db.select().from(organizationTable).all()).toHaveLength(1)
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("rejects a binding collision without creating a partial project", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      const conflicting = repository.projectCreate(
+        {
+          ...projectCreateInput,
+          organization: { id: "org-1", name: "Example", slug: "example" },
+          name: "Another project",
+          slug: "another-project",
+          binding: { zitadelProjectId: "zitadel-1", serviceProjectId: "service-new" },
+        },
+        "admin-2",
+      )
+      expect(conflicting.success).toBe(false)
+      if (!conflicting.success) expect(conflicting.errorMessage).toContain("already exists")
+      expect(connection.db.select().from(projectTable).all()).toHaveLength(1)
+      expect(connection.db.select().from(projectBindingTable).all()).toHaveLength(1)
+      expect(connection.db.select().from(environmentTable).all()).toHaveLength(0)
     } finally {
       await cleanup(databasePath, connection)
     }

@@ -42,14 +42,17 @@ import {
   type OrganizationConfiguration,
   organizationConfigurationResolve,
 } from "../config/organizationConfigurationResolve.js"
+import type { OrganizationDefinition } from "../config/organizationDefinitionSchema.js"
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
 import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
+import type { ProjectCreate } from "../project/projectCreateSchema.js"
+import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { ProjectSettings } from "../project/projectSettingsSchema.js"
-import { r2PrefixSchema } from "../project/r2PrefixSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
+import { r2PrefixSchema } from "../project/r2PrefixSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
@@ -147,6 +150,17 @@ const optionNames = new Set([
   "r2-prefix",
   "public-base-url",
   "custom-domain",
+  "default-environment",
+  "development-r2-bucket",
+  "development-r2-prefix",
+  "development-public-base-url",
+  "production-r2-bucket",
+  "production-r2-prefix",
+  "production-public-base-url",
+  "service-project-id",
+  "zitadel-project-id",
+  "name",
+  "slug",
   "zone-id",
   "wrangler-profile",
   "search",
@@ -193,6 +207,7 @@ const diffSourceDirectoryOptionNames = new Set([
 const commandHelp = {
   commands: [
     "auth login",
+    "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> --zitadel-project-id <id> --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url>",
     "config show [root]",
     "doctor --environment <development|production>",
     "diff [root]",
@@ -275,6 +290,17 @@ const commandHelp = {
     "--r2-bucket",
     "--r2-prefix",
     "--public-base-url",
+    "--default-environment",
+    "--development-r2-bucket",
+    "--development-r2-prefix",
+    "--development-public-base-url",
+    "--production-r2-bucket",
+    "--production-r2-prefix",
+    "--production-public-base-url",
+    "--service-project-id",
+    "--zitadel-project-id",
+    "--name",
+    "--slug",
     "--create-bucket",
     "--custom-domain",
     "--zone-id",
@@ -421,7 +447,7 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings"].includes(command)
+  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings", "projects"].includes(command)
     ? positionals.shift()
     : undefined
   return {
@@ -1938,8 +1964,7 @@ const settingsMigrationCommandRun = async (
 ): Promise<CommandOutput> => {
   const migrationOptions = settingsMigrationOptionsRead(parsed)
   if (!migrationOptions.success) return { result: migrationOptions }
-  const { r2Bucket, r2Prefix, publicBaseUrl, customDomain, zoneId, wranglerProfile, provisioningRequested } =
-    migrationOptions.data
+  const { r2Bucket, r2Prefix, publicBaseUrl, customDomain, zoneId, wranglerProfile } = migrationOptions.data
 
   const target = {
     ...(r2Bucket === undefined ? {} : { r2Bucket }),
@@ -1997,18 +2022,103 @@ const settingsMigrationCommandRun = async (
   }
 }
 
+const projectCreateOptionRead = (parsed: ParsedCommand, name: string): Result<string> => {
+  const value = optionRead(parsed, name)
+  if (value === undefined) return resultFailure("assetsCliProjectCreate", `Project creation requires --${name}`)
+  return { success: true, data: value }
+}
+
+const projectCreateInputRead = (
+  parsed: ParsedCommand,
+  organization: OrganizationDefinition | undefined,
+): Result<ProjectCreate> => {
+  const op = "assetsCliProjectCreate"
+  if (organization === undefined)
+    return resultFailure(op, "Project creation requires a resolved organization; use --organization")
+  if (parsed.positionals.length !== 0)
+    return resultFailure(op, "The projects create command takes no positional arguments")
+  const allowed = optionAllowed(parsed, [
+    "name",
+    "slug",
+    "default-environment",
+    "service-project-id",
+    "zitadel-project-id",
+    "development-r2-bucket",
+    "development-r2-prefix",
+    "development-public-base-url",
+    "production-r2-bucket",
+    "production-r2-prefix",
+    "production-public-base-url",
+  ])
+  if (!allowed.success) return allowed
+  if (optionRead(parsed, "project") !== undefined)
+    return resultFailure(op, "Use --service-project-id instead of --project for project creation")
+  if (optionRead(parsed, "environment") !== undefined)
+    return resultFailure(op, "Use --default-environment instead of --environment for project creation")
+
+  const names = [
+    "name",
+    "slug",
+    "default-environment",
+    "service-project-id",
+    "zitadel-project-id",
+    "development-r2-bucket",
+    "development-r2-prefix",
+    "development-public-base-url",
+    "production-r2-bucket",
+    "production-r2-prefix",
+    "production-public-base-url",
+  ] as const
+  const values = names.map((name) => [name, projectCreateOptionRead(parsed, name)] as const)
+  const invalid = values.find(([, value]) => !value.success)
+  if (invalid !== undefined && !invalid[1].success) return invalid[1]
+  const valueRead = (name: (typeof names)[number]): string => {
+    const value = values.find(([candidate]) => candidate === name)?.[1]
+    return value?.success ? value.data : ""
+  }
+  const input = {
+    organization,
+    name: valueRead("name"),
+    slug: valueRead("slug"),
+    defaultEnvironment: valueRead("default-environment"),
+    binding: {
+      serviceProjectId: valueRead("service-project-id"),
+      zitadelProjectId: valueRead("zitadel-project-id"),
+    },
+    environments: [
+      {
+        name: "development" as const,
+        r2Bucket: valueRead("development-r2-bucket"),
+        r2Prefix: valueRead("development-r2-prefix"),
+        publicBaseUrl: valueRead("development-public-base-url"),
+      },
+      {
+        name: "production" as const,
+        r2Bucket: valueRead("production-r2-bucket"),
+        r2Prefix: valueRead("production-r2-prefix"),
+        publicBaseUrl: valueRead("production-public-base-url"),
+      },
+    ],
+  }
+  const parsedInput = v.safeParse(projectCreateSchema, input)
+  if (!parsedInput.success)
+    return resultFailure(op, "The project creation input was invalid", v.summarize(parsedInput.issues))
+  return { success: true, data: parsedInput.output }
+}
+
 const commandRun = async (
   parsed: ParsedCommand,
   client: AssetsApiClient,
   config: CliConfig,
   env: NodeJS.ProcessEnv,
   stdin: () => Promise<string>,
-  organizationId?: string,
+  organization?: OrganizationDefinition,
   wranglerRunner: WranglerCommandRunner = wranglerCommandRunnerProduction,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
   pollIntervalMilliseconds = 1000,
 ): Promise<CommandOutput> => {
+  const organizationId = organization?.id
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
 
   if (parsed.command === "auth" && parsed.subcommand === "login") {
@@ -2148,6 +2258,13 @@ const commandRun = async (
       )
     }
     return { result: resultFailure("assetsCliSettings", "Use settings read, update, or migrate") }
+  }
+
+  if (parsed.command === "projects") {
+    if (parsed.subcommand !== "create") return { result: resultFailure("assetsCliProjects", "Use projects create") }
+    const input = projectCreateInputRead(parsed, organization)
+    if (!input.success) return { result: input }
+    return { result: await client.projectCreate(input.data) }
   }
 
   if (
@@ -2649,7 +2766,7 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     config,
     env,
     options.stdinRead ?? stdinRead,
-    organizationResult.data.organization?.id,
+    organizationResult.data.organization ?? undefined,
     options.wranglerRunner ?? wranglerCommandRunnerProduction,
     sleep,
     parsedPollInterval?.data,

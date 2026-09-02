@@ -2,6 +2,8 @@ import * as v from "valibot"
 import type { DeletionState } from "../deletion/deletionStateSchema.js"
 import { outputDefinitionSchema } from "../output/outputDefinitionSchema.js"
 import { environmentSchema } from "../project/environmentSchema.js"
+import { projectCreateResultSchema } from "../project/projectCreateResultSchema.js"
+import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import { projectSchema } from "../project/projectSchema.js"
 import { projectSettingsSchema } from "../project/projectSettingsSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
@@ -11,19 +13,14 @@ import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { storageUploadIntentSchema } from "../storage/storageUploadIntentSchema.js"
-import { storageMigrationPlanRequestSchema } from "./storageMigrationPlanRequestSchema.js"
-import { storageMigrationPlanResponseSchema } from "./storageMigrationPlanResponseSchema.js"
-import { storageMigrationStartRequestSchema } from "./storageMigrationStartRequestSchema.js"
-import { storageMigrationStartResponseSchema } from "./storageMigrationStartResponseSchema.js"
-import { storageMigrationStatusResponseSchema } from "./storageMigrationStatusResponseSchema.js"
 import { assetStructureFolderMembershipSchema } from "../structure/assetStructureFolderMembershipSchema.js"
 import { structureFolderCreateInputSchema } from "../structure/structureFolderCreateInputSchema.js"
 import { structureFolderSchema } from "../structure/structureFolderSchema.js"
 import { uploadSchema } from "../upload/uploadSchema.js"
 import { jobKindSchema } from "../workflow/jobKindSchema.js"
 import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
-import { workflowSchema } from "../workflow/workflowSchema.js"
 import { workflowKindSchema } from "../workflow/workflowKindSchema.js"
+import { workflowSchema } from "../workflow/workflowSchema.js"
 import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
@@ -51,6 +48,11 @@ import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
 import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
 import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
+import { storageMigrationPlanRequestSchema } from "./storageMigrationPlanRequestSchema.js"
+import { storageMigrationPlanResponseSchema } from "./storageMigrationPlanResponseSchema.js"
+import { storageMigrationStartRequestSchema } from "./storageMigrationStartRequestSchema.js"
+import { storageMigrationStartResponseSchema } from "./storageMigrationStartResponseSchema.js"
+import { storageMigrationStatusResponseSchema } from "./storageMigrationStatusResponseSchema.js"
 import { structureResponseSchema } from "./structureResponseSchema.js"
 import { uploadCompletionRequestSchema } from "./uploadCompletionRequestSchema.js"
 import { uploadCompletionResponseSchema } from "./uploadCompletionResponseSchema.js"
@@ -365,6 +367,16 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       const page = await projectsRead(query)
       if (!page.success) return page
       return { success: true, data: { items: page.data.projects, nextCursor: page.data.page.nextCursor } }
+    })
+
+  const projectCreate = (input: unknown) =>
+    requestRead({
+      path: "/projects",
+      method: "POST",
+      body: input,
+      bodySchema: projectCreateSchema,
+      responseSchema: projectCreateResultSchema,
+      operation: "assetsApiClientProjectCreate",
     })
 
   const projectRead = (projectId: string) =>
@@ -929,6 +941,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     readyRead,
     projectsRead,
     projectsReadAll,
+    projectCreate,
     projectRead,
     projectSettingsRead,
     projectSettingsWrite,

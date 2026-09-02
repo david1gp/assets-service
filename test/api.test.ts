@@ -119,6 +119,10 @@ const projectRepositoryCreate = (): ProjectRepository => ({
       })),
     },
   }),
+  projectCreate: () => ({
+    success: true,
+    data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
+  }),
   organizationRead: () => ({ success: true, data: null }),
 })
 
@@ -171,14 +175,15 @@ const sessionCreate = async (
   organizationAdmin = false,
   organizationId = "org-1",
   grantProjectId = "zitadel-1",
+  method: "human_session" | "service_account" = "human_session",
 ) => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "human-1",
       organizationId,
       organizationAdmin,
-      method: "human_session",
-      grants: [{ projectId: grantProjectId, roles: [role] }],
+      method,
+      grants: organizationAdmin ? [] : [{ projectId: grantProjectId, roles: [role] }],
       issuedAt: now - 60,
       expiresAt: now + 600,
     },
@@ -376,6 +381,7 @@ describe("HTTP API", () => {
     expect(requestedOrganizationAdmin).toBe(false)
   })
 
+<<<<<<< HEAD
   test("keeps customer contributors on owned bindings and exact contributor grants", async () => {
     const options = optionsCreate()
     const otherProject = { ...project, id: "project-2", name: "Other project" }
@@ -423,6 +429,112 @@ describe("HTTP API", () => {
     expect(settingsResponse.status).toBe(403)
     expect(otherProjectResponse.status).toBe(200)
     expect(requested).toEqual([{ organizationId: "org-1", projectIds: ["zitadel-2"], organizationAdmin: false }])
+=======
+  test("creates projects only for a human organization administrator and passes the subject for the grant record", async () => {
+    let receivedSubject: string | undefined
+    let receivedInput: unknown
+    const options = optionsCreate()
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectCreate: (input, subjectId) => {
+        receivedInput = input
+        receivedSubject = subjectId
+        return {
+          success: true,
+          data: {
+            project: { project, organization: null, binding, environments: [environment] },
+            created: true,
+          },
+        }
+      },
+    }
+    const app = apiAppCreate(options)
+    const administrator = await sessionCreate(options, "contributor", true)
+    const body = {
+      organization: { id: "org-1", name: "Example", slug: "example" },
+      name: "Registered",
+      slug: "registered",
+      defaultEnvironment: "development",
+      binding: { zitadelProjectId: "zitadel-registered", serviceProjectId: "service-registered" },
+      environments: [
+        {
+          name: "development",
+          r2Bucket: "assets-development",
+          r2Prefix: "registered/development",
+          publicBaseUrl: "https://development.assets.example.test",
+        },
+        {
+          name: "production",
+          r2Bucket: "assets-production",
+          r2Prefix: "registered/production",
+          publicBaseUrl: "https://assets.example.test",
+        },
+      ],
+    }
+    const missing = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(missing.status).toBe(401)
+
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: administrator, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+
+    expect(response.status).toBe(201)
+    expect(receivedSubject).toBe("human-1")
+    expect(receivedInput).toEqual(body)
+
+    const wrongOrganization = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: administrator, "content-type": "application/json" },
+        body: JSON.stringify({ ...body, organization: { ...body.organization, id: "org-2" } }),
+      }),
+    )
+    expect(wrongOrganization.status).toBe(403)
+
+    const invalid = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: administrator, "content-type": "application/json" },
+        body: JSON.stringify({ ...body, environments: [body.environments[0]] }),
+      }),
+    )
+    expect(invalid.status).toBe(400)
+
+    const regularOptions = optionsCreate()
+    const regularApp = apiAppCreate(regularOptions)
+    const regular = await sessionCreate(regularOptions)
+    const forbidden = await regularApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: regular, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(forbidden.status).toBe(403)
+
+    const serviceOptions = optionsCreate()
+    const serviceApp = apiAppCreate(serviceOptions)
+    const serviceAdministrator = await sessionCreate(serviceOptions, "contributor", true, "service_account")
+    const serviceForbidden = await serviceApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: serviceAdministrator, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(serviceForbidden.status).toBe(403)
+>>>>>>> e2f56ed (feat(projects): add authenticated project registration CLI and API)
   })
 
   test("allows an organization administrator to access an ungranted same-organization project only", async () => {

@@ -100,6 +100,10 @@ const projectRepositoryCreate = (): ProjectRepository => ({
   }),
   projectSettingsRead: () => ({ success: true, data: null }),
   projectSettingsWrite: () => ({ success: true, data: null }),
+  projectCreate: () => ({
+    success: true,
+    data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
+  }),
   organizationRead: () => ({ success: true, data: null }),
 })
 

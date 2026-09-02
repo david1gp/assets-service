@@ -269,6 +269,7 @@ test("diff help documents its root and all source directory controls", async () 
         "config show [root]",
         "diff [root]",
         "upload-all [root] --integration-note <text>",
+        expect.stringContaining("projects create") as string,
       ]),
       options: expect.arrayContaining(["--dry-run", "--delete", "--organization", "--env-file"]),
       diff: {
@@ -289,6 +290,134 @@ test("diff help documents its root and all source directory controls", async () 
       environmentFile: expect.stringContaining("<command-root>/.env"),
     },
   })
+})
+
+test("projects create sends the complete registration to the service", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-home-"))
+  const output: string[] = []
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          ASSETS_TOKEN: undefined,
+          ASSETS_SESSION_COOKIE: "human-session-cookie",
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.method).toBe("POST")
+    expect(request?.url).toBe("https://assets.example.test/api/v1/projects")
+    expect(request?.headers.get("authorization")).toBeNull()
+    expect(request?.headers.get("cookie")).toBe("human-session-cookie")
+    expect(await request?.clone().json()).toMatchObject({
+      organization: { id: "organization-contentoren", slug: "contentoren" },
+      binding: { serviceProjectId: "allgroups-chat" },
+      environments: [{ name: "development" }, { name: "production" }],
+    })
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create validates both environment bindings before requesting the service", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-validation-home-"))
+  const output: string[] = []
+  let fetchCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async () => {
+          fetchCount += 1
+          return envelopeResponseCreate({})
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(1)
+    expect(fetchCount).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: false, error: { code: "validation_failed" } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
 })
 
 test("config show reports effective local configuration without creating an API client", async () => {

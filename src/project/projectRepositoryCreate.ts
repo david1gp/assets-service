@@ -8,6 +8,7 @@ import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { organizationTable } from "../infrastructure/db/schema/organizationTable.js"
 import { projectBindingTable } from "../infrastructure/db/schema/projectBindingTable.js"
+import { projectGrantTable } from "../infrastructure/db/schema/projectGrantTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
@@ -17,6 +18,8 @@ import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { type Environment, environmentSchema } from "./environmentSchema.js"
 import { type Organization, organizationSchema } from "./organizationSchema.js"
 import { type ProjectBinding, projectBindingSchema } from "./projectBindingSchema.js"
+import type { ProjectCreateResult } from "./projectCreateResultSchema.js"
+import { type ProjectCreate, projectCreateSchema } from "./projectCreateSchema.js"
 import type { ProjectRepository } from "./projectRepository.js"
 import { type Project, projectSchema } from "./projectSchema.js"
 import { type ProjectSettings, projectSettingsSchema } from "./projectSettingsSchema.js"
@@ -26,6 +29,93 @@ type ProjectRecord = typeof projectTable.$inferSelect
 type EnvironmentRecord = typeof environmentTable.$inferSelect
 type OrganizationRecord = typeof organizationTable.$inferSelect
 type ProjectBindingRecord = typeof projectBindingTable.$inferSelect
+
+type ProjectCreateExisting = {
+  project: ProjectRecord | null
+  binding: ProjectBindingRecord | null
+}
+
+const projectCreateExistingRead = (db: AssetDatabase, input: ProjectCreate): Result<ProjectCreateExisting> => {
+  try {
+    const projectBySlug = db
+      .select()
+      .from(projectTable)
+      .where(and(eq(projectTable.organizationId, input.organization.id), eq(projectTable.slug, input.slug)))
+      .limit(1)
+      .get()
+    const bindings = db
+      .select()
+      .from(projectBindingTable)
+      .where(
+        or(
+          eq(projectBindingTable.zitadelProjectId, input.binding.zitadelProjectId),
+          eq(projectBindingTable.serviceProjectId, input.binding.serviceProjectId),
+        ),
+      )
+      .all()
+    const projectIds = new Set<string>([
+      ...(projectBySlug === undefined ? [] : [projectBySlug.id]),
+      ...bindings.map((binding) => binding.projectId),
+    ])
+    if (projectIds.size > 1)
+      return resultErrorCreate(
+        "projectRepositoryProjectCreate",
+        "The project registration already exists with conflicts",
+      )
+    const projectId = [...projectIds][0]
+    if (projectId === undefined) return { success: true, data: { project: null, binding: null } }
+    const project =
+      projectBySlug?.id === projectId
+        ? projectBySlug
+        : db.select().from(projectTable).where(eq(projectTable.id, projectId)).limit(1).get()
+    const binding =
+      bindings.find((candidate) => candidate.projectId === projectId) ??
+      db.select().from(projectBindingTable).where(eq(projectBindingTable.projectId, projectId)).limit(1).get()
+    return { success: true, data: { project: project ?? null, binding: binding ?? null } }
+  } catch (error) {
+    return resultErrorCreate("projectRepositoryProjectCreate", "The existing project could not be read", error)
+  }
+}
+
+const projectCreateMatchesRead = (
+  db: AssetDatabase,
+  input: ProjectCreate,
+  existing: ProjectCreateExisting,
+): Result<boolean> => {
+  if (existing.project === null || existing.binding === null) return { success: true, data: false }
+  try {
+    const environments = db
+      .select()
+      .from(environmentTable)
+      .where(eq(environmentTable.projectId, existing.project.id))
+      .all()
+    const environmentsMatch =
+      environments.length === input.environments.length &&
+      input.environments.every((expected) => {
+        const actual = environments.find((candidate) => candidate.name === expected.name)
+        return (
+          actual !== undefined &&
+          actual.r2Bucket === expected.r2Bucket &&
+          actual.r2Prefix === expected.r2Prefix &&
+          actual.publicBaseUrl === expected.publicBaseUrl
+        )
+      })
+    return {
+      success: true,
+      data:
+        existing.project.organizationId === input.organization.id &&
+        existing.project.name === input.name &&
+        existing.project.slug === input.slug &&
+        existing.project.defaultEnvironment === input.defaultEnvironment &&
+        existing.binding.organizationId === input.organization.id &&
+        existing.binding.zitadelProjectId === input.binding.zitadelProjectId &&
+        existing.binding.serviceProjectId === input.binding.serviceProjectId &&
+        environmentsMatch,
+    }
+  } catch (error) {
+    return resultErrorCreate("projectRepositoryProjectCreate", "The existing project could not be checked", error)
+  }
+}
 
 const projectRead = (record: ProjectRecord): Result<Project> => {
   const parsed = v.safeParse(projectSchema, record)
@@ -352,6 +442,126 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     return projectSettingsRead(project.id)
   }
 
+  const projectCreate = (input: ProjectCreate, initialAdminSubjectId: string): Result<ProjectCreateResult> => {
+    const op = "projectRepositoryProjectCreate"
+    const parsed = v.safeParse(projectCreateSchema, input)
+    if (!parsed.success) return resultErrorCreate(op, v.summarize(parsed.issues), input)
+    const subject = v.safeParse(v.pipe(v.string(), v.minLength(1), v.maxLength(256)), initialAdminSubjectId)
+    if (!subject.success) return resultErrorCreate(op, "The initial administrator subject was invalid")
+
+    const written = databaseTransactionRun<{ projectId: string; created: boolean }>(
+      db,
+      (transaction) => {
+        const organizations = transaction
+          .select()
+          .from(organizationTable)
+          .where(
+            or(
+              eq(organizationTable.id, parsed.output.organization.id),
+              eq(organizationTable.slug, parsed.output.organization.slug),
+            ),
+          )
+          .all()
+        const organizationById = organizations.find((organization) => organization.id === parsed.output.organization.id)
+        const organizationBySlug = organizations.find(
+          (organization) => organization.slug === parsed.output.organization.slug,
+        )
+        if (organizationById !== undefined && organizationById.slug !== parsed.output.organization.slug)
+          return resultErrorCreate(op, "The organization is already registered with a different slug")
+        if (organizationBySlug !== undefined && organizationBySlug.id !== parsed.output.organization.id)
+          return resultErrorCreate(op, "The organization slug is already registered to another organization")
+
+        const existing = projectCreateExistingRead(transaction, parsed.output)
+        if (!existing.success) return existing
+        if (existing.data.project !== null || existing.data.binding !== null) {
+          if (existing.data.project === null)
+            return resultErrorCreate(op, "The project registration already exists without its project")
+          const matches = projectCreateMatchesRead(transaction, parsed.output, existing.data)
+          if (!matches.success) return matches
+          if (!matches.data) return resultErrorCreate(op, "The project registration already exists with different data")
+          return { success: true, data: { projectId: existing.data.project.id, created: false } } as const
+        }
+
+        const organizationId = parsed.output.organization.id
+        const now = new Date().toISOString()
+        if (organizationById === undefined && organizationBySlug === undefined)
+          transaction
+            .insert(organizationTable)
+            .values({
+              id: organizationId,
+              name: parsed.output.organization.name,
+              slug: parsed.output.organization.slug,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run()
+
+        const projectId = crypto.randomUUID()
+        transaction
+          .insert(projectTable)
+          .values({
+            id: projectId,
+            organizationId,
+            name: parsed.output.name,
+            slug: parsed.output.slug,
+            defaultEnvironment: parsed.output.defaultEnvironment,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+        transaction
+          .insert(projectBindingTable)
+          .values({
+            id: crypto.randomUUID(),
+            projectId,
+            organizationId,
+            ...parsed.output.binding,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+        for (const environment of parsed.output.environments)
+          transaction
+            .insert(environmentTable)
+            .values({
+              id: crypto.randomUUID(),
+              projectId,
+              name: environment.name,
+              r2Bucket: environment.r2Bucket,
+              r2Prefix: environment.r2Prefix,
+              publicBaseUrl: environment.publicBaseUrl,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run()
+        // Keep this existing database record for project metadata; runtime authorization remains claims-based.
+        transaction
+          .insert(projectGrantTable)
+          .values({
+            id: crypto.randomUUID(),
+            projectId,
+            organizationId,
+            subjectId: subject.output,
+            role: "admin",
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+        return { success: true, data: { projectId, created: true } } as const
+      },
+      { behavior: "immediate" },
+    )
+    if (!written.success) {
+      if (/unique|constraint/i.test(written.errorMessage))
+        return resultErrorCreate(op, "The project registration already exists with conflicts", written)
+      return written
+    }
+    const settings = projectSettingsRead(written.data.projectId)
+    if (!settings.success) return settings
+    if (!settings.data) return resultErrorCreate(op, "The created project could not be read")
+    return { success: true, data: { project: settings.data, created: written.data.created } }
+  }
+
   return {
     projectsRead,
     projectRead: projectReadByIdentifier,
@@ -360,6 +570,7 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     environmentRead: environmentReadByIdentifier,
     projectSettingsRead,
     projectSettingsWrite,
+    projectCreate,
     organizationRead: organizationReadById,
   }
 }

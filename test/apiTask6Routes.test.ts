@@ -186,6 +186,10 @@ const projectRepositoryCreate = (): ProjectRepository => ({
       })),
     },
   }),
+  projectCreate: () => ({
+    success: true,
+    data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
+  }),
   organizationRead: () => ({ success: true, data: null }),
 })
 

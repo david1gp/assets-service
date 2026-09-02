@@ -22,6 +22,7 @@ import { pkceLoginRequestSchema } from "../authentication/pkceLoginRequestSchema
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
 import { sessionCookieCreate } from "../authentication/sessionCookieCreate.js"
 import { sessionCookieRead } from "../authentication/sessionCookieRead.js"
+import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
@@ -43,8 +44,8 @@ import { apiRequestAuthenticationRead } from "./apiRequestAuthenticationRead.js"
 import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
 import { apiResponseCreate } from "./apiResponseCreate.js"
 import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
-import { apiStructureRoutesRegister } from "./apiStructureRoutesRegister.js"
 import { apiStorageMigrationRoutesRegister } from "./apiStorageMigrationRoutesRegister.js"
+import { apiStructureRoutesRegister } from "./apiStructureRoutesRegister.js"
 import { apiSuccessEnvelopeCreate } from "./apiSuccessEnvelopeCreate.js"
 import { apiUploadStatusRoutesRegister } from "./apiUploadStatusRoutesRegister.js"
 import { apiWorkflowRoutesRegister } from "./apiWorkflowRoutesRegister.js"
@@ -192,7 +193,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/readiness$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/auth\/(login|callback|session)$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/auth\/logout$/, methods: ["POST"] },
-    { pattern: /^\/api\/v1\/projects$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects$/, methods: ["GET", "POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/settings$/, methods: ["GET", "PUT"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments$/, methods: ["GET"] },
@@ -469,6 +470,37 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       projects: selected.slice(0, limit),
       page: { limit, nextCursor: selected.length > limit ? String(offset + limit) : null },
     })
+  })
+
+  app.post(`${apiVersionPath}/projects`, authenticationMiddleware, async (context) => {
+    const authentication = context.get("authentication") as RequestAuthentication | undefined
+    if (!authentication)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    if (authentication.principal.method !== "human_session" || !authentication.principal.organizationAdmin)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization administrator access is required",
+      })
+    const body = await requestBodyRead(context.req.raw)
+    const parsed = v.safeParse(projectCreateSchema, body)
+    if (!parsed.success) return validationFailureCreate(context, "The project creation request was invalid")
+    if (parsed.output.organization.id !== authentication.principal.organizationId)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "The project organization was not allowed",
+      })
+    const created = options.projectRepository.projectCreate(parsed.output, authentication.principal.subjectId)
+    if (!created.success) return domainFailureResponseCreate(context, created.errorMessage)
+    return successResponseCreate(context, created.data, created.data.created ? 201 : 200)
   })
 
   app.get(`${apiVersionPath}/projects/:projectId`, authenticationMiddleware, uploaderMiddleware, (context) => {
