@@ -58,6 +58,61 @@ one setting option. The CLI reads the complete settings document, merges only th
 environment, and writes the complete document. Omitted fields and the other environment are preserved. An empty
 prefix is valid and clears an existing prefix; quote it as `--r2-prefix ""`.
 
+### R2 bucket and domain migration
+
+Use `migrate` to move one project environment to a different R2 bucket and/or prefix, change its public base URL, and
+optionally provision a custom R2 domain. It requires authenticated `admin` access to the selected project. The command
+plans by default and makes no provisioning, object copies, or settings changes:
+
+```bash
+bun run assets settings migrate --project <id-or-name> \
+  --environment <development|production> \
+  [--r2-bucket <bucket>] \
+  [--r2-prefix <prefix>] \
+  [--public-base-url <url>] \
+  [--create-bucket] \
+  [--custom-domain <hostname>] \
+  [--zone-id <id>] \
+  [--wrangler-profile <name>] \
+  [--apply] \
+  [--wait] \
+  [--no-wait] \
+  [--poll-interval <milliseconds>] \
+  [--json]
+```
+
+The target bucket, prefix, and public base URL default to the selected environment's current values when their options
+are omitted. At least one target field must change. `--r2-prefix` is optional and accepts an explicitly empty value to
+use the bucket root: `--r2-prefix ""`. `--public-base-url` must be a valid URL. A custom domain must be a bare
+hostname; `--zone-id` is required with `--custom-domain` and cannot be used without it. When `--custom-domain` is
+provided without `--public-base-url`, the public base URL becomes `https://<hostname>`. If both are provided, the URL
+must be exactly `https://<hostname>`.
+
+`--apply` first obtains the plan, then runs Wrangler provisioning when requested, and starts the durable storage
+migration. `--create-bucket` requires `--r2-bucket`; it creates the bucket only when Wrangler confirms that it is
+missing. `--custom-domain` checks the existing attachment, attaches it with Wrangler when absent, and verifies it.
+`--wrangler-profile` selects the Wrangler profile and is valid only with `--create-bucket` or `--custom-domain`.
+Without a provisioning option, `--apply` does not invoke Wrangler. Wrangler must be installed and authenticated for
+any requested provisioning.
+
+By default, `--apply` returns after the migration is accepted. `--no-wait` makes that behavior explicit. `--wait`
+requires `--apply`, cannot be combined with `--no-wait`, and polls migration status up to 60 times; the default interval
+is 1,000 milliseconds. `--poll-interval` requires `--wait` and accepts 0 through 3,600,000 milliseconds. A waited
+migration exits 0 only for `succeeded`; `failed`, `cancelled`, a polling timeout, or a status error exits nonzero. The
+status and migration identifier are included in the result; use `--json` for the deterministic JSON envelope.
+
+The service can copy objects only between buckets reachable through its configured R2 account and credentials. A
+Wrangler profile does not enable cross-account object transfer; cross-account migration is unsupported. For a storage
+change, the workflow probes the target, inventories and immutably copies the source namespaces, verifies the complete
+destination and public URL, and changes project settings last. A domain-only change performs no object copy.
+
+The idempotency key is derived from the project, environment, and requested target binding. Repeating the same command
+does not create a duplicate migration: queued or running work is reused, and a terminal result is returned rather than
+restarted. Concurrent storage-setting changes or another active migration can block the start. A failure before cutover
+leaves the source settings authoritative; any already-copied destination objects remain. There is no automatic rollback
+or cleanup. For a completed cutover, any rollback must be separately approved and restore the recorded source bucket,
+prefix, and public base URL; the migration itself never deletes source objects or destination objects.
+
 ### Production catalog rebuild
 
 Catalog publication is serialized through SQLite immediate transactions. The manifest object is written outside the
