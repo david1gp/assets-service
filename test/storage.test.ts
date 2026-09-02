@@ -256,6 +256,259 @@ describe("storage adapters", () => {
     expect(requests).toHaveLength(1)
   })
 
+  test("requests identity encoding for signed R2 object HEADs", async () => {
+    let requestHeaders: Headers | undefined
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        requestHeaders = new Headers(init?.headers)
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-length": String(png.byteLength),
+            "content-type": "image/png",
+            etag: '"strong-etag"',
+          },
+        })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/head")
+    if (!location.success) return
+
+    const object = await adapter.headObject(location.data)
+
+    expect(object).toMatchObject({ success: true, data: { byteSize: png.byteLength, etag: '"strong-etag"' } })
+    expect(requestHeaders?.get("accept-encoding")).toBe("identity")
+  })
+
+  test("recovers an R2 object with a guarded identity GET and streamed SHA-256 when HEAD length is unsafe", async () => {
+    const requests: Array<{ method: string; headers: Headers }> = []
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        const method = init?.method ?? "GET"
+        requests.push({ method, headers: new Headers(init?.headers) })
+        if (method === "GET") {
+          const response = new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(png.slice(0, 2))
+                controller.enqueue(png.slice(2))
+                controller.close()
+              },
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "image/png",
+                etag: '"strong-etag"',
+              },
+            },
+          )
+          Object.defineProperty(response, "arrayBuffer", {
+            value: () => {
+              throw new Error("fallback GET must not buffer its body")
+            },
+          })
+          return response
+        }
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "content-length": "9007199254740992",
+            "content-type": "image/png",
+            etag: '"strong-etag"',
+          },
+        })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/gzip-head")
+    if (!location.success) return
+
+    const object = await adapter.headObject(location.data)
+
+    expect(object).toMatchObject({
+      success: true,
+      data: { byteSize: png.byteLength, etag: '"strong-etag"', sha256: contentSha256Create(png) },
+    })
+    expect(requests.map((request) => request.method)).toEqual(["HEAD", "GET"])
+    expect(requests[0]?.headers.get("accept-encoding")).toBe("identity")
+    expect(requests[1]?.headers.get("accept-encoding")).toBe("identity")
+    expect(requests[1]?.headers.get("if-match")).toBe('"strong-etag"')
+  })
+
+  test("returns null when the guarded R2 fallback GET finds no object", async () => {
+    const methods: string[] = []
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        methods.push(init?.method ?? "GET")
+        if (init?.method === "GET") return new Response(null, { status: 404 })
+        return new Response(null, { status: 200, headers: { etag: '"missing-fallback"' } })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/missing-fallback")
+    if (!location.success) return
+
+    const object = await adapter.headObject(location.data)
+
+    expect(object).toEqual({ success: true, data: null })
+    expect(methods).toEqual(["HEAD", "GET"])
+  })
+
+  test("does not recover an R2 object without a non-empty strong HEAD ETag", async () => {
+    for (const etag of [undefined, "", 'W/"weak-etag"', '"unterminated', '"bad"etag', '"bad etag"', "*"]) {
+      const methods: string[] = []
+      const adapter = r2StorageAdapterCreate({
+        accountId: "account",
+        accessKeyId: "access",
+        secretAccessKey: "secret",
+        endpoint: "https://account.r2.cloudflarestorage.com",
+        fetchImplementation: async (_url, init) => {
+          methods.push(init?.method ?? "GET")
+          return new Response(null, {
+            status: 200,
+            headers: {
+              "content-encoding": "gzip",
+              ...(etag === undefined ? {} : { etag }),
+            },
+          })
+        },
+      })
+      const binding = storageBindingResolve(environment)
+      if (!binding.success) return
+      const location = storageObjectLocationCreate(
+        binding.data,
+        "private-staging",
+        `uploads/no-etag-${etag ?? "missing"}`,
+      )
+      if (!location.success) return
+
+      const object = await adapter.headObject(location.data)
+
+      expect(object).toMatchObject({
+        success: false,
+        op: "r2StorageAdapterCreate",
+        errorMessage: "R2 response has no valid content length",
+      })
+      expect(methods).toEqual(["HEAD"])
+    }
+  })
+
+  test("rejects a guarded R2 GET with a missing or mismatched ETag", async () => {
+    for (const getEtag of [undefined, '"other-etag"', 'W/"head-etag"', '"unterminated']) {
+      const requests: Array<{ method: string; headers: Headers }> = []
+      const adapter = r2StorageAdapterCreate({
+        accountId: "account",
+        accessKeyId: "access",
+        secretAccessKey: "secret",
+        endpoint: "https://account.r2.cloudflarestorage.com",
+        fetchImplementation: async (_url, init) => {
+          const method = init?.method ?? "GET"
+          requests.push({ method, headers: new Headers(init?.headers) })
+          if (method === "HEAD")
+            return new Response(null, { status: 200, headers: { etag: '"head-etag"', "content-type": "image/png" } })
+          return new Response(png, {
+            status: 200,
+            headers: {
+              ...(getEtag === undefined ? {} : { etag: getEtag }),
+            },
+          })
+        },
+      })
+      const binding = storageBindingResolve(environment)
+      if (!binding.success) return
+      const location = storageObjectLocationCreate(
+        binding.data,
+        "private-staging",
+        `uploads/get-etag-${getEtag ?? "missing"}`,
+      )
+      if (!location.success) return
+
+      const object = await adapter.headObject(location.data)
+
+      expect(object).toMatchObject({ success: false, op: "r2StorageAdapterCreate" })
+      expect(requests.map((request) => request.method)).toEqual(["HEAD", "GET"])
+      expect(requests[1]?.headers.get("accept-encoding")).toBe("identity")
+      expect(requests[1]?.headers.get("if-match")).toBe('"head-etag"')
+    }
+  })
+
+  test("rejects a guarded R2 GET that returns 412", async () => {
+    const methods: string[] = []
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        methods.push(init?.method ?? "GET")
+        if (init?.method === "GET") return new Response(null, { status: 412 })
+        return new Response(null, { status: 200, headers: { etag: '"head-etag"' } })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/get-412")
+    if (!location.success) return
+
+    const object = await adapter.headObject(location.data)
+
+    expect(object).toMatchObject({
+      success: false,
+      op: "r2StorageAdapterCreate",
+      errorMessage: "R2 request failed with status 412",
+    })
+    expect(methods).toEqual(["HEAD", "GET"])
+  })
+
+  test("rejects a guarded R2 GET when its body cannot be read", async () => {
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        if (init?.method === "GET") {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("R2 body read failed"))
+            },
+          })
+          return new Response(body, { status: 200, headers: { etag: '"head-etag"' } })
+        }
+        return new Response(null, { status: 200, headers: { etag: '"head-etag"' } })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const location = storageObjectLocationCreate(binding.data, "private-staging", "uploads/read-failure")
+    if (!location.success) return
+
+    const object = await adapter.headObject(location.data)
+
+    expect(object).toMatchObject({
+      success: false,
+      op: "r2StorageAdapterCreate",
+      errorMessage: "R2 body read failed",
+    })
+  })
+
   test("verifies R2 checksum, content type, and immutable cache policy after upload", async () => {
     const checksum = contentSha256Create(png)
     const requests: Array<{ method: string; headers: Headers }> = []

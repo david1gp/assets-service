@@ -468,6 +468,162 @@ describe("storage migration primitives", () => {
     expect(requests[1]?.headers.get("if-none-match")).toBe("*")
   })
 
+  test("recovers discovery with a guarded identity GET when an R2 HEAD omits content length", async () => {
+    const objectKey = "projects/project-1/private/source/sources/source"
+    const requests: Array<{ method: string; headers: Headers }> = []
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        const method = init?.method ?? "GET"
+        requests.push({ method, headers: new Headers(init?.headers) })
+        if (method === "GET" && new URL(String(_url)).searchParams.has("list-type"))
+          return new Response(
+            `<ListBucketResult><Contents><Key>${objectKey}</Key><Size>${png.byteLength}</Size><ETag>&quot;strong-etag&quot;</ETag><LastModified>2026-08-17T12:00:00.000Z</LastModified></Contents></ListBucketResult>`,
+            { status: 200 },
+          )
+        if (method === "GET")
+          return new Response(png, {
+            status: 200,
+            headers: {
+              "content-type": "image/png",
+              etag: '"strong-etag"',
+              "x-amz-meta-sha256": contentSha256Create(png),
+            },
+          })
+        return new Response(null, {
+          status: 200,
+          headers: { "content-encoding": "gzip", etag: '"strong-etag"' },
+        })
+      },
+    })
+
+    const inventory = await storageMigrationSourceInventoryRead(adapter, { sourceBinding })
+
+    expect(inventory).toMatchObject({
+      success: true,
+      data: [{ key: "sources/source", object: { byteSize: png.byteLength, etag: '"strong-etag"' } }],
+    })
+    expect(requests.map((request) => request.method)).toEqual(["GET", "HEAD", "GET"])
+    expect(requests[1]?.headers.get("accept-encoding")).toBe("identity")
+    expect(requests[2]?.headers.get("accept-encoding")).toBe("identity")
+    expect(requests[2]?.headers.get("if-match")).toBe('"strong-etag"')
+  })
+
+  test("rejects a same-size source replacement when LIST and HEAD ETags differ", async () => {
+    const objectKey = "projects/project-1/private/source/sources/replaced"
+    const adapter = memoryStorageAdapterCreate()
+    const listing: StorageAdapter = {
+      ...adapter,
+      listObjects: async () => ({
+        success: true,
+        data: {
+          objects: [{ key: objectKey, byteSize: png.byteLength, etag: '"listed-etag"' }],
+          nextContinuationToken: null,
+        },
+      }),
+      headObject: async () => ({
+        success: true,
+        data: {
+          key: objectKey,
+          byteSize: png.byteLength,
+          mediaType: "image/png",
+          sha256: contentSha256Create(png),
+          etag: '"replacement-etag"',
+        },
+      }),
+    }
+
+    const inventory = await storageMigrationSourceInventoryRead(listing, { sourceBinding })
+
+    expect(inventory).toMatchObject({
+      success: false,
+      op: "storageMigrationSourceInventoryRead",
+      errorMessage: "Source object changed during inventory discovery",
+    })
+  })
+
+  test("normalizes matching strong LIST and HEAD ETags", async () => {
+    const objectKey = "projects/project-1/private/source/sources/normalized"
+    const adapter = memoryStorageAdapterCreate()
+    const listing: StorageAdapter = {
+      ...adapter,
+      listObjects: async () => ({
+        success: true,
+        data: {
+          objects: [{ key: objectKey, byteSize: png.byteLength, etag: '"same-etag"' }],
+          nextContinuationToken: null,
+        },
+      }),
+      headObject: async () => ({
+        success: true,
+        data: {
+          key: objectKey,
+          byteSize: png.byteLength,
+          mediaType: "image/png",
+          sha256: contentSha256Create(png),
+          etag: '  "same-etag"  ',
+        },
+      }),
+    }
+
+    const inventory = await storageMigrationSourceInventoryRead(listing, { sourceBinding })
+
+    expect(inventory).toMatchObject({ success: true, data: [{ object: { etag: '  "same-etag"  ' } }] })
+  })
+
+  test("fails closed for one-sided or malformed LIST and HEAD ETags", async () => {
+    const cases = [
+      { listed: undefined, head: '"head-etag"' },
+      { listed: '"listed-etag"', head: undefined },
+      { listed: 'W/"weak-etag"', head: 'W/"weak-etag"' },
+      { listed: '"unterminated', head: '"unterminated' },
+      { listed: '"bad etag"', head: '"bad etag"' },
+      { listed: "*", head: "*" },
+    ] as const
+
+    for (const [index, etags] of cases.entries()) {
+      const objectKey = `projects/project-1/private/source/sources/invalid-etag-${index}`
+      const adapter = memoryStorageAdapterCreate()
+      const listing: StorageAdapter = {
+        ...adapter,
+        listObjects: async () => ({
+          success: true,
+          data: {
+            objects: [
+              {
+                key: objectKey,
+                byteSize: png.byteLength,
+                ...(etags.listed === undefined ? {} : { etag: etags.listed }),
+              },
+            ],
+            nextContinuationToken: null,
+          },
+        }),
+        headObject: async () => ({
+          success: true,
+          data: {
+            key: objectKey,
+            byteSize: png.byteLength,
+            mediaType: "image/png",
+            sha256: contentSha256Create(png),
+            ...(etags.head === undefined ? {} : { etag: etags.head }),
+          },
+        }),
+      }
+
+      const inventory = await storageMigrationSourceInventoryRead(listing, { sourceBinding })
+
+      expect(inventory).toMatchObject({
+        success: false,
+        op: "storageMigrationSourceInventoryRead",
+        errorMessage: "Source object changed during inventory discovery",
+      })
+    }
+  })
+
   test("verifies a raced R2 destination before accepting a 412 copy", async () => {
     const checksum = contentSha256Create(png)
     const mapped = storageMigrationObjectLocationCreate({
