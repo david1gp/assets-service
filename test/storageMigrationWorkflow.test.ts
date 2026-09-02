@@ -440,16 +440,33 @@ describe("storage migration workflow", () => {
           return fixture.storage.deleteObject(location)
         },
       }
-      await runMigration(fixture, targetBinding, storage, { retryLimit: 0 })
+      const first = await runMigration(fixture, targetBinding, storage, { retryLimit: 0 })
       const repository = storageMigrationRepositoryCreate(fixture.db)
       expect(repository.storageMigrationReadByIdempotencyKey(sourceBinding.environmentId, "migration-1")).toMatchObject(
         {
           success: true,
-          data: { status: "failed" },
+          data: { id: first.enqueued.migrationId, attempt: 1, status: "failed" },
         },
       )
       expect(storageMutationAssert(repository, sourceBinding.environmentId)).toEqual({ success: true, data: null })
       expect(deleteCalls).toBe(0)
+
+      const retried = storageMigrationWorkflowEnqueue(fixture.db, {
+        projectId: sourceBinding.projectId,
+        environmentId: sourceBinding.environmentId,
+        idempotencyKey: "migration-1",
+        sourceBinding,
+        targetBinding,
+      })
+      expect(retried).toMatchObject({ success: true })
+      if (!retried.success) return
+      expect(retried.data.migrationId).not.toBe(first.enqueued.migrationId)
+      expect(repository.storageMigrationRead(retried.data.migrationId)).toMatchObject({
+        success: true,
+        data: { attempt: 2, status: "queued" },
+      })
+      expect(fixture.db.select().from(workflowTable).all()).toHaveLength(2)
+      expect(fixture.db.select().from(jobTable).all()).toHaveLength(2)
     } finally {
       await fixtureDelete(fixture)
     }

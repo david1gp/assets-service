@@ -10,6 +10,7 @@ import { environmentTable } from "../src/infrastructure/db/schema/environmentTab
 import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
+import { storageMigrationTable } from "../src/migration/storageMigrationTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { storageMigrationRepositoryCreate } from "../src/migration/storageMigrationRepositoryCreate.js"
 
@@ -244,6 +245,87 @@ describe("storage migration repository", () => {
         success: true,
         data: { id: created.data.id, status: "running" },
       })
+    } finally {
+      await fixtureDelete(fixture)
+    }
+  })
+
+  test("reuses succeeded attempts and creates durable retries for failed and cancelled attempts", async () => {
+    const fixture = await fixtureCreate()
+    try {
+      for (const terminalStatus of ["failed", "cancelled"] as const) {
+        const input = {
+          projectId: "project-1",
+          environmentId: "environment-1",
+          idempotencyKey: `migration-${terminalStatus}-retry`,
+          sourceBinding,
+          targetBinding,
+        }
+        const created = fixture.repository.storageMigrationCreate(input)
+        expect(created).toMatchObject({ success: true, data: { attempt: 1, status: "queued" } })
+        if (!created.success) return
+        const ownership = migrationJobCreate(fixture, created.data.id)
+        expect(
+          fixture.repository.storageMigrationStatusUpdate(created.data.id, "running", { ownership }),
+        ).toMatchObject({
+          success: true,
+        })
+        expect(
+          fixture.repository.storageMigrationStatusUpdate(created.data.id, terminalStatus, { ownership }),
+        ).toMatchObject({ success: true, data: { attempt: 1, status: terminalStatus } })
+
+        const retry = fixture.repository.storageMigrationCreate(input)
+        expect(retry).toMatchObject({ success: true, data: { attempt: 2, status: "queued" } })
+        if (!retry.success) return
+        expect(retry.data.id).not.toBe(created.data.id)
+        expect(fixture.repository.storageMigrationCreate(input)).toMatchObject({
+          success: true,
+          data: { id: retry.data.id, attempt: 2, status: "queued" },
+        })
+        expect(fixture.repository.storageMigrationRead(created.data.id)).toMatchObject({
+          success: true,
+          data: { status: terminalStatus, attempt: 1 },
+        })
+        const retryOwnership = migrationJobCreate(fixture, retry.data.id)
+        expect(
+          fixture.repository.storageMigrationStatusUpdate(retry.data.id, "running", { ownership: retryOwnership }),
+        ).toMatchObject({ success: true })
+        expect(
+          fixture.repository.storageMigrationStatusUpdate(retry.data.id, terminalStatus, { ownership: retryOwnership }),
+        ).toMatchObject({ success: true })
+      }
+    } finally {
+      await fixtureDelete(fixture)
+    }
+  })
+
+  test("reuses a succeeded attempt for the same idempotency key", async () => {
+    const fixture = await fixtureCreate()
+    try {
+      const input = {
+        projectId: "project-1",
+        environmentId: "environment-1",
+        idempotencyKey: "migration-succeeded-reuse",
+        sourceBinding,
+        targetBinding,
+      }
+      const created = fixture.repository.storageMigrationCreate(input)
+      expect(created.success).toBe(true)
+      if (!created.success) return
+      const ownership = migrationJobCreate(fixture, created.data.id)
+      expect(fixture.repository.storageMigrationStatusUpdate(created.data.id, "running", { ownership })).toMatchObject({
+        success: true,
+      })
+      expect(
+        fixture.repository.storageMigrationStatusUpdate(created.data.id, "succeeded", { ownership }),
+      ).toMatchObject({
+        success: true,
+      })
+      expect(fixture.repository.storageMigrationCreate(input)).toMatchObject({
+        success: true,
+        data: { id: created.data.id, attempt: 1, status: "succeeded" },
+      })
+      expect(fixture.connection.db.select().from(storageMigrationTable).all()).toHaveLength(1)
     } finally {
       await fixtureDelete(fixture)
     }

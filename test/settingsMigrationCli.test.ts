@@ -40,11 +40,15 @@ const planCreate = (input: { bucket?: string; prefix?: string; publicBaseUrl?: s
   idempotency: { existingMigrationId: null, existingMigrationStatus: null, activeMigrationId: null },
 })
 
-const migrationCreate = (status: "queued" | "running" | "succeeded" | "failed" | "cancelled") => ({
-  id: "migration-1",
+const migrationCreate = (
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled",
+  options: { id?: string; attempt?: number } = {},
+) => ({
+  id: options.id ?? "migration-1",
   projectId: "project-1",
   environmentId: "environment-development",
   idempotencyKey: "migration-key",
+  attempt: options.attempt ?? 1,
   sourceBinding: bindingCreate({
     bucket: "source-bucket",
     prefix: "source-prefix",
@@ -77,6 +81,7 @@ const migrationCreate = (status: "queued" | "running" | "succeeded" | "failed" |
 const migrationFetcherCreate = (
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled" = "queued",
   startStatus = status,
+  startMigration: { id?: string; attempt?: number } = {},
 ) => {
   const requests: Request[] = []
   const fetcher = async (input: string | URL, init?: RequestInit): Promise<Response> => {
@@ -88,13 +93,13 @@ const migrationFetcherCreate = (
       return envelopeResponseCreate(
         {
           accepted: true,
-          migrationId: "migration-1",
-          workflowId: "workflow-1",
-          migration: migrationCreate(startStatus),
+          migrationId: startMigration.id ?? "migration-1",
+          workflowId: `workflow-${startMigration.id ?? "migration-1"}`,
+          migration: migrationCreate(startStatus, startMigration),
         },
         202,
       )
-    if (path.endsWith("/status")) return envelopeResponseCreate(migrationCreate(status))
+    if (path.endsWith("/status")) return envelopeResponseCreate(migrationCreate(status, startMigration))
     throw new Error(`Unexpected request ${path}`)
   }
   return { fetcher, requests }
@@ -400,9 +405,9 @@ test("settings migrate does not invoke Wrangler when no provisioning flag is req
   expect(result.output).toMatchObject({ data: { provisioning: { wranglerVerified: false } } })
 })
 
-test("settings migrate returns nonzero for already terminal failed and cancelled idempotent migrations", async () => {
+test("settings migrate reports the newly enqueued retry for failed and cancelled idempotent migrations", async () => {
   for (const status of ["failed", "cancelled"] as const) {
-    const transport = migrationFetcherCreate(status, status)
+    const transport = migrationFetcherCreate(status, status, { id: "migration-2", attempt: 2 })
     const result = await cliRun(
       [
         "settings",
@@ -419,7 +424,10 @@ test("settings migrate returns nonzero for already terminal failed and cancelled
     )
 
     expect(result.exitCode).toBe(1)
-    expect(result.output).toMatchObject({ ok: true, data: { migration: { status }, migrationId: "migration-1" } })
+    expect(result.output).toMatchObject({
+      ok: true,
+      data: { migration: { status, attempt: 2 }, migrationId: "migration-2" },
+    })
   }
 })
 

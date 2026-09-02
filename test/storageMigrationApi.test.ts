@@ -61,6 +61,7 @@ const migrationCreate = (idempotencyKey: string, targetPublicBaseUrl: string): S
   projectId: project.id,
   environmentId: environment.id,
   idempotencyKey,
+  attempt: 1,
   sourceBinding: sourceBindingCreate(),
   targetBinding: { ...sourceBindingCreate(), publicBaseUrl: targetPublicBaseUrl },
   status: "queued",
@@ -133,7 +134,7 @@ const optionsCreate = (
     }),
     storageMigrationReadByIdempotencyKey: (_environmentId, idempotencyKey) => ({
       success: true,
-      data: state.migrations.find((migration) => migration.idempotencyKey === idempotencyKey) ?? null,
+      data: [...state.migrations].reverse().find((migration) => migration.idempotencyKey === idempotencyKey) ?? null,
     }),
     storageMigrationReadActive: (environmentId) => ({
       success: true,
@@ -165,7 +166,9 @@ const optionsCreate = (
     projectRepository: projectRepositoryCreate(),
     storageMigrationRepository: repository,
     storageMigrationWorkflowEnqueue: (input) => {
-      const existing = state.migrations.find((migration) => migration.idempotencyKey === input.idempotencyKey)
+      const existing = [...state.migrations]
+        .reverse()
+        .find((migration) => migration.idempotencyKey === input.idempotencyKey)
       const active = state.migrations.find(
         (migration) =>
           migration.environmentId === input.environmentId && ["queued", "running"].includes(migration.status),
@@ -173,8 +176,18 @@ const optionsCreate = (
       if (existing === undefined && active !== undefined)
         return { success: false, op: "test", errorMessage: "An active storage migration already exists" }
       state.enqueueCount += 1
-      const migration = existing ?? migrationCreate(input.idempotencyKey, input.targetBinding.publicBaseUrl)
+      const migration =
+        existing === undefined
+          ? migrationCreate(input.idempotencyKey, input.targetBinding.publicBaseUrl)
+          : existing.status === "failed" || existing.status === "cancelled"
+            ? {
+                ...migrationCreate(input.idempotencyKey, input.targetBinding.publicBaseUrl),
+                id: `migration-${input.idempotencyKey}-${(existing?.attempt ?? 0) + 1}`,
+                attempt: (existing?.attempt ?? 0) + 1,
+              }
+            : existing
       if (existing === undefined) state.migrations.push(migration)
+      else if (migration.id !== existing.id) state.migrations.push(migration)
       return {
         success: true,
         data: { migrationId: migration.id, workflowId: `workflow-storage-migration-${migration.id}` },
@@ -374,6 +387,49 @@ describe("storage migration API", () => {
     expect(await response.json()).toMatchObject({
       data: { accepted: true, migration: { id: "migration-migration-1" } },
     })
+  })
+
+  test("retries a failed or cancelled migration while retaining the terminal attempt", async () => {
+    for (const terminalStatus of ["failed", "cancelled"] as const) {
+      environmentReset()
+      const failed = { ...migrationCreate("migration-retry", "https://target.example.test"), status: terminalStatus }
+      const state = { migrations: [failed], enqueueCount: 0 }
+      const options = optionsCreate("admin", state)
+      const app = apiAppCreate(options)
+      const admin = await sessionCreate(options, "admin")
+      const source = sourceBindingCreate()
+      const body = {
+        idempotencyKey: "migration-retry",
+        sourceBinding: source,
+        targetBinding: { ...source, publicBaseUrl: "https://target.example.test" },
+      }
+
+      const retried = await app.fetch(
+        requestCreate("/api/v1/projects/project-service/environments/development/storage-migration/start", admin, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      )
+      const repeated = await app.fetch(
+        requestCreate("/api/v1/projects/project-service/environments/development/storage-migration/start", admin, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      )
+
+      expect(retried.status).toBe(202)
+      expect(repeated.status).toBe(202)
+      expect(state.enqueueCount).toBe(2)
+      expect(state.migrations).toHaveLength(2)
+      expect(state.migrations[0]).toMatchObject({ status: terminalStatus, attempt: 1 })
+      expect(state.migrations[1]).toMatchObject({ status: "queued", attempt: 2 })
+      expect(await retried.json()).toMatchObject({
+        data: { migrationId: state.migrations[1]?.id, migration: { status: "queued", attempt: 2 } },
+      })
+      expect(await repeated.json()).toMatchObject({
+        data: { migrationId: state.migrations[1]?.id, migration: { status: "queued", attempt: 2 } },
+      })
+    }
   })
 
   test("keeps the migration id in a structured error after enqueue succeeds", async () => {

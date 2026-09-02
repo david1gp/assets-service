@@ -22,18 +22,18 @@ type MigrationJournal = {
   [key: string]: unknown
 }
 
-const legacyMigrationFolderCreate = () => {
+const legacyMigrationFolderCreate = (lastMigrationIndex = 13) => {
   const sourceFolder = resolve("drizzle")
   const migrationFolder = mkdtempSync(join(tmpdir(), "assets-storage-migration-"))
   const metaFolder = join(migrationFolder, "meta")
   mkdirSync(metaFolder)
   for (const filename of readdirSync(sourceFolder)) {
     const migrationNumber = Number.parseInt(filename.slice(0, 4), 10)
-    if (filename.endsWith(".sql") && migrationNumber <= 13)
+    if (filename.endsWith(".sql") && migrationNumber <= lastMigrationIndex)
       copyFileSync(join(sourceFolder, filename), join(migrationFolder, filename))
   }
   const journal = JSON.parse(readFileSync(join(sourceFolder, "meta", "_journal.json"), "utf8")) as MigrationJournal
-  journal.entries = journal.entries.filter((entry) => entry.idx <= 13)
+  journal.entries = journal.entries.filter((entry) => entry.idx <= lastMigrationIndex)
   writeFileSync(join(metaFolder, "_journal.json"), JSON.stringify(journal))
   return migrationFolder
 }
@@ -122,6 +122,47 @@ test("accepts legacy workflow rows when applying the storage migration workflow 
       },
     ])
     expect(opened.data.client.query("PRAGMA foreign_key_check").all()).toEqual([])
+  } finally {
+    databaseClose(opened.data)
+    rmSync(migrationFolder, { recursive: true, force: true })
+  }
+})
+
+test("adds a retry attempt column and preserves the active-migration index when upgrading", () => {
+  const migrationFolder = legacyMigrationFolderCreate(16)
+  const opened = databaseOpen(":memory:")
+  expect(opened.success).toBe(true)
+  if (!opened.success) {
+    rmSync(migrationFolder, { recursive: true, force: true })
+    return
+  }
+
+  try {
+    expect(databaseMigrate(opened.data, migrationFolder)).toEqual({ success: true, data: null })
+    const before = opened.data.client.query("PRAGMA table_info(storage_migrations)").all() as Array<{ name: string }>
+    expect(before.some((column) => column.name === "attempt")).toBe(false)
+
+    expect(databaseMigrate(opened.data)).toEqual({ success: true, data: null })
+    const columns = opened.data.client.query("PRAGMA table_info(storage_migrations)").all() as Array<{
+      name: string
+      notnull: number
+      dflt_value: string | null
+    }>
+    expect(columns.find((column) => column.name === "attempt")).toMatchObject({ notnull: 1, dflt_value: "1" })
+
+    const indexes = opened.data.client.query("PRAGMA index_list(storage_migrations)").all() as Array<{
+      name: string
+      unique: number
+    }>
+    expect(indexes.find((index) => index.name === "storage_migrations_environment_idempotency_unique")).toBeUndefined()
+    expect(
+      indexes.find((index) => index.name === "storage_migrations_environment_idempotency_attempt_unique"),
+    ).toMatchObject({
+      unique: 1,
+    })
+    expect(indexes.find((index) => index.name === "storage_migrations_environment_active_unique")).toMatchObject({
+      unique: 1,
+    })
   } finally {
     databaseClose(opened.data)
     rmSync(migrationFolder, { recursive: true, force: true })
