@@ -37,7 +37,10 @@ const cacheControl = "public, max-age=31536000, immutable"
 
 type ProbeMode = "old-bucket" | "root-200" | "redirect" | "content-mismatch" | "target"
 
-function fixtureCreate(mode: ProbeMode, options: { sameUrl?: boolean; cleanupFailure?: boolean } = {}) {
+function fixtureCreate(
+  mode: ProbeMode,
+  options: { sameUrl?: boolean; cleanupFailure?: boolean; targetPrefix?: string; publicBaseUrl?: string } = {},
+) {
   const storageBase = memoryStorageAdapterCreate()
   let written: Parameters<StorageAdapter["putImmutable"]>[0] | undefined
   const deleted: Array<Parameters<StorageAdapter["deleteObject"]>[0]> = []
@@ -53,12 +56,21 @@ function fixtureCreate(mode: ProbeMode, options: { sameUrl?: boolean; cleanupFai
       return storageBase.deleteObject(location)
     },
   }
-  const publicBaseUrl = options.sameUrl ? sourceBinding.publicBaseUrl : targetBinding.publicBaseUrl
-  const target = { ...targetBinding, publicBaseUrl }
+  const publicBaseUrl = options.sameUrl
+    ? sourceBinding.publicBaseUrl
+    : (options.publicBaseUrl ?? targetBinding.publicBaseUrl)
+  const target = { ...targetBinding, prefix: options.targetPrefix ?? targetBinding.prefix, publicBaseUrl }
   const fetchCalls: Array<{ url: string; init?: RequestInit }> = []
   const fetchImplementation = async (request: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = request instanceof Request ? request.url : request.toString()
     fetchCalls.push({ url, init })
+    if (written === undefined) return new Response(null, { status: 404 })
+    const configuredBaseUrl = new URL(publicBaseUrl)
+    const basePath = configuredBaseUrl.pathname.replace(/\/+$/, "")
+    const expectedPathname = `${basePath}/${written.location.objectKey.split("/").map(encodeURIComponent).join("/")}`
+    const requestedUrl = new URL(url)
+    if (requestedUrl.origin !== configuredBaseUrl.origin || requestedUrl.pathname !== expectedPathname)
+      return new Response(null, { status: 404 })
     if (mode === "redirect") return new Response(null, { status: 302, headers: { location: publicBaseUrl } })
     if (mode === "old-bucket")
       return probeResponse(new TextEncoder().encode("old-bucket-object"), mediaType, cacheControl)
@@ -66,7 +78,6 @@ function fixtureCreate(mode: ProbeMode, options: { sameUrl?: boolean; cleanupFai
       return probeResponse(new TextEncoder().encode("unrelated-root-object"), mediaType, cacheControl)
     if (mode === "content-mismatch")
       return probeResponse(new TextEncoder().encode("different-object"), mediaType, cacheControl)
-    if (written === undefined) return new Response(null, { status: 404 })
     return probeResponse(written.bytes, mediaType, cacheControl)
   }
   return { storageBase, storage, target, getWritten: () => written, deleted, fetchCalls, fetchImplementation }
@@ -94,6 +105,41 @@ describe("storage migration public URL verification", () => {
     expect(result).toMatchObject({ success: false })
     expect(!result.success && result.errorMessage).toContain("did not match")
     expect(fixture.fetchCalls[0]?.url).not.toBe(fixture.target.publicBaseUrl)
+  })
+
+  test("uses the public namespace path for an empty target prefix", async () => {
+    const fixture = fixtureCreate("target", { targetPrefix: "" })
+    const result = await verify(fixture)
+
+    expect(result).toEqual({ success: true, data: null })
+    expect(fixture.fetchCalls[0]?.url).toBe("https://target.example.test/public/__migration_probe/probe-test-id_v1.bin")
+    expect(fixture.deleted).toEqual([
+      expect.objectContaining({
+        bucket: targetBinding.bucket,
+        namespace: "public-output",
+        objectKey: "public/__migration_probe/probe-test-id_v1.bin",
+      }),
+    ])
+  })
+
+  test("preserves a base pathname and encodes non-empty target prefix segments", async () => {
+    const fixture = fixtureCreate("target", {
+      targetPrefix: "target prefix/über",
+      publicBaseUrl: "https://target.example.test/assets/",
+    })
+    const result = await verify(fixture)
+
+    expect(result).toEqual({ success: true, data: null })
+    expect(fixture.fetchCalls[0]?.url).toBe(
+      "https://target.example.test/assets/target%20prefix/%C3%BCber/public/__migration_probe/probe-test-id_v1.bin",
+    )
+    expect(fixture.deleted).toEqual([
+      expect.objectContaining({
+        bucket: targetBinding.bucket,
+        namespace: "public-output",
+        objectKey: "target prefix/über/public/__migration_probe/probe-test-id_v1.bin",
+      }),
+    ])
   })
 
   test("rejects redirects without following them", async () => {

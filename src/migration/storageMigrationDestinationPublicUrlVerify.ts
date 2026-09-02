@@ -59,7 +59,7 @@ export const storageMigrationDestinationPublicUrlVerify = async (input: {
       if (!storedMetadata.success) {
         verification = storedMetadata
       } else {
-        const url = storageMigrationPublicProbeUrlCreate(input.targetBinding.publicBaseUrl, probeKey)
+        const url = storageMigrationPublicProbeUrlCreate(input.targetBinding.publicBaseUrl, location.data.objectKey)
         const fetched = await storageMigrationPublicProbeFetch(
           url,
           probeBytes,
