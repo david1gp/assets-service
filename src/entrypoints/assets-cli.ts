@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { createHash } from "node:crypto"
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
@@ -10,6 +11,7 @@ import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
 import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
 import { assetsApiResultOptionalRead } from "../api-client/assetsApiResultOptionalRead.js"
 import type { OutputDefinitionInput } from "../api-client/outputDefinitionInputSchema.js"
+import type { StorageMigrationStatusResponse } from "../api-client/storageMigrationStatusResponseSchema.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { assetIdentifierCreate } from "../asset/assetIdentifierCreate.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
@@ -46,12 +48,16 @@ import type { ProjectSourceConfiguration } from "../config/projectSourceConfigur
 import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectSettings } from "../project/projectSettingsSchema.js"
+import { r2PrefixSchema } from "../project/r2PrefixSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import type { WranglerCommandRunner } from "../wrangler/wranglerCommandRunner.js"
+import { wranglerCommandRunnerProduction } from "../wrangler/wranglerCommandRunnerProduction.js"
+import { wranglerProvisioningRun } from "../wrangler/wranglerProvisioningRun.js"
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 
@@ -62,6 +68,7 @@ export type AssetsCliOptions = {
   stdout?: (text: string) => void
   stderr?: (text: string) => void
   stdinRead?: () => Promise<string>
+  wranglerRunner?: WranglerCommandRunner
 }
 
 type CliConfig = {
@@ -139,6 +146,9 @@ const optionNames = new Set([
   "r2-bucket",
   "r2-prefix",
   "public-base-url",
+  "custom-domain",
+  "zone-id",
+  "wrangler-profile",
   "search",
   "session",
   "status",
@@ -162,6 +172,8 @@ const flagNames = new Set([
   "show-ai-label",
   "token-stdin",
   "wait",
+  "apply",
+  "create-bucket",
   "write",
   "delete",
   "version",
@@ -192,6 +204,7 @@ const commandHelp = {
     "metadata set|unset <asset-key>",
     "settings read [--project <id-or-name>] [--environment <development|production>]",
     "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
+    "settings migrate [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>] [--create-bucket] [--custom-domain <hostname>] [--zone-id <id>] [--wrangler-profile <name>] [--apply] [--wait] [--no-wait] [--poll-interval <milliseconds>]",
     "catalogs rebuild --project <id-or-name> --environment production",
     "move <asset-key> --to <path>",
     "delete <asset-key>",
@@ -262,6 +275,11 @@ const commandHelp = {
     "--r2-bucket",
     "--r2-prefix",
     "--public-base-url",
+    "--create-bucket",
+    "--custom-domain",
+    "--zone-id",
+    "--wrangler-profile",
+    "--apply",
   ],
   projectResolution:
     "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project; name, package name, and sole-project selection are scoped by the resolved organization, while explicit project IDs remain authoritative.",
@@ -1730,6 +1748,255 @@ const projectSettingsUpdateRead = (
   return { success: true, data: parsed.output }
 }
 
+const customDomainRead = (value: string): Result<string> => {
+  const op = "assetsCliSettingsMigrate"
+  if (value.length === 0 || /[/:?#@\\\s]/u.test(value)) return resultFailure(op, "--custom-domain must be a hostname")
+  let url: URL
+  try {
+    url = new URL(`https://${value}`)
+  } catch {
+    return resultFailure(op, "--custom-domain must be a hostname")
+  }
+  if (
+    url.hostname !== value.toLocaleLowerCase() ||
+    url.port !== "" ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    url.username !== "" ||
+    url.password !== ""
+  )
+    return resultFailure(op, "--custom-domain must be a hostname")
+  return { success: true, data: url.hostname }
+}
+
+const publicBaseUrlAgrees = (publicBaseUrl: string, customDomain: string): boolean => {
+  let url: URL
+  try {
+    url = new URL(publicBaseUrl)
+  } catch {
+    return false
+  }
+  return (
+    url.protocol === "https:" &&
+    url.hostname === customDomain &&
+    url.port === "" &&
+    url.pathname === "/" &&
+    url.search === "" &&
+    url.hash === "" &&
+    url.username === "" &&
+    url.password === ""
+  )
+}
+
+type SettingsMigrationOptions = {
+  r2Bucket?: string
+  r2Prefix?: string
+  publicBaseUrl?: string
+  customDomain?: string
+  zoneId?: string
+  wranglerProfile?: string
+  provisioningRequested: boolean
+}
+
+const settingsMigrationOptionsRead = (parsed: ParsedCommand): Result<SettingsMigrationOptions> => {
+  const op = "assetsCliSettingsMigrate"
+  const allowed = optionAllowed(parsed, [
+    "r2-bucket",
+    "r2-prefix",
+    "public-base-url",
+    "create-bucket",
+    "custom-domain",
+    "zone-id",
+    "wrangler-profile",
+    "apply",
+    "wait",
+    "no-wait",
+    "poll-interval",
+  ])
+  if (!allowed.success) return allowed
+  if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+    return resultFailure(op, "--wait and --no-wait cannot be used together")
+  if (flagRead(parsed, "wait") && !flagRead(parsed, "apply")) return resultFailure(op, "--wait requires --apply")
+  if (optionRead(parsed, "poll-interval") !== undefined && !flagRead(parsed, "wait"))
+    return resultFailure(op, "--poll-interval requires --wait")
+
+  const r2Bucket = optionRead(parsed, "r2-bucket")
+  const r2Prefix = optionRead(parsed, "r2-prefix")
+  if (r2Prefix !== undefined) {
+    const validPrefix = v.safeParse(r2PrefixSchema, r2Prefix)
+    if (!validPrefix.success) return resultFailure(op, "The R2 prefix was invalid", v.summarize(validPrefix.issues))
+  }
+  const publicBaseUrl = optionRead(parsed, "public-base-url")
+  const customDomainOption = optionRead(parsed, "custom-domain")
+  const customDomain = customDomainOption === undefined ? undefined : customDomainRead(customDomainOption)
+  if (customDomain !== undefined && !customDomain.success) return customDomain
+  const customDomainValue = customDomain?.data
+  if (flagRead(parsed, "create-bucket") && (r2Bucket === undefined || r2Bucket.length === 0))
+    return resultFailure(op, "--create-bucket requires --r2-bucket")
+  const zoneId = optionRead(parsed, "zone-id")
+  if (customDomainValue !== undefined && (zoneId === undefined || zoneId.length === 0))
+    return resultFailure(op, "--custom-domain requires --zone-id")
+  if (zoneId !== undefined && (customDomainValue === undefined || zoneId.length === 0))
+    return resultFailure(op, "--zone-id requires --custom-domain")
+  const wranglerProfile = optionRead(parsed, "wrangler-profile")
+  if (wranglerProfile !== undefined && wranglerProfile.length === 0)
+    return resultFailure(op, "--wrangler-profile must not be empty")
+  const provisioningRequested = flagRead(parsed, "create-bucket") || customDomainValue !== undefined
+  if (wranglerProfile !== undefined && !provisioningRequested)
+    return resultFailure(op, "--wrangler-profile requires --create-bucket or --custom-domain")
+  if (r2Bucket !== undefined && r2Bucket.length === 0) return resultFailure(op, "--r2-bucket must not be empty")
+  if (
+    customDomainValue !== undefined &&
+    publicBaseUrl !== undefined &&
+    !publicBaseUrlAgrees(publicBaseUrl, customDomainValue)
+  )
+    return resultFailure(op, `--public-base-url must agree with https://${customDomainValue}`)
+
+  return {
+    success: true,
+    data: {
+      ...(r2Bucket === undefined ? {} : { r2Bucket }),
+      ...(r2Prefix === undefined ? {} : { r2Prefix }),
+      ...(publicBaseUrl === undefined ? {} : { publicBaseUrl }),
+      ...(customDomainValue === undefined ? {} : { customDomain: customDomainValue }),
+      ...(zoneId === undefined ? {} : { zoneId }),
+      ...(wranglerProfile === undefined ? {} : { wranglerProfile }),
+      provisioningRequested,
+    },
+  }
+}
+
+const storageMigrationIdempotencyKeyCreate = (
+  projectId: string,
+  environment: string,
+  target: { r2Bucket?: string; r2Prefix?: string; publicBaseUrl?: string },
+): string => {
+  const digest = createHash("sha256").update(JSON.stringify({ projectId, environment, target })).digest("hex")
+  return `assets-cli-migrate-${digest}`
+}
+
+const storageMigrationPostStartFailureCreate = (
+  migrationId: string,
+  failure: Extract<Result<unknown>, { success: false }>,
+): Result<never> => {
+  const raw = failure.rawData
+  const rawObject = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined
+  const nestedError =
+    rawObject?.error && typeof rawObject.error === "object" ? (rawObject.error as Record<string, unknown>) : undefined
+  const errorCodes = new Set([
+    "validation_failed",
+    "not_configured",
+    "unauthorized",
+    "forbidden",
+    "not_found",
+    "method_not_allowed",
+    "service_unavailable",
+    "conflict",
+    "upstream_failure",
+    "job_failed",
+    "internal_error",
+  ])
+  const code =
+    typeof nestedError?.code === "string" && errorCodes.has(nestedError.code) ? nestedError.code : "internal_error"
+  return resultFailure(failure.op, failure.errorMessage, {
+    error: {
+      code,
+      retryable: typeof nestedError?.retryable === "boolean" ? nestedError.retryable : code === "internal_error",
+      details: { migrationId },
+    },
+    ...(typeof rawObject?.requestId === "string" ? { requestId: rawObject.requestId } : {}),
+  })
+}
+
+const storageMigrationWait = async (
+  client: AssetsApiClient,
+  projectId: string,
+  environment: string,
+  migrationId: string,
+  sleep: (milliseconds: number) => Promise<void>,
+  pollIntervalMilliseconds: number,
+): Promise<Result<StorageMigrationStatusResponse>> => {
+  const op = "assetsCliSettingsMigrateWait"
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const status = await client.storageMigrationStatusRead(projectId, environment, migrationId)
+    if (!status.success) return status
+    if (["succeeded", "failed", "cancelled"].includes(status.data.status)) return status
+    if (attempt < 59) await sleep(pollIntervalMilliseconds)
+  }
+  return resultFailure(op, "The storage migration did not finish before the polling limit")
+}
+
+const settingsMigrationCommandRun = async (
+  parsed: ParsedCommand,
+  client: AssetsApiClient,
+  projectId: string,
+  environment: string,
+  wranglerRunner: WranglerCommandRunner,
+  sleep: (milliseconds: number) => Promise<void>,
+  pollIntervalMilliseconds: number,
+): Promise<CommandOutput> => {
+  const migrationOptions = settingsMigrationOptionsRead(parsed)
+  if (!migrationOptions.success) return { result: migrationOptions }
+  const { r2Bucket, r2Prefix, publicBaseUrl, customDomain, zoneId, wranglerProfile, provisioningRequested } =
+    migrationOptions.data
+
+  const target = {
+    ...(r2Bucket === undefined ? {} : { r2Bucket }),
+    ...(r2Prefix === undefined ? {} : { r2Prefix }),
+    ...(publicBaseUrl === undefined && customDomain === undefined
+      ? {}
+      : { publicBaseUrl: publicBaseUrl ?? `https://${customDomain}` }),
+  }
+  const idempotencyKey = storageMigrationIdempotencyKeyCreate(projectId, environment, target)
+  const plan = await client.storageMigrationPlan(projectId, environment, { ...target, idempotencyKey })
+  if (!plan.success) return { result: plan }
+  if (!flagRead(parsed, "apply")) return { result: plan }
+
+  const provisioning = await wranglerProvisioningRun(wranglerRunner, {
+    bucket: plan.data.targetBinding.bucket,
+    createBucket: flagRead(parsed, "create-bucket"),
+    ...(customDomain === undefined ? {} : { customDomain }),
+    ...(zoneId === undefined ? {} : { zoneId }),
+    ...(wranglerProfile === undefined ? {} : { profile: wranglerProfile }),
+  })
+  if (!provisioning.success) return { result: provisioning }
+
+  const started = await client.storageMigrationStart(projectId, environment, {
+    idempotencyKey: plan.data.idempotencyKey ?? idempotencyKey,
+    sourceBinding: plan.data.sourceBinding,
+    targetBinding: plan.data.targetBinding,
+  })
+  if (!started.success) return { result: started }
+
+  const output = {
+    plan: plan.data,
+    provisioning: provisioning.data,
+    accepted: started.data.accepted,
+    migrationId: started.data.migrationId,
+    workflowId: started.data.workflowId,
+    migration: started.data.migration,
+  }
+  if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait"))
+    return {
+      result: { success: true, data: output },
+      exitCode: ["failed", "cancelled"].includes(started.data.migration.status) ? 1 : 0,
+    }
+  const status = await storageMigrationWait(
+    client,
+    projectId,
+    environment,
+    started.data.migrationId,
+    sleep,
+    pollIntervalMilliseconds,
+  )
+  if (!status.success) return { result: storageMigrationPostStartFailureCreate(started.data.migrationId, status) }
+  return {
+    result: { success: true, data: { ...output, status: status.data } },
+    exitCode: status.data.status === "succeeded" ? 0 : 1,
+  }
+}
+
 const commandRun = async (
   parsed: ParsedCommand,
   client: AssetsApiClient,
@@ -1737,6 +2004,10 @@ const commandRun = async (
   env: NodeJS.ProcessEnv,
   stdin: () => Promise<string>,
   organizationId?: string,
+  wranglerRunner: WranglerCommandRunner = wranglerCommandRunnerProduction,
+  sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
+    new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
+  pollIntervalMilliseconds = 1000,
 ): Promise<CommandOutput> => {
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
 
@@ -1804,6 +2075,10 @@ const commandRun = async (
   }
 
   if (parsed.command === "settings") {
+    if (parsed.positionals.length !== 0 && parsed.subcommand === "migrate")
+      return {
+        result: resultFailure("assetsCliSettingsMigrate", "The settings migrate command takes no positional arguments"),
+      }
     if (parsed.positionals.length !== 0)
       return { result: resultFailure("assetsCliSettings", "The settings command takes no positional arguments") }
     if (parsed.subcommand === "read") {
@@ -1852,7 +2127,27 @@ const commandRun = async (
       if (!written.success) return { result: written }
       return { result: projectSettingsEnvironmentRead(written.data, environment, "assetsCliSettingsUpdate") }
     }
-    return { result: resultFailure("assetsCliSettings", "Use settings read or update") }
+    if (parsed.subcommand === "migrate") {
+      const environment = optionRead(parsed, "environment")
+      if (environment === undefined)
+        return { result: resultFailure("assetsCliSettingsMigrate", "Settings migrate requires --environment") }
+      const migrationOptions = settingsMigrationOptionsRead(parsed)
+      if (!migrationOptions.success) return { result: migrationOptions }
+      const selected = await projectAndEnvironmentRead(client, parsed, config, undefined, "configured", organizationId)
+      if (!selected.success) return { result: selected }
+      if (selected.data.environment === undefined)
+        return { result: resultFailure("assetsCliSettingsMigrate", "Settings migrate requires an environment") }
+      return settingsMigrationCommandRun(
+        parsed,
+        client,
+        selected.data.projectId,
+        selected.data.environment,
+        wranglerRunner,
+        sleep,
+        pollIntervalMilliseconds,
+      )
+    }
+    return { result: resultFailure("assetsCliSettings", "Use settings read, update, or migrate") }
   }
 
   if (
@@ -2337,12 +2632,14 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     pollInterval === undefined ? undefined : numberRead(pollInterval, "poll-interval", 0, 3600000)
   if (parsedPollInterval !== undefined && !parsedPollInterval.success)
     return outputWrite({ result: parsedPollInterval }, parsed.data.json, stdout, stderr)
+  const sleep =
+    options.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
   const clientResult = assetsApiClientCreate({
     apiUrl,
     ...(accessToken === undefined ? {} : { accessToken }),
     ...(env.ASSETS_SESSION_COOKIE === undefined ? {} : { sessionCookie: env.ASSETS_SESSION_COOKIE }),
     fetcher: options.fetcher,
-    sleep: options.sleep,
+    sleep,
     pollIntervalMilliseconds: parsedPollInterval?.data,
   })
   if (!clientResult.success) return outputWrite({ result: clientResult }, parsed.data.json, stdout, stderr)
@@ -2353,6 +2650,9 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     env,
     options.stdinRead ?? stdinRead,
     organizationResult.data.organization?.id,
+    options.wranglerRunner ?? wranglerCommandRunnerProduction,
+    sleep,
+    parsedPollInterval?.data,
   )
   return outputWrite(command, parsed.data.json, stdout, stderr)
 }

@@ -482,8 +482,16 @@ test("settings help documents read, update, and R2 options", async () => {
       commands: expect.arrayContaining([
         "settings read [--project <id-or-name>] [--environment <development|production>]",
         "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
+        expect.stringContaining("settings migrate") as string,
       ]),
-      options: expect.arrayContaining(["--r2-bucket", "--r2-prefix", "--public-base-url"]),
+      options: expect.arrayContaining([
+        "--r2-bucket",
+        "--r2-prefix",
+        "--public-base-url",
+        "--wait",
+        "--no-wait",
+        "--poll-interval",
+      ]),
     },
   })
 })
