@@ -223,7 +223,7 @@ describe("storage migration primitives", () => {
     })
   })
 
-  test("verifies destination metadata and exact inventory, and detects source changes", async () => {
+  test("verifies destination metadata and source-derived inventory, and detects source changes", async () => {
     const adapter = memoryStorageAdapterCreate()
     const sourceLocation = storageLocation(sourceBinding, "public-output", "images/hero_v1.png")
     if (!sourceLocation.success) return
@@ -278,7 +278,7 @@ describe("storage migration primitives", () => {
         targetBinding,
         inventory: inventory.data,
       }),
-    ).toMatchObject({ success: false })
+    ).toMatchObject({ success: true })
 
     const sibling = storageLocation(
       { ...targetBinding, prefix: "archive/project-10" },
@@ -350,7 +350,7 @@ describe("storage migration primitives", () => {
         targetBinding,
         inventory: inventory.data,
       }),
-    ).toMatchObject({ success: false })
+    ).toMatchObject({ success: true })
 
     const unstableBase = memoryStorageAdapterCreate()
     await storagePutImmutable(unstableBase, { location: sourceLocation.data, bytes: png, mediaType: "image/png" })
@@ -367,6 +367,57 @@ describe("storage migration primitives", () => {
     ).toMatchObject({
       success: false,
     })
+  })
+
+  test("verifies expected objects at an empty target prefix while tolerating unrelated root objects", async () => {
+    const adapter = memoryStorageAdapterCreate()
+    const rootTarget = { ...targetBinding, prefix: "" }
+    await storagePut(adapter, rootTarget, "private-staging", "unrelated", json, "application/json")
+    const sourceLocation = storageLocation(sourceBinding, "public-output", "images/hero_v1.png")
+    if (!sourceLocation.success) return
+    await storagePutImmutable(adapter, { location: sourceLocation.data, bytes: png, mediaType: "image/png" })
+    const inventory = await storageMigrationSourceInventoryRead(adapter, { sourceBinding })
+    expect(inventory.success).toBe(true)
+    if (!inventory.success) return
+    const item = inventory.data[0]
+    if (item === undefined) return
+    const mapped = storageMigrationObjectLocationCreate({
+      sourceBinding,
+      targetBinding: rootTarget,
+      namespace: item.namespace,
+      key: item.key,
+    })
+    if (!mapped.success) return
+    expect(
+      await storageMigrationObjectCopy(adapter, { source: item, destination: mapped.data.destination }),
+    ).toMatchObject({
+      success: true,
+    })
+
+    const unrelatedRootObject: StorageObject = { key: "unmanaged/root-object", byteSize: json.byteLength }
+    const listing: StorageAdapter = {
+      ...adapter,
+      listObjects: async (input) => {
+        const page = await adapter.listObjects?.(input)
+        if (page === undefined)
+          return { success: true, data: { objects: [unrelatedRootObject], nextContinuationToken: null } }
+        if (!page.success) return page
+        return {
+          success: true,
+          data: {
+            objects: [...page.data.objects, unrelatedRootObject],
+            nextContinuationToken: page.data.nextContinuationToken,
+          },
+        }
+      },
+    }
+    expect(
+      await storageMigrationDestinationInventoryVerify(listing, {
+        sourceBinding,
+        targetBinding: rootTarget,
+        inventory: inventory.data,
+      }),
+    ).toMatchObject({ success: true, data: { objectCount: 1, totalBytes: png.byteLength } })
   })
 
   test("uses a conditional server-side copy between runtime-selected buckets", async () => {

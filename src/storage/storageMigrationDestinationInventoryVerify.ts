@@ -76,12 +76,10 @@ export const storageMigrationDestinationInventoryVerify = async (
     })
     if (!page.success) return page
     for (const object of page.data.objects) {
+      if (!expected.has(object.key)) continue
       const parsedKey = destinationNamespaceKeyRead(object.key, prefix)
-      if (parsedKey === null) {
-        if (object.key.startsWith(prefix))
-          return resultErrorCreate(op, "Destination inventory contains an extra object", object.key)
-        continue
-      }
+      if (parsedKey === null)
+        return resultErrorCreate(op, "Destination inventory contained an invalid namespace object key", object)
       const location = storageMigrationObjectLocationCreate({
         sourceBinding: input.sourceBinding,
         targetBinding: input.targetBinding,
@@ -109,8 +107,6 @@ export const storageMigrationDestinationInventoryVerify = async (
 
   for (const key of expected.keys())
     if (!actual.has(key)) return resultErrorCreate(op, "Destination inventory is missing an object", key)
-  for (const key of actual.keys())
-    if (!expected.has(key)) return resultErrorCreate(op, "Destination inventory contains an extra object", key)
   for (const [objectKey, expectedObject] of expected) {
     const location = storageMigrationObjectLocationCreate({
       sourceBinding: input.sourceBinding,

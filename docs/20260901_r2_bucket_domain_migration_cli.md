@@ -13,6 +13,7 @@ Add a safe `assets settings migrate` command that can move one project environme
 - Treat domain-only migration as a no-copy operation. For bucket/prefix changes, copy and verify before changing settings.
 - Plan by default; require `--apply` to provision resources and start migration. Never delete source objects.
 - Make reruns idempotent, reject concurrent storage-setting changes, and retain enough durable state to resume or report a partial migration.
+- Verify all source-derived destination objects exactly, but preserve and tolerate unrelated pre-existing destination objects; same-key conflicts remain fatal.
 - Run the production migrations from `leo@leo-server` in `~/projects/abikur` and `~/projects/template`, using Leo's Cloudflare account.
 - Bind `assets.abikur.de` for Abikur and `assets.template.leonardomora.de` for Template; create each destination bucket only when absent.
 
@@ -34,5 +35,5 @@ Add a safe `assets settings migrate` command that can move one project environme
 - [x] 6. Add `assets settings migrate`, an injectable Wrangler runner for bucket/domain provisioning, plan/apply output, and wait polling.
 - [x] 7. Add focused repository, storage, workflow, API, CLI, and failure-path tests.
 - [x] 8. Update CLI and operations documentation and run the repository verification suite and production build.
-- [ ] 9. Inspect and ready both remote projects and the assets-service deployment for the migration CLI; both buckets/domains and admin configurations are verified, and the schema snapshot is complete. Committing/releasing/deploying the backend and making the matching CLI available remain.
-- [ ] 10. Plan, apply, and verify the Abikur and Template R2 bucket/domain migrations in Leo's Cloudflare account.
+- [x] 9. Commit, push, deploy, and ready both remote projects with the matching migration CLI without publishing a package release.
+- [ ] 10. Plan, apply, and verify the Abikur and Template R2 bucket/domain migrations in Leo's Cloudflare account; plans confirm collision-free source-derived keys, but unrelated root objects must be tolerated before apply.
