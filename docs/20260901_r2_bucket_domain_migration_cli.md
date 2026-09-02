@@ -37,4 +37,4 @@ Add a safe `assets settings migrate` command that can move one project environme
 - [x] 7. Add focused repository, storage, workflow, API, CLI, and failure-path tests.
 - [x] 8. Update CLI and operations documentation and run the repository verification suite and production build.
 - [x] 9. Commit, push, deploy, and ready both remote projects with the matching migration CLI without publishing a package release.
-- [ ] 10. Plan, apply, and verify both migrations; production R2 access is corrected, but Abikur's deterministic idempotency key resolves to terminal failed attempt `storage-migration-5dc26c9c-eeb6-4e8c-b9b5-e46c38de0056`, so retry semantics must be fixed before applying.
+- [ ] 10. Plan, apply, and verify both migrations; retry semantics and R2 access are corrected. Abikur attempt 2 (`storage-migration-497eaf88-4582-48ca-be03-dbf3f58f1a98`) failed safely during discovery because a source object appeared changed; diagnose before attempt 3.
