@@ -22,7 +22,7 @@ export const storageMigrationDestinationPublicUrlVerify = async (input: {
   let verification: Result<null>
 
   try {
-    const probeId = (input.randomUUID ?? crypto.randomUUID)()
+    const probeId = input.randomUUID === undefined ? crypto.randomUUID() : input.randomUUID()
     const probeKey = `__migration_probe/${probeId}_v1.bin`
     const location = storageObjectLocationCreate(
       {

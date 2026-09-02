@@ -147,6 +147,22 @@ describe("storage migration public URL verification", () => {
     })
   })
 
+  test("uses the default random UUID and completes probe verification and cleanup", async () => {
+    const fixture = fixtureCreate("target")
+
+    const result = await storageMigrationDestinationPublicUrlVerify({
+      storage: fixture.storage,
+      sourceBinding,
+      targetBinding: fixture.target,
+      fetchImplementation: fixture.fetchImplementation,
+    })
+
+    expect(result).toEqual({ success: true, data: null })
+    expect(fixture.getWritten()).toBeDefined()
+    expect(fixture.fetchCalls).toHaveLength(1)
+    expect(fixture.deleted).toHaveLength(1)
+  })
+
   test("fails when probe cleanup fails and leaves the probe for safe recovery", async () => {
     const fixture = fixtureCreate("target", { cleanupFailure: true })
     const result = await verify(fixture)
