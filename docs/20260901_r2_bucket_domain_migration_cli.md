@@ -37,4 +37,4 @@ Add a safe `assets settings migrate` command that can move one project environme
 - [x] 7. Add focused repository, storage, workflow, API, CLI, and failure-path tests.
 - [x] 8. Update CLI and operations documentation and run the repository verification suite and production build.
 - [x] 9. Commit, push, deploy, and ready both remote projects with the matching migration CLI without publishing a package release.
-- [ ] 10. Plan, apply, and verify both migrations; Abikur attempt 3 (`storage-migration-b559de48-95af-448d-bd4f-cac928ae5087`) copied and verified 220 objects but failed before cutover with `Expected this to be instanceof Crypto`. Source settings remain authoritative; diagnose before attempt 4.
+- [ ] 10. Plan, apply, and verify both migrations; Abikur attempt 4 (`storage-migration-45d27793-fcfc-4200-bad9-ffedd58a25e8`) copied/verified 220 objects but the temporary custom-domain probe returned 404, so no cutover occurred. Diagnose domain probe routing before attempt 5.
