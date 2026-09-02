@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { AwsClient } from "aws4fetch"
 import * as v from "valibot"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
@@ -56,33 +57,7 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         return resultErrorCreate(op, error instanceof Error ? error.message : String(error))
       }
     },
-    headObject: async (location) => {
-      const response = await request("HEAD", location.bucket, location.objectKey)
-      if (!response.success) return response
-      if (response.data.status === 404) return { success: true, data: null }
-      if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
-      const fromHead = storageObjectFromHeaders(location.objectKey, response.data.headers)
-      if (fromHead.success) return fromHead
-      const body = await request("GET", location.bucket, location.objectKey)
-      if (!body.success) return body
-      if (body.data.status === 404) return { success: true, data: null }
-      if (!body.data.ok) return responseError("r2StorageAdapterCreate", body.data)
-      const bytes = new Uint8Array(await body.data.arrayBuffer())
-      const sha256 = await hexDigest(bytes)
-      return {
-        success: true,
-        data: {
-          key: location.objectKey,
-          byteSize: bytes.byteLength,
-          mediaType: body.data.headers.get("content-type") ?? undefined,
-          sha256: body.data.headers.get("x-amz-meta-sha256") ?? sha256,
-          ...(body.data.headers.get("etag") ? { etag: body.data.headers.get("etag") as string } : {}),
-          ...(body.data.headers.get("cache-control")
-            ? { cacheControl: body.data.headers.get("cache-control") as string }
-            : {}),
-        },
-      }
-    },
+    headObject: async (location) => thisHead(location.bucket, location.objectKey),
     readObject: async (location) => {
       const response = await request("GET", location.bucket, location.objectKey)
       if (!response.success) return response
@@ -257,7 +232,26 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
     if (!response.success) return response
     if (response.data.status === 404) return { success: true, data: null }
     if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
-    return storageObjectFromHeaders(key, response.data.headers)
+    const fromHead = storageObjectFromHeaders(key, response.data.headers)
+    if (fromHead.success) return fromHead
+    const headEtag = strongEtagRead(response.data.headers)
+    if (headEtag === null) return fromHead
+
+    const body = await request("GET", bucket, key, {
+      "accept-encoding": "identity",
+      "if-match": headEtag,
+    })
+    if (!body.success) return body
+    if (body.data.status === 404) return { success: true, data: null }
+    if (!body.data.ok) return responseError("r2StorageAdapterCreate", body.data)
+    const bodyEtag = strongEtagRead(body.data.headers)
+    if (bodyEtag === null)
+      return resultErrorCreate("r2StorageAdapterCreate", "R2 fallback GET response has no valid etag")
+    if (bodyEtag !== headEtag)
+      return resultErrorCreate("r2StorageAdapterCreate", "R2 fallback GET etag does not match HEAD etag")
+    const streamed = await responseBodyDigestRead(body.data)
+    if (!streamed.success) return streamed
+    return storageObjectFromHeaders(key, body.data.headers, streamed.data.byteSize, streamed.data.sha256)
   }
 
   async function request(
@@ -271,9 +265,11 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
     const op = "r2StorageAdapterCreate"
     try {
       const unsignedUrl = objectUrl(input.endpoint, bucket, key, query)
+      const headers =
+        method === "HEAD" && key.length > 0 ? { ...extraHeaders, "accept-encoding": "identity" } : extraHeaders
       const signed = await aws.sign(unsignedUrl.toString(), {
         method,
-        headers: extraHeaders,
+        headers,
         body: body ? Buffer.from(body) : undefined,
       })
       const controller = new AbortController()
@@ -300,21 +296,68 @@ function responseError(op: string, response: Response): Result<never> {
   return resultErrorCreate(op, `R2 request failed with status ${response.status}`, { status: response.status })
 }
 
-function storageObjectFromHeaders(key: string, headers: Headers): Result<StorageObject> {
-  const byteSize = Number(headers.get("content-length"))
-  if (!Number.isInteger(byteSize) || byteSize < 0)
+function storageObjectFromHeaders(
+  key: string,
+  headers: Headers,
+  byteSizeOverride?: number,
+  sha256Override?: string,
+): Result<StorageObject> {
+  const byteSize = byteSizeOverride ?? contentLengthRead(headers.get("content-length"))
+  if (byteSize === null || !Number.isSafeInteger(byteSize) || byteSize < 0)
     return resultErrorCreate("r2StorageAdapterCreate", "R2 response has no valid content length")
+  const sha256 = headers.get("x-amz-meta-sha256") || sha256Override
   return {
     success: true,
     data: {
       key,
       byteSize,
       ...(headers.get("content-type") ? { mediaType: headers.get("content-type") as string } : {}),
-      ...(headers.get("x-amz-meta-sha256") ? { sha256: headers.get("x-amz-meta-sha256") as string } : {}),
+      ...(sha256 ? { sha256 } : {}),
       ...(headers.get("etag") ? { etag: headers.get("etag") as string } : {}),
       ...(headers.get("cache-control") ? { cacheControl: headers.get("cache-control") as string } : {}),
     },
   }
+}
+
+function contentLengthRead(value: string | null): number | null {
+  if (value === null || !/^\d+$/.test(value)) return null
+  const byteSize = Number(value)
+  if (!Number.isSafeInteger(byteSize)) return null
+  if (BigInt(value) > BigInt(Number.MAX_SAFE_INTEGER)) return null
+  return byteSize
+}
+
+function strongEtagRead(headers: Headers): string | null {
+  const etag = headers.get("etag")
+  if (etag === null) return null
+  const canonical = etag.trim()
+  if (/^W\//i.test(canonical) || !/^"[\x21\x23-\x7e\x80-\xff]+"$/.test(canonical)) return null
+  return canonical
+}
+
+async function responseBodyDigestRead(response: Response): Promise<Result<{ byteSize: number; sha256: string }>> {
+  const op = "r2StorageAdapterCreate"
+  const hasher = createHash("sha256")
+  if (response.body === null) return { success: true, data: { byteSize: 0, sha256: hasher.digest("hex") } }
+  let byteSize = 0
+  try {
+    const reader = response.body.getReader()
+    try {
+      while (true) {
+        const next = await reader.read()
+        if (next.done) break
+        if (byteSize > Number.MAX_SAFE_INTEGER - next.value.byteLength)
+          return resultErrorCreate(op, "R2 fallback GET response is too large")
+        byteSize += next.value.byteLength
+        hasher.update(next.value)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  } catch (error) {
+    return resultErrorCreate(op, error instanceof Error ? error.message : String(error))
+  }
+  return { success: true, data: { byteSize, sha256: hasher.digest("hex") } }
 }
 
 function r2ObjectListRead(

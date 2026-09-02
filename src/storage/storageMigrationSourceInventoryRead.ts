@@ -114,6 +114,10 @@ async function sourceObjectRead(
   const head = await adapter.headObject(location)
   if (!head.success) return head
   if (head.data === null) return resultErrorCreate(op, "Source inventory object disappeared during discovery", listed)
+  const listedEtag = storageObjectEtagRead(listed.etag)
+  const headEtag = storageObjectEtagRead(head.data.etag)
+  if (listedEtag.invalid || headEtag.invalid || listedEtag.value !== headEtag.value)
+    return resultErrorCreate(op, "Source object changed during inventory discovery", { listed, head: head.data })
   if (head.data.byteSize !== listed.byteSize)
     return resultErrorCreate(op, "Source object changed during inventory discovery", { listed, head: head.data })
 
@@ -146,4 +150,18 @@ function validSha256(value: string | undefined): value is string {
 
 function validMediaType(value: string | undefined): value is string {
   return value !== undefined && v.safeParse(mediaTypeSchema, value).success
+}
+
+function storageObjectEtagRead(value: string | undefined): { value: string | undefined; invalid: boolean } {
+  if (value === undefined) return { value: undefined, invalid: false }
+  const canonical = value.trim()
+  if (canonical.length === 0 || canonical === "*" || /^W\//i.test(canonical)) return { value: undefined, invalid: true }
+  if (canonical.startsWith('"') || canonical.endsWith('"')) {
+    const opaque = canonical.slice(1, -1)
+    if (!canonical.startsWith('"') || !canonical.endsWith('"') || !/^[\x21\x23-\x7e\x80-\xff]+$/.test(opaque))
+      return { value: undefined, invalid: true }
+    return { value: opaque, invalid: false }
+  }
+  if (!/^[\x21\x23-\x7e\x80-\xff]+$/.test(canonical)) return { value: undefined, invalid: true }
+  return { value: canonical, invalid: false }
 }
