@@ -38,3 +38,4 @@ Add a safe `assets settings migrate` command that can move one project environme
 - [x] 8. Update CLI and operations documentation and run the repository verification suite and production build.
 - [x] 9. Commit, push, deploy, and ready both remote projects with the matching migration CLI without publishing a package release.
 - [x] 10. Complete both migrations: Abikur attempt 5 verified 220 objects and Template attempt 1 verified 569 objects; both cutovers succeeded, custom domains are active, and source plus unrelated destination objects remain preserved.
+- [x] 11. Update Abikur and Template application asset URLs to their custom-domain `/public/` paths, deploy both sites, and verify asset loading in production browsers.
