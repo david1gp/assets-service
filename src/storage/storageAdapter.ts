@@ -33,6 +33,7 @@ export type StorageAdapter = {
     destination: StorageObjectLocation & { bucket: string; objectKey: string }
     mediaType?: string
     sha256?: string
+    sourceEtag?: string
   }) => Promise<Result<StorageObject>>
   deleteObject: (location: StorageObjectLocation & { bucket: string; objectKey: string }) => Promise<Result<void>>
   listObjects?: (input: {

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import * as v from "valibot"
 
 import type { SqliteSnapshotReceipt } from "../backup/sqliteSnapshotReceiptSchema.js"
@@ -9,11 +9,14 @@ import { environmentTable } from "../infrastructure/db/schema/environmentTable.j
 import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { reconciliationRunTable } from "../infrastructure/db/schema/reconciliationRunTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
+import { jobPayloadSchema } from "../workflow/jobPayloadSchema.js"
 import { jobRepositoryRecoverExpiredLeases } from "../workflow/jobRepositoryRecoverExpiredLeases.js"
 import { reconciliationOwnershipRead } from "./reconciliationOwnershipRead.js"
 import {
@@ -47,6 +50,7 @@ type ReconciliationApplyResult = {
 
 export const reconciliationServiceCreate = (input: ReconciliationServiceCreateInput) => {
   const clock = input.clock ?? (() => new Date())
+  const storageMigrationRepository = storageMigrationRepositoryCreate(input.db)
 
   const plan = async (planInput: ReconciliationPlanInput = {}): Promise<Result<ReconciliationPlan>> => {
     const now = planInput.now ?? clock()
@@ -85,6 +89,9 @@ export const reconciliationServiceCreate = (input: ReconciliationServiceCreateIn
       snapshotPath: applyInput.backupReceipt.snapshotPath,
     })
     if (!receipt.success) return receipt
+    const environmentIds = reconciliationMutationEnvironmentIdsRead(input.db, parsedPlan.output)
+    const admitted = storageMutationAssert(storageMigrationRepository, environmentIds)
+    if (!admitted.success) return admitted
 
     const now = applyInput.now ?? clock()
     const nowIso = new Date(now).toISOString()
@@ -143,13 +150,20 @@ export const reconciliationServiceCreate = (input: ReconciliationServiceCreateIn
           continue
         }
         const upload = input.db
-          .select({ id: uploadTable.id, status: uploadTable.status, updatedAt: uploadTable.updatedAt })
+          .select({
+            id: uploadTable.id,
+            environmentId: uploadTable.environmentId,
+            status: uploadTable.status,
+            updatedAt: uploadTable.updatedAt,
+          })
           .from(uploadTable)
           .where(eq(uploadTable.id, item.objectKey))
           .get()
         if (upload?.status === "pending" || upload?.status === "verified") {
           const cutoff = new Date(new Date(now).getTime() - (input.minimumAgeMs ?? 24 * 60 * 60 * 1000)).toISOString()
           if (upload.updatedAt <= cutoff) {
+            const stillAdmitted = storageMutationAssert(storageMigrationRepository, upload.environmentId)
+            if (!stillAdmitted.success) return stillAdmitted
             const updated = input.db
               .update(uploadTable)
               .set({
@@ -198,26 +212,34 @@ export const reconciliationServiceCreate = (input: ReconciliationServiceCreateIn
         if (!skipped.success) return skipped
         continue
       }
-      const verifiedObject = await storageObjectMatchesOwnership(input.storage, location.data, owner)
+      const verifiedObject = await storageObjectMatchesOwnership(input.storage, location.data.location, owner)
       if (!verifiedObject.success) return verifiedObject
       if (!verifiedObject.data) {
         const skipped = itemSkipped(item.id, "storage_object_does_not_match_ownership_record")
         if (!skipped.success) return skipped
         continue
       }
-      const deleted = await input.storage.deleteObject(location.data)
+      const deleted = await reconciliationStorageDeleteAdmit(
+        input.db,
+        storageMigrationRepository,
+        location.data.environmentIds,
+        () => input.storage.deleteObject(location.data.location),
+        () => {
+          deletedObjectKeys.push(item.objectKey)
+          completedItemIds.add(item.id)
+          const persisted = progressPersist()
+          if (!persisted.success) return persisted
+          if (item.kind === "staging") {
+            input.db
+              .update(uploadTable)
+              .set({ stagingObjectKey: null, updatedAt: new Date(now).toISOString() })
+              .where(and(eq(uploadTable.id, owner.recordId), eq(uploadTable.stagingObjectKey, item.objectKey)))
+              .run()
+          }
+          return { success: true, data: null }
+        },
+      )
       if (!deleted.success) return deleted
-      deletedObjectKeys.push(item.objectKey)
-      completedItemIds.add(item.id)
-      const persisted = progressPersist()
-      if (!persisted.success) return persisted
-      if (item.kind === "staging") {
-        input.db
-          .update(uploadTable)
-          .set({ stagingObjectKey: null, updatedAt: new Date(now).toISOString() })
-          .where(and(eq(uploadTable.id, owner.recordId), eq(uploadTable.stagingObjectKey, item.objectKey)))
-          .run()
-      }
     }
 
     if (expiredJobIds.length > 0) {
@@ -346,14 +368,19 @@ async function storageObjectsRead(
   }
 }
 
-async function storageLocationRead(
+function storageLocationRead(
   db: AssetDatabase,
   item: ReconciliationPlan["items"][number],
-): Promise<Result<Parameters<NonNullable<StorageAdapter["deleteObject"]>>[0]>> {
+): Result<{
+  location: Parameters<NonNullable<StorageAdapter["deleteObject"]>>[0]
+  environmentIds: readonly string[]
+}> {
   const op = "reconciliationStorageLocationRead"
   const environments = db.select().from(environmentTable).all()
   const namespace =
     item.kind === "staging" ? "private-staging" : item.kind === "public" ? "public-output" : "private-source"
+  let matchedLocation: Parameters<NonNullable<StorageAdapter["deleteObject"]>>[0] | undefined
+  const environmentIds: string[] = []
   for (const environment of environments) {
     const binding = storageBindingResolve(environment, environment.projectId)
     if (!binding.success) continue
@@ -362,10 +389,75 @@ async function storageLocationRead(
       namespace,
       relativeObjectKeyRead(binding.data.prefix, namespace, item.objectKey),
     )
-    if (location.success && location.data.bucket === item.bucket && location.data.objectKey === item.objectKey)
-      return location
+    if (location.success && location.data.bucket === item.bucket && location.data.objectKey === item.objectKey) {
+      matchedLocation ??= location.data
+      environmentIds.push(environment.id)
+    }
   }
+  if (matchedLocation !== undefined) return { success: true, data: { location: matchedLocation, environmentIds } }
   return resultErrorCreate(op, "No configured environment owns the planned storage location")
+}
+
+function reconciliationMutationEnvironmentIdsRead(db: AssetDatabase, plan: ReconciliationPlan): readonly string[] {
+  const environmentIds = new Set<string>()
+  for (const item of plan.items) {
+    if (item.action === "delete" && item.bucket !== null) {
+      const location = storageLocationRead(db, item)
+      if (location.success) for (const environmentId of location.data.environmentIds) environmentIds.add(environmentId)
+      continue
+    }
+    if (item.action !== "recover") continue
+    const job = db.select().from(jobTable).where(eq(jobTable.id, item.objectKey)).get()
+    if (job !== undefined) {
+      const payload = v.safeParse(jobPayloadSchema, job.payload)
+      if (payload.success && payload.output.environmentId !== undefined)
+        environmentIds.add(payload.output.environmentId)
+      continue
+    }
+    const upload = db
+      .select({ environmentId: uploadTable.environmentId })
+      .from(uploadTable)
+      .where(eq(uploadTable.id, item.objectKey))
+      .get()
+    if (upload !== undefined) environmentIds.add(upload.environmentId)
+  }
+  return [...environmentIds]
+}
+
+async function reconciliationStorageDeleteAdmit(
+  db: AssetDatabase,
+  repository: ReturnType<typeof storageMigrationRepositoryCreate>,
+  environmentIds: readonly string[],
+  deleteObject: () => Promise<Result<void>>,
+  afterDelete: () => Result<null>,
+): Promise<Result<null>> {
+  const op = "reconciliationStorageDeleteAdmit"
+  let committed = false
+  try {
+    // Bun's synchronous Drizzle transactions cannot await an R2 operation; keep the writer lock manually.
+    db.run(sql.raw("BEGIN IMMEDIATE"))
+    const admitted = storageMutationAssert(repository, environmentIds, db)
+    if (!admitted.success) return admitted
+
+    const deleted = await deleteObject()
+    if (!deleted.success) return deleted
+    const persisted = afterDelete()
+    if (!persisted.success) return persisted
+
+    db.run(sql.raw("COMMIT"))
+    committed = true
+    return { success: true, data: null }
+  } catch (error) {
+    return resultErrorCreate(op, error instanceof Error ? error.message : String(error))
+  } finally {
+    if (!committed) {
+      try {
+        db.run(sql.raw("ROLLBACK"))
+      } catch {
+        // Preserve the admission, storage, or persistence failure.
+      }
+    }
+  }
 }
 
 function relativeObjectKeyRead(

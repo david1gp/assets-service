@@ -182,18 +182,21 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       const source = await thisHead(copyInput.source.bucket, copyInput.source.objectKey)
       if (!source.success) return source
       if (source.data === null) return resultErrorCreate("r2StorageAdapterCreate", "Source object is missing")
+      if (copyInput.sourceEtag !== undefined && source.data.etag !== copyInput.sourceEtag)
+        return resultErrorCreate("r2StorageAdapterCreate", "Source object changed during copy")
       const mediaType = copyInput.mediaType ?? source.data.mediaType
       const sha256 = copyInput.sha256 ?? source.data.sha256
       if (mediaType === undefined || sha256 === undefined)
         return resultErrorCreate("r2StorageAdapterCreate", "Source object metadata is incomplete")
       const headers: Record<string, string> = {
         "if-none-match": "*",
-        "x-amz-copy-source": `/${copyInput.source.bucket}/${copyInput.source.objectKey}`,
+        "x-amz-copy-source": `/${encodePathPart(copyInput.source.bucket)}/${encodePath(copyInput.source.objectKey)}`,
         "cache-control":
           copyInput.destination.namespace === "public-output" ? "public, max-age=31536000, immutable" : "no-store",
         "content-type": mediaType,
         "x-amz-meta-sha256": sha256,
         "x-amz-metadata-directive": "REPLACE",
+        ...(copyInput.sourceEtag === undefined ? {} : { "x-amz-copy-source-if-match": copyInput.sourceEtag }),
       }
       const response = await request("PUT", copyInput.destination.bucket, copyInput.destination.objectKey, headers)
       if (!response.success) return response
@@ -215,6 +218,8 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       const copied = await thisHead(copyInput.destination.bucket, copyInput.destination.objectKey)
       if (!copied.success || copied.data === null)
         return copied.success ? resultErrorCreate("r2StorageAdapterCreate", "Copied object is missing") : copied
+      if (copied.data.byteSize !== source.data.byteSize)
+        return resultErrorCreate("r2StorageAdapterCreate", "Copied object size does not match")
       if (copied.data.mediaType !== mediaType)
         return resultErrorCreate("r2StorageAdapterCreate", "Copied object content type does not match")
       if (copied.data.sha256 !== sha256)

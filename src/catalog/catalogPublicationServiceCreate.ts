@@ -16,10 +16,12 @@ import { manifestTable } from "../infrastructure/db/schema/manifestTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTable.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import { storageObjectVerify } from "../storage/storageObjectVerify.js"
 import { storagePutImmutable } from "../storage/storagePutImmutable.js"
@@ -71,6 +73,7 @@ export const catalogPublicationServiceCreate = (
   db: AssetDatabase,
   storage: StorageAdapter,
 ): CatalogPublicationService => {
+  const storageMigrationRepository = storageMigrationRepositoryCreate(db)
   const catalogSnapshotRead = (projectId: string, environment: "development" | "production") =>
     databaseTransactionRun<PublicationSnapshot>(
       db,
@@ -398,6 +401,7 @@ export const catalogPublicationServiceCreate = (
   }
 
   const storageObjectPutEnsure = async (
+    environmentId: string,
     location: Parameters<StorageAdapter["putImmutable"]>[0]["location"],
     bytes: Uint8Array,
     mediaType: string,
@@ -405,6 +409,8 @@ export const catalogPublicationServiceCreate = (
   ): Promise<Result<true>> => {
     const existing = await storageObjectVerify(storage, { location, byteSize: bytes.byteLength, sha256, mediaType })
     if (existing.success) return { success: true, data: true }
+    const admitted = storageMutationAssert(storageMigrationRepository, environmentId)
+    if (!admitted.success) return admitted
     const stored = await storagePutImmutable(storage, { location, bytes, mediaType, sha256 })
     if (stored.success) return { success: true, data: true }
     const raced = await storageObjectVerify(storage, { location, byteSize: bytes.byteLength, sha256, mediaType })
@@ -436,6 +442,7 @@ export const catalogPublicationServiceCreate = (
     prepared: PreparedPublication,
     projectId: string,
     environment: "development" | "production",
+    environmentId: string,
     assetId: string | undefined,
     outputs: readonly PublishedOutput[],
     rebuild: boolean,
@@ -443,6 +450,8 @@ export const catalogPublicationServiceCreate = (
     databaseTransactionRun<null>(
       db,
       (transaction) => {
+        const transactionAdmitted = storageMutationAssert(storageMigrationRepository, environmentId, transaction)
+        if (!transactionAdmitted.success) return transactionAdmitted
         const current = transaction
           .select()
           .from(catalogTable)
@@ -610,6 +619,8 @@ export const catalogPublicationServiceCreate = (
 
   const catalogAssetPublish: CatalogPublicationService["catalogAssetPublish"] = async (context, outputs, now) => {
     for (let attempt = 0; attempt < maxPublicationAttempts; attempt += 1) {
+      const admitted = storageMutationAssert(storageMigrationRepository, context.environment.id)
+      if (!admitted.success) return admitted
       const snapshot = catalogSnapshotRead(context.asset.projectId, context.environment.name)
       if (!snapshot.success) return snapshot
       const nextOutputs = [
@@ -649,16 +660,20 @@ export const catalogPublicationServiceCreate = (
       const location = storageObjectLocationCreate(context.binding, "private-source", prepared.data.manifestObjectKey)
       if (!location.success) return location
       const stored = await storageObjectPutEnsure(
+        context.environment.id,
         location.data,
         prepared.data.manifestBytes,
         "application/json",
         prepared.data.manifestSha256,
       )
       if (!stored.success) return stored
+      const stillAdmitted = storageMutationAssert(storageMigrationRepository, context.environment.id)
+      if (!stillAdmitted.success) return stillAdmitted
       const committed = publicationCommit(
         prepared.data,
         context.asset.projectId,
         context.environment.name,
+        context.environment.id,
         context.asset.id,
         outputs,
         false,
@@ -676,6 +691,8 @@ export const catalogPublicationServiceCreate = (
     for (let attempt = 0; attempt < maxPublicationAttempts; attempt += 1) {
       const snapshot = rebuildSnapshotRead(projectId)
       if (!snapshot.success) return snapshot
+      const admitted = storageMutationAssert(storageMigrationRepository, snapshot.data.environment.id)
+      if (!admitted.success) return admitted
       const binding = storageBindingResolve(snapshot.data.environment, projectId)
       if (!binding.success) return binding
       const nextOutputs = snapshot.data.outputs.map((output) => ({
@@ -707,13 +724,24 @@ export const catalogPublicationServiceCreate = (
       const location = storageObjectLocationCreate(binding.data, "private-source", prepared.data.manifestObjectKey)
       if (!location.success) return location
       const stored = await storageObjectPutEnsure(
+        snapshot.data.environment.id,
         location.data,
         prepared.data.manifestBytes,
         "application/json",
         prepared.data.manifestSha256,
       )
       if (!stored.success) return stored
-      const committed = publicationCommit(prepared.data, projectId, "production", undefined, [], true)
+      const stillAdmitted = storageMutationAssert(storageMigrationRepository, snapshot.data.environment.id)
+      if (!stillAdmitted.success) return stillAdmitted
+      const committed = publicationCommit(
+        prepared.data,
+        projectId,
+        "production",
+        snapshot.data.environment.id,
+        undefined,
+        [],
+        true,
+      )
       if (committed.success) return { success: true, data: prepared.data.result }
       if (committed.op !== "catalogPublicationConflict") return committed
     }

@@ -17,10 +17,13 @@ import { catalogGenerationTable } from "../src/infrastructure/db/schema/catalogG
 import { catalogOutputTable } from "../src/infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
+import { manifestTable } from "../src/infrastructure/db/schema/manifestTable.js"
 import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
+import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
+import { storageMigrationRepositoryCreate } from "../src/migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../src/schemas/resultErrorCreate.js"
 import type { StorageAdapter } from "../src/storage/storageAdapter.js"
 import { storageBindingResolve } from "../src/storage/storageBindingResolve.js"
@@ -159,6 +162,106 @@ test("catalog publication revalidates a two-connection race without losing outpu
         expect.arrayContaining(["images/home/hero_rebuilt_v2.webp", introVersion.objectKey]),
       )
     }
+  } finally {
+    databaseClose(setup.second)
+    databaseClose(setup.first)
+    await rm(setup.directory, { recursive: true, force: true })
+  }
+})
+
+test("leaves only an orphaned manifest when migration starts after catalog storage", async () => {
+  const setup = await setupCreate()
+  try {
+    const context = contextRead(setup.first, "asset-hero")
+    const definition = setup.first.db
+      .select()
+      .from(outputDefinitionTable)
+      .where(eq(outputDefinitionTable.id, "output-hero-large"))
+      .get()
+    const version = setup.first.db
+      .select()
+      .from(outputVersionTable)
+      .where(eq(outputVersionTable.id, "version-output-hero-large"))
+      .get()
+    const metadata = setup.first.db
+      .select({ metadata: catalogOutputTable.metadata })
+      .from(catalogOutputTable)
+      .where(eq(catalogOutputTable.outputVersionId, "version-output-hero-large"))
+      .get()?.metadata
+    if (definition === undefined || version === undefined || metadata === undefined)
+      throw new Error("publication fixture missing")
+
+    let manifestLocation: Parameters<StorageAdapter["putImmutable"]>[0]["location"] | undefined
+    let manifestStored!: () => void
+    const stored = new Promise<void>((resolve) => {
+      manifestStored = resolve
+    })
+    let releaseManifest!: () => void
+    const manifestReleased = new Promise<void>((resolve) => {
+      releaseManifest = resolve
+    })
+    const baseStorage = memoryStorageAdapterCreate()
+    const storage: StorageAdapter = {
+      ...baseStorage,
+      putImmutable: async (input) => {
+        const result = await baseStorage.putImmutable(input)
+        if (input.location.namespace === "private-source" && input.location.key.startsWith("catalogs/")) {
+          manifestLocation = input.location
+          manifestStored()
+          await manifestReleased
+        }
+        return result
+      },
+    }
+    const publication = catalogPublicationServiceCreate(setup.first.db, storage).catalogAssetPublish(
+      context,
+      [{ version, definition, metadata }],
+      new Date("2026-08-31T00:00:00.000Z"),
+    )
+    await stored
+
+    setup.second.db
+      .update(workflowTable)
+      .set({ status: "succeeded" })
+      .where(eq(workflowTable.id, `workflow-deletion-${setup.seed.partialDeletionAssetId}`))
+      .run()
+    const migrationRepository = storageMigrationRepositoryCreate(setup.second.db)
+    const migration = migrationRepository.storageMigrationCreate({
+      projectId: "project-fixture",
+      environmentId: "environment-development",
+      idempotencyKey: "migration-after-catalog-storage",
+      sourceBinding: {
+        projectId: "project-fixture",
+        environmentId: "environment-development",
+        environment: "development",
+        bucket: "assets-development",
+        prefix: "contentoren",
+        publicBaseUrl: "https://assets-development.fixture.invalid",
+      },
+      targetBinding: {
+        projectId: "project-fixture",
+        environmentId: "environment-development",
+        environment: "development",
+        bucket: "assets-development-target",
+        prefix: "contentoren-target",
+        publicBaseUrl: "https://assets-development-target.fixture.invalid",
+      },
+    })
+    expect(migration).toMatchObject({ success: true })
+    releaseManifest()
+
+    expect(await publication).toMatchObject({
+      success: false,
+      op: "storageMutationAssert",
+      retryable: true,
+    })
+    expect(manifestLocation).toBeDefined()
+    if (manifestLocation === undefined) return
+    expect(await baseStorage.headObject(manifestLocation)).toMatchObject({ success: true })
+    expect(setup.first.db.select().from(catalogGenerationTable).all()).toHaveLength(1)
+    expect(setup.first.db.select().from(manifestTable).all()).toHaveLength(0)
+    expect(setup.first.db.select().from(catalogOutputTable).all()).toHaveLength(2)
+    expect(setup.first.db.select().from(catalogTable).get()?.generationId).toBe("generation-1")
   } finally {
     databaseClose(setup.second)
     databaseClose(setup.first)

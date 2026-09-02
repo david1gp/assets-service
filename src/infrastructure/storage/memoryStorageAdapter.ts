@@ -97,8 +97,12 @@ export const memoryStorageAdapterCreate = (input: { now?: () => Date } = {}): St
       }
       const source = objects.get(locationKey(copyInput.source))
       if (!source) return resultErrorCreate("memoryStorageAdapterCreate", "Source storage object does not exist")
+      if (copyInput.sourceEtag !== undefined && copyInput.sourceEtag !== source.etag)
+        return resultErrorCreate("memoryStorageAdapterCreate", "Source storage object changed during copy")
       if (copyInput.sha256 !== undefined && copyInput.sha256 !== source.sha256)
         return resultErrorCreate("memoryStorageAdapterCreate", "Copied object checksum does not match the source")
+      if (copyInput.mediaType !== undefined && copyInput.mediaType !== source.mediaType)
+        return resultErrorCreate("memoryStorageAdapterCreate", "Copied object media type does not match the source")
       const destinationKey = locationKey(copyInput.destination)
       if (objects.has(destinationKey))
         return resultErrorCreate("memoryStorageAdapterCreate", "Storage object already exists")

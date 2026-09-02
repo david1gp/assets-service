@@ -17,6 +17,8 @@ export const storageObjectVerify = async (
     byteSize: number
     sha256: string
     mediaType: string
+    cacheControl?: string
+    requireMetadata?: boolean
   },
 ): Promise<Result<StorageVerification>> => {
   const op = "storageObjectVerify"
@@ -29,18 +31,17 @@ export const storageObjectVerify = async (
   const head = await adapter.headObject(input.location)
   if (!head.success) return head
   if (head.data === null) return resultErrorCreate(op, "Storage object does not exist")
-  if (head.data.byteSize !== input.byteSize && head.data.byteSize !== 0)
-    return resultErrorCreate(op, "Storage object byte size does not match")
+  if (head.data.byteSize !== input.byteSize) return resultErrorCreate(op, "Storage object byte size does not match")
+  if (input.requireMetadata && head.data.mediaType !== expectedMediaType.output)
+    return resultErrorCreate(op, "Storage object metadata media type is missing or does not match")
   if (head.data.mediaType !== undefined && head.data.mediaType !== expectedMediaType.output)
     return resultErrorCreate(op, "Storage object metadata media type does not match")
-  if (head.data.byteSize !== 0 && head.data.sha256 !== undefined && head.data.sha256 !== expectedSha.output)
+  if (input.requireMetadata && head.data.sha256 !== expectedSha.output)
+    return resultErrorCreate(op, "Storage object metadata checksum is missing or does not match")
+  if (head.data.sha256 !== undefined && head.data.sha256 !== expectedSha.output)
     return resultErrorCreate(op, "Storage object metadata checksum does not match")
-
-  if (head.data.byteSize === 0)
-    return {
-      success: true,
-      data: { byteSize: input.byteSize, sha256: expectedSha.output, mediaType: expectedMediaType.output },
-    }
+  if (input.cacheControl !== undefined && head.data.cacheControl !== input.cacheControl)
+    return resultErrorCreate(op, "Storage object cache policy does not match")
 
   const stream = adapter.readObjectStream ? await adapter.readObjectStream(input.location) : undefined
   if (stream && !stream.success) return stream

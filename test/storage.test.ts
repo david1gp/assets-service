@@ -329,6 +329,47 @@ describe("storage adapters", () => {
     expect(methods).toEqual(["HEAD", "PUT", "HEAD"])
   })
 
+  test("keeps R2 immutable copy reruns idempotent after a 412", async () => {
+    const checksum = contentSha256Create(png)
+    const methods: string[] = []
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      fetchImplementation: async (_url, init) => {
+        const method = init?.method ?? "GET"
+        methods.push(method)
+        if (method === "PUT") return new Response(null, { status: 412 })
+        return new Response(null, {
+          status: 200,
+          headers: {
+            "cache-control": "no-store",
+            "content-length": String(png.byteLength),
+            "content-type": "image/png",
+            etag: checksum,
+            "x-amz-meta-sha256": checksum,
+          },
+        })
+      },
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const source = storageObjectLocationCreate(binding.data, "private-staging", "uploads/source")
+    const destination = storageObjectLocationCreate(binding.data, "private-source", "sources/copied")
+    if (!source.success || !destination.success) return
+
+    const copied = await storageCopyImmutable(adapter, {
+      source: source.data,
+      destination: destination.data,
+      mediaType: "image/png",
+      sha256: checksum,
+    })
+
+    expect(copied).toMatchObject({ success: true, data: { byteSize: png.byteLength, sha256: checksum } })
+    expect(methods).toEqual(["HEAD", "PUT", "HEAD"])
+  })
+
   test("probes a custom domain without exposing credentials", async () => {
     const result = await customDomainProbe({
       baseUrl: "https://dev.assets.example.test",

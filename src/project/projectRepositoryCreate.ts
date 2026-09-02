@@ -10,8 +10,10 @@ import { organizationTable } from "../infrastructure/db/schema/organizationTable
 import { projectBindingTable } from "../infrastructure/db/schema/projectBindingTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { type Environment, environmentSchema } from "./environmentSchema.js"
 import { type Organization, organizationSchema } from "./organizationSchema.js"
 import { type ProjectBinding, projectBindingSchema } from "./projectBindingSchema.js"
@@ -64,6 +66,7 @@ const bindingRead = (record: ProjectBindingRecord): Result<ProjectBinding> => {
 }
 
 export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository => {
+  const storageMigrationRepository = storageMigrationRepositoryCreate(db)
   const projectRecordRead = (projectIdentifier: string): Result<ProjectRecord | null> => {
     try {
       const direct = db.select().from(projectTable).where(eq(projectTable.id, projectIdentifier)).limit(1).get()
@@ -249,75 +252,98 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     if (!record.data) return { success: true, data: null }
 
     const project = record.data
+    const environments = db.select().from(environmentTable).where(eq(environmentTable.projectId, project.id)).all()
+    const changedEnvironmentIds = parsed.output.environments.flatMap((environment) => {
+      const current = environments.find((candidate) => candidate.name === environment.name)
+      if (
+        current !== undefined &&
+        (current.r2Bucket !== environment.r2Bucket ||
+          current.r2Prefix !== environment.r2Prefix ||
+          current.publicBaseUrl !== environment.publicBaseUrl)
+      )
+        return [current.id]
+      return []
+    })
+    const admitted = storageMutationAssert(storageMigrationRepository, changedEnvironmentIds)
+    if (!admitted.success) return admitted
     const now = new Date().toISOString()
-    const written = databaseTransactionRun(db, (transaction) => {
-      transaction
-        .update(projectTable)
-        .set({ name: parsed.output.name, defaultEnvironment: parsed.output.defaultEnvironment, updatedAt: now })
-        .where(eq(projectTable.id, project.id))
-        .run()
-
-      const binding = transaction
-        .select()
-        .from(projectBindingTable)
-        .where(eq(projectBindingTable.projectId, project.id))
-        .limit(1)
-        .get()
-      if (binding)
+    const written = databaseTransactionRun(
+      db,
+      (transaction) => {
+        const transactionAdmitted = storageMutationAssert(
+          storageMigrationRepositoryCreate(transaction),
+          changedEnvironmentIds,
+        )
+        if (!transactionAdmitted.success) return transactionAdmitted
         transaction
-          .update(projectBindingTable)
-          .set({ ...parsed.output.binding, updatedAt: now })
-          .where(eq(projectBindingTable.id, binding.id))
-          .run()
-      else
-        transaction
-          .insert(projectBindingTable)
-          .values({
-            id: crypto.randomUUID(),
-            projectId: project.id,
-            organizationId: project.organizationId,
-            ...parsed.output.binding,
-            createdAt: now,
-            updatedAt: now,
-          })
+          .update(projectTable)
+          .set({ name: parsed.output.name, defaultEnvironment: parsed.output.defaultEnvironment, updatedAt: now })
+          .where(eq(projectTable.id, project.id))
           .run()
 
-      const existing = transaction
-        .select()
-        .from(environmentTable)
-        .where(eq(environmentTable.projectId, project.id))
-        .all()
-      for (const environment of parsed.output.environments) {
-        const current = existing.find((candidate) => candidate.name === environment.name)
-        if (current) {
+        const binding = transaction
+          .select()
+          .from(projectBindingTable)
+          .where(eq(projectBindingTable.projectId, project.id))
+          .limit(1)
+          .get()
+        if (binding)
           transaction
-            .update(environmentTable)
-            .set({
+            .update(projectBindingTable)
+            .set({ ...parsed.output.binding, updatedAt: now })
+            .where(eq(projectBindingTable.id, binding.id))
+            .run()
+        else
+          transaction
+            .insert(projectBindingTable)
+            .values({
+              id: crypto.randomUUID(),
+              projectId: project.id,
+              organizationId: project.organizationId,
+              ...parsed.output.binding,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run()
+
+        const existing = transaction
+          .select()
+          .from(environmentTable)
+          .where(eq(environmentTable.projectId, project.id))
+          .all()
+        for (const environment of parsed.output.environments) {
+          const current = existing.find((candidate) => candidate.name === environment.name)
+          if (current) {
+            transaction
+              .update(environmentTable)
+              .set({
+                r2Bucket: environment.r2Bucket,
+                r2Prefix: environment.r2Prefix,
+                publicBaseUrl: environment.publicBaseUrl,
+                updatedAt: now,
+              })
+              .where(eq(environmentTable.id, current.id))
+              .run()
+            continue
+          }
+          transaction
+            .insert(environmentTable)
+            .values({
+              id: crypto.randomUUID(),
+              projectId: project.id,
+              name: environment.name,
               r2Bucket: environment.r2Bucket,
               r2Prefix: environment.r2Prefix,
               publicBaseUrl: environment.publicBaseUrl,
+              createdAt: now,
               updatedAt: now,
             })
-            .where(eq(environmentTable.id, current.id))
             .run()
-          continue
         }
-        transaction
-          .insert(environmentTable)
-          .values({
-            id: crypto.randomUUID(),
-            projectId: project.id,
-            name: environment.name,
-            r2Bucket: environment.r2Bucket,
-            r2Prefix: environment.r2Prefix,
-            publicBaseUrl: environment.publicBaseUrl,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .run()
-      }
-      return { success: true, data: null } as const
-    })
+        return { success: true, data: null } as const
+      },
+      { behavior: "immediate" },
+    )
     if (!written.success) return written
     return projectSettingsRead(project.id)
   }

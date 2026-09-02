@@ -35,6 +35,9 @@ import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionT
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import type { MediaMetadata } from "../metadata/mediaMetadataSchema.js"
 import { mediaMetadataSchema } from "../metadata/mediaMetadataSchema.js"
+import type { StorageMigrationRepository } from "../migration/storageMigrationRepository.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
+import { storageMigrationWorkflowHandlersRegister } from "../migration/storageMigrationWorkflowHandlersRegister.js"
 import { outputRemoteObjectKeyCreate } from "../output/outputRemoteObjectKeyCreate.js"
 import { outputVersionRepositoryAllocate } from "../output/outputVersionRepositoryAllocate.js"
 import { documentProcess } from "../processing/documentProcess.js"
@@ -49,6 +52,7 @@ import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import { storageCopyImmutable } from "../storage/storageCopyImmutable.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import type { StorageObject } from "../storage/storageObjectSchema.js"
 import { storageObjectVerify } from "../storage/storageObjectVerify.js"
@@ -72,6 +76,9 @@ type AssetWorkflowHandlersRegisterInput = {
   temporaryDirectory?: string
   adminBaseUrl?: string
   catalogPublicationService?: CatalogPublicationService
+  destinationPublicUrlVerifier?: Parameters<
+    typeof storageMigrationWorkflowHandlersRegister
+  >[1]["destinationPublicUrlVerifier"]
 }
 
 type HandlerRegistry = ReturnType<typeof jobHandlerRegistryCreate>
@@ -100,6 +107,13 @@ export const assetWorkflowHandlersRegister = (
   registry: HandlerRegistry,
   input: AssetWorkflowHandlersRegisterInput,
 ): Result<null> => {
+  const migrationRegistered = storageMigrationWorkflowHandlersRegister(registry, {
+    db: input.db,
+    storage: input.storage,
+    clock: input.clock,
+    destinationPublicUrlVerifier: input.destinationPublicUrlVerifier,
+  })
+  if (!migrationRegistered.success) return migrationRegistered
   const catalogPublicationService =
     input.catalogPublicationService ?? catalogPublicationServiceCreate(input.db, input.storage)
   const handlers: Array<[Job["kind"], JobHandler]> = [
@@ -526,6 +540,9 @@ async function processOutputHandle(
   }
   const context = await assetContextRead(input.db, job)
   if (!context.success) return context
+  const storageMigrationRepository = storageMigrationRepositoryCreate(input.db)
+  const admitted = storageMutationAssert(storageMigrationRepository, context.data.environment.id)
+  if (!admitted.success) return admitted
   const definition = input.db
     .select()
     .from(outputDefinitionTable)
@@ -549,6 +566,8 @@ async function processOutputHandle(
   const mediaType = outputMediaTypeRead(definition, processed.data.metadata)
   if (extension === undefined || mediaType === undefined)
     return resultErrorCreate("processOutputHandle", "Output processor returned unsupported media metadata")
+  const stillAdmitted = storageMutationAssert(storageMigrationRepository, context.data.environment.id)
+  if (!stillAdmitted.success) return stillAdmitted
   const folders = foldersRead(context.data.asset)
   const allocation = outputVersionRepositoryAllocate(input.db, {
     id: `version-${job.id}`,
@@ -593,25 +612,12 @@ async function processOutputHandle(
     processed.data.bytes,
     mediaType,
     version.sha256,
+    storageMigrationRepository,
+    context.data.environment.id,
   )
   if (!stored.success) return stored
-  const blob = blobRepositoryEnsure(input.db, {
-    id: `blob-output-${version.id}`,
-    projectId: context.data.asset.projectId,
-    assetId: context.data.asset.id,
-    sourceRevisionId: context.data.source.id,
-    outputVersionId: version.id,
-    storage: "private",
-    environment: context.data.environment.name,
-    kind: "output",
-    objectKey: privateKey,
-    byteSize: version.byteSize,
-    sha256: version.sha256,
-    mediaType,
-    createdAt: input.clock?.().toISOString() ?? new Date().toISOString(),
-  })
-  if (!blob.success) return blob
-
+  const metadataStillAdmitted = storageMutationAssert(storageMigrationRepository, context.data.environment.id)
+  if (!metadataStillAdmitted.success) return metadataStillAdmitted
   const payload: JobPayload = {
     ...parsedPayload.data,
     values: {
@@ -621,39 +627,73 @@ async function processOutputHandle(
       provenance: processed.data.provenance,
     },
   }
-  const updated = jobRepositoryPayloadUpdate(input.db, {
-    jobId: job.id,
-    workerId: handlerContext.workerId,
-    payload,
-    now: input.clock?.() ?? new Date(),
-  })
-  if (!updated.success) return updated
+  return databaseTransactionRun<null>(
+    input.db,
+    (transaction) => {
+      const transactionAdmitted = storageMutationAssert(
+        storageMigrationRepository,
+        context.data.environment.id,
+        transaction,
+      )
+      if (!transactionAdmitted.success) return transactionAdmitted
 
-  const existingMetadata = input.db
-    .select()
-    .from(assetMetadataTable)
-    .where(eq(assetMetadataTable.assetId, context.data.asset.id))
-    .get()
-  if (existingMetadata === undefined) {
-    const metadataNow = input.clock?.().toISOString() ?? new Date().toISOString()
-    const insertedMetadata = databaseRecordInsert(input.db, assetMetadataTable, {
-      id: `metadata-${context.data.asset.id}`,
-      assetId: context.data.asset.id,
-      sourceRevisionId: context.data.source.id,
-      metadata: processed.data.metadata,
-      createdAt: metadataNow,
-      updatedAt: metadataNow,
-    })
-    if (!insertedMetadata.success) {
-      const racedMetadata = input.db
+      const blob = blobRepositoryEnsure(transaction, {
+        id: `blob-output-${version.id}`,
+        projectId: context.data.asset.projectId,
+        assetId: context.data.asset.id,
+        sourceRevisionId: context.data.source.id,
+        outputVersionId: version.id,
+        storage: "private",
+        environment: context.data.environment.name,
+        kind: "output",
+        objectKey: privateKey,
+        byteSize: version.byteSize,
+        sha256: version.sha256,
+        mediaType,
+        createdAt: input.clock?.().toISOString() ?? new Date().toISOString(),
+      })
+      if (!blob.success) return blob
+
+      const updated = jobRepositoryPayloadUpdate(
+        input.db,
+        {
+          jobId: job.id,
+          workerId: handlerContext.workerId,
+          payload,
+          now: input.clock?.() ?? new Date(),
+        },
+        transaction,
+      )
+      if (!updated.success) return updated
+
+      const existingMetadata = transaction
         .select()
         .from(assetMetadataTable)
         .where(eq(assetMetadataTable.assetId, context.data.asset.id))
         .get()
-      if (racedMetadata === undefined) return insertedMetadata
-    }
-  }
-  return { success: true, data: null }
+      if (existingMetadata === undefined) {
+        const metadataNow = input.clock?.().toISOString() ?? new Date().toISOString()
+        const insertedMetadata = databaseRecordInsert(transaction, assetMetadataTable, {
+          id: `metadata-${context.data.asset.id}`,
+          assetId: context.data.asset.id,
+          sourceRevisionId: context.data.source.id,
+          metadata: processed.data.metadata,
+          createdAt: metadataNow,
+          updatedAt: metadataNow,
+        })
+        if (!insertedMetadata.success) {
+          const racedMetadata = transaction
+            .select()
+            .from(assetMetadataTable)
+            .where(eq(assetMetadataTable.assetId, context.data.asset.id))
+            .get()
+          if (racedMetadata === undefined) return insertedMetadata
+        }
+      }
+      return { success: true, data: null }
+    },
+    { behavior: "immediate" },
+  )
 }
 
 async function publishAssetHandle(
@@ -664,6 +704,9 @@ async function publishAssetHandle(
 ): Promise<Result<null>> {
   const context = await assetContextRead(input.db, job)
   if (!context.success) return context
+  const storageMigrationRepository = storageMigrationRepositoryCreate(input.db)
+  const admitted = storageMutationAssert(storageMigrationRepository, context.data.environment.id)
+  if (!admitted.success) return admitted
   const backup = input.db
     .select()
     .from(backupReceiptTable)
@@ -739,28 +782,51 @@ async function publishAssetHandle(
       mediaType: version.mediaType,
     })
     if (!privateVerified.success) return privateVerified
-    const publicObject = await storageObjectCopyEnsure(input.storage, privateLocation.data, publicLocation.data, {
-      byteSize: version.byteSize,
-      sha256: version.sha256,
-      mediaType: version.mediaType,
-    })
+    const publicObject = await storageObjectCopyEnsure(
+      input.storage,
+      privateLocation.data,
+      publicLocation.data,
+      {
+        byteSize: version.byteSize,
+        sha256: version.sha256,
+        mediaType: version.mediaType,
+      },
+      storageMigrationRepository,
+      context.data.environment.id,
+    )
     if (!publicObject.success) return publicObject
-    const blob = blobRepositoryEnsure(input.db, {
-      id: `blob-public-${version.id}`,
-      projectId: context.data.asset.projectId,
-      assetId: context.data.asset.id,
-      sourceRevisionId: context.data.source.id,
-      outputVersionId: version.id,
-      storage: "public",
-      environment: context.data.environment.name,
-      kind: "output",
-      objectKey: version.objectKey,
-      byteSize: version.byteSize,
-      sha256: version.sha256,
-      mediaType: version.mediaType,
-      createdAt: input.clock?.().toISOString() ?? new Date().toISOString(),
-    })
-    if (!blob.success) return blob
+    const metadataStillAdmitted = storageMutationAssert(storageMigrationRepository, context.data.environment.id)
+    if (!metadataStillAdmitted.success) return metadataStillAdmitted
+    const blobCommitted = databaseTransactionRun<null>(
+      input.db,
+      (transaction) => {
+        const transactionAdmitted = storageMutationAssert(
+          storageMigrationRepository,
+          context.data.environment.id,
+          transaction,
+        )
+        if (!transactionAdmitted.success) return transactionAdmitted
+        const blob = blobRepositoryEnsure(transaction, {
+          id: `blob-public-${version.id}`,
+          projectId: context.data.asset.projectId,
+          assetId: context.data.asset.id,
+          sourceRevisionId: context.data.source.id,
+          outputVersionId: version.id,
+          storage: "public",
+          environment: context.data.environment.name,
+          kind: "output",
+          objectKey: version.objectKey,
+          byteSize: version.byteSize,
+          sha256: version.sha256,
+          mediaType: version.mediaType,
+          createdAt: input.clock?.().toISOString() ?? new Date().toISOString(),
+        })
+        if (!blob.success) return blob
+        return { success: true, data: null }
+      },
+      { behavior: "immediate" },
+    )
+    if (!blobCommitted.success) return blobCommitted
     outputs.push({ version, definition, metadata: checkedMetadata.data })
   }
   if (outputs.length !== definitions.length)
@@ -990,6 +1056,8 @@ async function storageObjectPutEnsure(
   bytes: Uint8Array,
   mediaType: string,
   sha256: string,
+  storageMigrationRepository: Pick<StorageMigrationRepository, "storageMigrationReadActive">,
+  environmentId: string,
 ): Promise<Result<StorageObject>> {
   const existing = await storageObjectVerify(storage, { location, byteSize: bytes.byteLength, sha256, mediaType })
   if (existing.success) {
@@ -998,6 +1066,8 @@ async function storageObjectPutEnsure(
     if (head.data !== null) return { success: true, data: head.data }
     return resultErrorCreate("storageObjectPutEnsure", "Stored object disappeared")
   }
+  const admitted = storageMutationAssert(storageMigrationRepository, environmentId)
+  if (!admitted.success) return admitted
   const stored = await storagePutImmutable(storage, { location, bytes, mediaType, sha256 })
   if (stored.success) {
     if (stored.data.byteSize === bytes.byteLength && stored.data.sha256 === sha256) return stored
@@ -1020,6 +1090,8 @@ async function storageObjectCopyEnsure(
   source: Parameters<StorageAdapter["copyImmutable"]>[0]["source"],
   destination: Parameters<StorageAdapter["copyImmutable"]>[0]["destination"],
   expected: { byteSize: number; sha256: string; mediaType: string },
+  storageMigrationRepository: Pick<StorageMigrationRepository, "storageMigrationReadActive">,
+  environmentId: string,
 ): Promise<Result<StorageObject>> {
   const existing = await storageObjectVerify(storage, { location: destination, ...expected })
   if (existing.success) {
@@ -1028,6 +1100,8 @@ async function storageObjectCopyEnsure(
     if (head.data !== null) return { success: true, data: head.data }
     return resultErrorCreate("storageObjectCopyEnsure", "Copied object disappeared")
   }
+  const admitted = storageMutationAssert(storageMigrationRepository, environmentId)
+  if (!admitted.success) return admitted
   const copied = await storageCopyImmutable(storage, {
     source,
     destination,

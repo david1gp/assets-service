@@ -13,16 +13,18 @@ import { databaseTransactionRun } from "../infrastructure/db/databaseTransaction
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
-import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageStagingObjectKeyCreate } from "../storage/storageStagingObjectKeyCreate.js"
 import { storageUploadIntentComplete } from "../storage/storageUploadIntentComplete.js"
 import { storageUploadIntentCreate } from "../storage/storageUploadIntentCreate.js"
 import type { UploadApiRepository } from "./uploadApiRepository.js"
 import { uploadIngestionComplete } from "./uploadIngestionComplete.js"
+import { uploadIssuedLocationCreate } from "./uploadIssuedLocationCreate.js"
 import { uploadMediaTypeCheck } from "./uploadMediaTypeCheck.js"
 import { uploadSchema } from "./uploadSchema.js"
 
@@ -36,6 +38,7 @@ export const uploadApiRepositoryCreate = (
   options: UploadApiRepositoryCreateOptions = {},
 ): UploadApiRepository => {
   const nowRead = options.now ?? (() => new Date())
+  const storageMigrationRepository = storageMigrationRepositoryCreate(db)
 
   const uploadRead = (record: typeof uploadTable.$inferSelect): Result<import("./uploadSchema.js").Upload> => {
     const folders = foldersDatabaseColumnsRead({
@@ -124,50 +127,13 @@ export const uploadApiRepositoryCreate = (
       return resultErrorCreate(op, "The upload environment was not bound to the project")
     const binding = storageBindingResolve(environment, projectId)
     if (!binding.success) return binding
-    if (parsed.output.assetId !== undefined) {
-      const targetAsset = db.select().from(assetTable).where(eq(assetTable.id, parsed.output.assetId)).get()
-      if (targetAsset === undefined || targetAsset.projectId !== projectId)
-        return resultErrorCreate(op, "The upload target asset was not found")
-      if (targetAsset.class !== assetClassFromMediaType(parsed.output.mediaType))
-        return resultErrorCreate(op, "The upload media type does not match the target asset class")
-    }
     const uploadId = parsed.output.uploadId ?? `upload-${crypto.randomUUID()}`
     const folders = parsed.output.folders
-    const existing = db.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
-    if (existing !== undefined) {
-      if (!uploadRequestMatches(existing, projectId, environment.id, parsed.output))
-        return resultErrorCreate(op, "The upload id already belongs to a different request")
-      if (existing.status === "cancelled" || existing.status === "failed")
-        return resultErrorCreate(op, "The upload cannot be resumed")
-    } else {
-      const staging = storageStagingObjectKeyCreate(binding.data, uploadId)
-      if (!staging.success) return staging
-      const createdAt = nowRead().toISOString()
-      const inserted = databaseRecordInsert(db, uploadTable, {
-        id: uploadId,
-        projectId,
-        environmentId: environment.id,
-        assetId: parsed.output.assetId ?? null,
-        sourceRevisionId: null,
-        uploaderId: uploaderId ?? null,
-        notificationEligible: notificationEligible ?? uploaderId !== undefined,
-        originalFilename: parsed.output.originalFilename,
-        folder1: folders[0] ?? null,
-        folder2: folders[1] ?? null,
-        folder3: folders[2] ?? null,
-        integrationNote: parsed.output.integrationNote,
-        stagingObjectKey: staging.data.objectKey,
-        byteSize: parsed.output.byteSize,
-        mediaType: parsed.output.mediaType,
-        sha256: parsed.output.sha256 ?? null,
-        status: "pending",
-        failureReason: null,
-        verifiedAt: null,
-        createdAt,
-        updatedAt: createdAt,
-      })
-      if (!inserted.success) return inserted
-    }
+    const staging = storageStagingObjectKeyCreate(binding.data, uploadId)
+    if (!staging.success) return staging
+    const admitted = storageMutationAssert(storageMigrationRepository, environment.id)
+    if (!admitted.success) return admitted
+    const issuedAt = nowRead()
 
     const intent = await storageUploadIntentCreate(storage, {
       binding: binding.data,
@@ -175,16 +141,101 @@ export const uploadApiRepositoryCreate = (
       byteSize: parsed.output.byteSize,
       mediaType: parsed.output.mediaType,
       ...(parsed.output.sha256 === undefined ? {} : { sha256: parsed.output.sha256 }),
-      now: nowRead(),
+      now: issuedAt,
     })
     if (!intent.success) return intent
-    const current = db.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
-    if (current === undefined) return resultErrorCreate(op, "The upload disappeared")
+    if (intent.data.key !== staging.data.objectKey)
+      return resultErrorCreate(op, "The storage adapter issued an unexpected upload key")
+    const createdAt = issuedAt.toISOString()
+    const reserved = databaseTransactionRun<{ status: typeof uploadTable.$inferSelect.status }>(
+      db,
+      (transaction) => {
+        if (parsed.output.assetId !== undefined) {
+          const targetAsset = transaction
+            .select()
+            .from(assetTable)
+            .where(eq(assetTable.id, parsed.output.assetId))
+            .get()
+          if (targetAsset === undefined || targetAsset.projectId !== projectId)
+            return resultErrorCreate(op, "The upload target asset was not found")
+          if (targetAsset.class !== assetClassFromMediaType(parsed.output.mediaType))
+            return resultErrorCreate(op, "The upload media type does not match the target asset class")
+        }
+        const currentEnvironment = transaction
+          .select()
+          .from(environmentTable)
+          .where(and(eq(environmentTable.id, environment.id), eq(environmentTable.projectId, projectId)))
+          .get()
+        if (currentEnvironment === undefined) return resultErrorCreate(op, "The upload environment was not found")
+        if (
+          currentEnvironment.name !== environment.name ||
+          currentEnvironment.r2Bucket !== environment.r2Bucket ||
+          currentEnvironment.r2Prefix !== environment.r2Prefix ||
+          currentEnvironment.publicBaseUrl !== environment.publicBaseUrl
+        )
+          return resultErrorCreate(op, "The upload environment changed during intent issuance")
+        const admitted = storageMutationAssert(storageMigrationRepository, environment.id, transaction)
+        if (!admitted.success) return admitted
+
+        const existing = transaction.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
+        if (existing !== undefined) {
+          if (!uploadRequestMatches(existing, projectId, environment.id, parsed.output))
+            return resultErrorCreate(op, "The upload id already belongs to a different request")
+          if (existing.status === "cancelled" || existing.status === "failed")
+            return resultErrorCreate(op, "The upload cannot be resumed")
+          const updated = transaction
+            .update(uploadTable)
+            .set({
+              stagingObjectKey: intent.data.key,
+              issuedBucket: binding.data.bucket,
+              issuedObjectKey: intent.data.key,
+              issuedExpiresAt: intent.data.expiresAt,
+              updatedAt: createdAt,
+            })
+            .where(eq(uploadTable.id, uploadId))
+            .returning({ status: uploadTable.status })
+            .get()
+          if (updated === undefined) return resultErrorCreate(op, "The upload disappeared")
+          return { success: true, data: updated } as const
+        }
+
+        const inserted = databaseRecordInsert(transaction, uploadTable, {
+          id: uploadId,
+          projectId,
+          environmentId: environment.id,
+          assetId: parsed.output.assetId ?? null,
+          sourceRevisionId: null,
+          uploaderId: uploaderId ?? null,
+          notificationEligible: notificationEligible ?? uploaderId !== undefined,
+          originalFilename: parsed.output.originalFilename,
+          folder1: folders[0] ?? null,
+          folder2: folders[1] ?? null,
+          folder3: folders[2] ?? null,
+          integrationNote: parsed.output.integrationNote,
+          stagingObjectKey: staging.data.objectKey,
+          issuedBucket: binding.data.bucket,
+          issuedObjectKey: intent.data.key,
+          issuedExpiresAt: intent.data.expiresAt,
+          byteSize: parsed.output.byteSize,
+          mediaType: parsed.output.mediaType,
+          sha256: parsed.output.sha256 ?? null,
+          status: "pending",
+          failureReason: null,
+          verifiedAt: null,
+          createdAt,
+          updatedAt: createdAt,
+        })
+        if (!inserted.success) return inserted
+        return { success: true, data: { status: inserted.data.status } } as const
+      },
+      { behavior: "immediate" },
+    )
+    if (!reserved.success) return reserved
     return {
       success: true,
       data: {
         uploadId,
-        status: current.status,
+        status: reserved.data.status,
         intent: intent.data,
       },
     }
@@ -200,6 +251,8 @@ export const uploadApiRepositoryCreate = (
     if (!parsed.success) return resultErrorCreate(op, "The upload completion was invalid", parsed.issues)
     const upload = db.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
     if (upload === undefined || upload.projectId !== projectId) return resultErrorCreate(op, "The upload was not found")
+    const admitted = storageMutationAssert(storageMigrationRepository, upload.environmentId)
+    if (!admitted.success) return admitted
     if (upload.status === "accepted" && upload.assetId !== null && upload.sourceRevisionId !== null)
       return {
         success: true,
@@ -222,50 +275,62 @@ export const uploadApiRepositoryCreate = (
     if (environment === undefined) return resultErrorCreate(op, "The upload environment was not found")
     const binding = storageBindingResolve(environment, projectId)
     if (!binding.success) return binding
-    const staging = storageStagingObjectKeyCreate(binding.data, upload.id)
-    if (!staging.success) return staging
-    if (staging.data.objectKey !== upload.stagingObjectKey)
-      return resultErrorCreate(op, "The upload staging key was invalid")
-    const intent = await storageUploadIntentCreate(storage, {
-      binding: binding.data,
-      uploadId,
-      byteSize: upload.byteSize,
-      mediaType: upload.mediaType,
-      sha256: parsed.output.sha256,
-      now: nowRead(),
-    })
-    if (!intent.success) return intent
-    const location = storageObjectLocationCreate(binding.data, "private-staging", `uploads/${uploadId}`)
-    if (!location.success) return location
+    if (upload.issuedBucket === null || upload.issuedObjectKey === null || upload.issuedExpiresAt === null)
+      return resultErrorCreate(op, "The upload has no persisted issued storage intent")
+    const issuedLocation = uploadIssuedLocationCreate(binding.data, upload)
+    if (!issuedLocation.success) return issuedLocation
+    if (upload.stagingObjectKey !== issuedLocation.data.objectKey)
+      return resultErrorCreate(op, "The upload staging key did not match its issued storage location")
+    const stillAdmitted = storageMutationAssert(storageMigrationRepository, environment.id)
+    if (!stillAdmitted.success) return stillAdmitted
     const verified = await storageUploadIntentComplete(storage, {
-      intent: intent.data,
-      location: location.data,
+      intent: {
+        method: "PUT",
+        url: "https://persisted.invalid/upload",
+        key: upload.issuedObjectKey,
+        expiresAt: upload.issuedExpiresAt,
+        headers: {
+          "content-length": String(upload.byteSize),
+          "content-type": upload.mediaType,
+          ...(upload.sha256 === null ? {} : { "x-amz-meta-sha256": upload.sha256 }),
+        },
+        mediaType: upload.mediaType,
+        byteSize: upload.byteSize,
+        ...(upload.sha256 === null ? {} : { sha256: upload.sha256 }),
+      },
+      location: issuedLocation.data,
       sha256: parsed.output.sha256,
       now: nowRead(),
     })
     if (!verified.success) return verified
-    const markedVerified = databaseTransactionRun(db, (transaction) => {
-      const current = transaction.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
-      if (current === undefined || current.projectId !== projectId)
-        return resultErrorCreate(op, "The upload was not found")
-      if (current.status === "accepted") return { success: true, data: null } as const
-      if (current.sha256 !== null && current.sha256 !== parsed.output.sha256)
-        return resultErrorCreate(op, "The upload checksum did not match the intent")
-      transaction
-        .update(uploadTable)
-        .set({
-          sha256: parsed.output.sha256,
-          mediaType: verified.data.mediaType,
-          status: "verified",
-          verifiedAt: nowRead().toISOString(),
-          updatedAt: nowRead().toISOString(),
-        })
-        .where(eq(uploadTable.id, uploadId))
-        .run()
-      return { success: true, data: null } as const
-    })
+    const markedVerified = databaseTransactionRun(
+      db,
+      (transaction) => {
+        const transactionAdmitted = storageMutationAssert(storageMigrationRepository, environment.id, transaction)
+        if (!transactionAdmitted.success) return transactionAdmitted
+        const current = transaction.select().from(uploadTable).where(eq(uploadTable.id, uploadId)).get()
+        if (current === undefined || current.projectId !== projectId)
+          return resultErrorCreate(op, "The upload was not found")
+        if (current.status === "accepted") return { success: true, data: null } as const
+        if (current.sha256 !== null && current.sha256 !== parsed.output.sha256)
+          return resultErrorCreate(op, "The upload checksum did not match the intent")
+        transaction
+          .update(uploadTable)
+          .set({
+            sha256: parsed.output.sha256,
+            mediaType: verified.data.mediaType,
+            status: "verified",
+            verifiedAt: nowRead().toISOString(),
+            updatedAt: nowRead().toISOString(),
+          })
+          .where(eq(uploadTable.id, uploadId))
+          .run()
+        return { success: true, data: null } as const
+      },
+      { behavior: "immediate" },
+    )
     if (!markedVerified.success) return markedVerified
-    const accepted = await uploadIngestionComplete(db, storage, { uploadId })
+    const accepted = await uploadIngestionComplete(db, storage, { uploadId, now: nowRead() })
     if (!accepted.success) return accepted
     return { success: true, data: { ...accepted.data, status: "accepted" } }
   }

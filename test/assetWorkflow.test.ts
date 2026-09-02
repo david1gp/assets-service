@@ -12,6 +12,7 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { blobTable } from "../src/infrastructure/db/schema/blobTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
@@ -25,10 +26,11 @@ import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevis
 import { uploadTable } from "../src/infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
+import { storageMigrationRepositoryCreate } from "../src/migration/storageMigrationRepositoryCreate.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
+import type { StorageAdapter } from "../src/storage/storageAdapter.js"
 import { storageBindingResolve } from "../src/storage/storageBindingResolve.js"
 import { storageObjectLocationCreate } from "../src/storage/storageObjectLocationCreate.js"
-import type { StorageAdapter } from "../src/storage/storageAdapter.js"
 import { uploadIngestionComplete } from "../src/upload/uploadIngestionComplete.js"
 import { assetWorkflowHandlersRegister } from "../src/workflow/assetWorkflowHandlersRegister.js"
 import { jobHandlerRegistryCreate } from "../src/workflow/jobHandlerRegistryCreate.js"
@@ -404,6 +406,270 @@ describe("asset ingestion workflow", () => {
     } finally {
       databaseClose(opened.data)
       if (temporaryRoot.length > 0) await rm(temporaryRoot, { force: true, recursive: true })
+    }
+  })
+
+  test("leaves an orphaned private output object when migration starts after output storage", async () => {
+    const opened = databaseOpen(":memory:")
+    expect(opened.success).toBe(true)
+    if (!opened.success) return
+
+    try {
+      expect(databaseMigrate(opened.data).success).toBe(true)
+      const seeded = databaseTransactionRun(opened.data.db, (transaction) => {
+        for (const result of [
+          databaseRecordInsert(transaction, organizationTable, {
+            id: "org-output-race",
+            name: "Output race",
+            slug: "output-race",
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, projectTable, {
+            id: "project-output-race",
+            organizationId: "org-output-race",
+            name: "Output race",
+            slug: "output-race",
+            defaultEnvironment: "development",
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, environmentTable, {
+            id: "environment-output-race",
+            projectId: "project-output-race",
+            name: "development",
+            r2Bucket: "source-bucket",
+            r2Prefix: "source-prefix",
+            publicBaseUrl: "https://source.example.test",
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, assetTable, {
+            id: "asset-output-race",
+            projectId: "project-output-race",
+            class: "image",
+            folder1: "home",
+            folder2: null,
+            folder3: null,
+            filename: "source.png",
+            basename: "source",
+            currentSourceRevisionId: "source-output-race",
+            integrationNote: "Output race",
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, sourceRevisionTable, {
+            id: "source-output-race",
+            assetId: "asset-output-race",
+            revision: 1,
+            class: "image",
+            originalFilename: "source.png",
+            mediaType: "image/png",
+            byteSize: bytes.length,
+            sha256: contentSha256Create(bytes),
+            objectKey: "sources/source-output-race/source.png",
+            createdAt: now,
+          }),
+          databaseRecordInsert(transaction, outputDefinitionTable, {
+            id: "output-output-race",
+            assetId: "asset-output-race",
+            kind: "image",
+            key: "default",
+            width: 7,
+            height: 3,
+            format: "png",
+            quality: null,
+            showAiLabel: null,
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, outputVersionTable, {
+            id: "version-job-output-race",
+            projectId: "project-output-race",
+            outputDefinitionId: "output-output-race",
+            assetId: "asset-output-race",
+            sourceRevisionId: "source-output-race",
+            version: 1,
+            byteSize: bytes.length,
+            sha256: contentSha256Create(bytes),
+            mediaType: "image/png",
+            extension: "png",
+            objectKey: "images/home/default_v1.png",
+            toolchainVersion: "fake-image@1",
+            width: 7,
+            height: 3,
+            current: false,
+            createdAt: now,
+          }),
+          databaseRecordInsert(transaction, workflowTable, {
+            id: "workflow-output-race",
+            projectId: "project-output-race",
+            assetId: "asset-output-race",
+            kind: "asset_processing",
+            status: "running",
+            createdAt: now,
+            updatedAt: now,
+          }),
+          databaseRecordInsert(transaction, jobTable, {
+            id: "job-output-race",
+            workflowId: "workflow-output-race",
+            kind: "process_image_output",
+            status: "queued",
+            availableAt: now,
+            priority: 0,
+            attempts: 0,
+            retryLimit: 3,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            heartbeatAt: null,
+            idempotencyKey: "workflow-output-race:process_image_output",
+            payloadSchemaVersion: 1,
+            payload: {
+              assetId: "asset-output-race",
+              sourceRevisionId: "source-output-race",
+              outputDefinitionId: "output-output-race",
+              environmentId: "environment-output-race",
+            },
+            error: null,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        ]) {
+          if (!result.success) return result
+        }
+        return { success: true, data: null }
+      })
+      if (!seeded.success) throw new Error(seeded.errorMessage)
+
+      const environment = opened.data.db.select().from(environmentTable).get()
+      if (environment === undefined) return
+      const binding = storageBindingResolve(environment, "project-output-race")
+      expect(binding.success).toBe(true)
+      if (!binding.success) return
+      const sourceLocation = storageObjectLocationCreate(
+        binding.data,
+        "private-source",
+        "sources/source-output-race/source.png",
+      )
+      expect(sourceLocation.success).toBe(true)
+      if (!sourceLocation.success) return
+      const baseStorage = memoryStorageAdapterCreate({ now: () => new Date(now) })
+      expect(
+        (await baseStorage.putImmutable({ location: sourceLocation.data, bytes, mediaType: "image/png" })).success,
+      ).toBe(true)
+
+      let outputStored!: () => void
+      const stored = new Promise<void>((resolve) => {
+        outputStored = resolve
+      })
+      let releaseOutput!: () => void
+      const outputReleased = new Promise<void>((resolve) => {
+        releaseOutput = resolve
+      })
+      const storage: StorageAdapter = {
+        ...baseStorage,
+        putImmutable: async (input) => {
+          const result = await baseStorage.putImmutable(input)
+          if (input.location.namespace === "private-source" && input.location.key.startsWith("outputs/")) {
+            outputStored()
+            await outputReleased
+          }
+          return result
+        },
+      }
+      const migrationRepository = storageMigrationRepositoryCreate(opened.data.db, { clock: () => new Date(now) })
+      const registry = jobHandlerRegistryCreate()
+      expect(
+        assetWorkflowHandlersRegister(registry, {
+          db: opened.data.db,
+          storage,
+          backup: rcloneBackupAdapterFake({ completedAt: now }),
+          clock: () => new Date(now),
+          imageProcessor: async () => ({
+            success: true,
+            data: {
+              bytes,
+              metadata: {
+                kind: "image",
+                width: 7,
+                height: 3,
+                format: "png",
+                colorSpace: "srgb",
+                alpha: false,
+                orientationApplied: true,
+                frameCount: 1,
+                animated: false,
+                alt: null,
+                aiProvenance: null,
+              },
+              provenance: {
+                schemaVersion: "assets-service.processing.v1",
+                toolchain: [{ name: "fake-image", version: "1" }],
+              },
+            },
+          }),
+        }).success,
+      ).toBe(true)
+      const engine = workflowEngineCreate({
+        db: opened.data.db,
+        workerId: "output-race-worker",
+        handlerRegistry: registry,
+        retryBackoffMs: () => 0,
+        clock: () => new Date(now),
+      })
+      const running = engine.runOnce()
+      await stored
+      const migration = migrationRepository.storageMigrationCreate({
+        projectId: "project-output-race",
+        environmentId: "environment-output-race",
+        idempotencyKey: "migration-after-output-storage",
+        sourceBinding: {
+          projectId: "project-output-race",
+          environmentId: "environment-output-race",
+          environment: "development",
+          bucket: "source-bucket",
+          prefix: "source-prefix",
+          publicBaseUrl: "https://source.example.test",
+        },
+        targetBinding: {
+          projectId: "project-output-race",
+          environmentId: "environment-output-race",
+          environment: "development",
+          bucket: "target-bucket",
+          prefix: "target-prefix",
+          publicBaseUrl: "https://target.example.test",
+        },
+      })
+      expect(migration).toMatchObject({ success: true })
+      releaseOutput()
+      expect((await running).success).toBe(true)
+
+      expect(opened.data.db.select().from(jobTable).get()?.error).toMatchObject({
+        message: "A storage migration is already active for environment environment-output-race",
+        retryable: true,
+      })
+      expect(opened.data.db.select().from(blobTable).where(eq(blobTable.kind, "output")).all()).toHaveLength(0)
+      expect(opened.data.db.select().from(assetMetadataTable).all()).toHaveLength(0)
+      expect(opened.data.db.select().from(outputVersionTable).all()).toHaveLength(1)
+      expect(opened.data.db.select().from(jobTable).get()?.payload).toEqual({
+        assetId: "asset-output-race",
+        sourceRevisionId: "source-output-race",
+        outputDefinitionId: "output-output-race",
+        environmentId: "environment-output-race",
+      })
+      const outputLocation = storageObjectLocationCreate(
+        binding.data,
+        "private-source",
+        "outputs/version-job-output-race.png",
+      )
+      expect(outputLocation.success).toBe(true)
+      if (!outputLocation.success) return
+      expect(await baseStorage.headObject(outputLocation.data)).toMatchObject({
+        success: true,
+        data: { byteSize: bytes.length },
+      })
+    } finally {
+      databaseClose(opened.data)
     }
   })
 

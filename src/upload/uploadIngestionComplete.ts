@@ -23,18 +23,21 @@ import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import type { AssetClass } from "../schemas/assetClassSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import { storageCopyImmutable } from "../storage/storageCopyImmutable.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import type { StorageObject } from "../storage/storageObjectSchema.js"
 import { storageObjectVerify } from "../storage/storageObjectVerify.js"
 import { storageStagingObjectKeyCreate } from "../storage/storageStagingObjectKeyCreate.js"
 import { workflowJobCreate } from "../workflow/workflowJobCreate.js"
 import { workflowJobIdCreate } from "../workflow/workflowJobIdCreate.js"
+import { uploadIssuedLocationCreate } from "./uploadIssuedLocationCreate.js"
 
 type UploadIngestionCompleteInput = {
   uploadId: string
@@ -60,9 +63,12 @@ export const uploadIngestionComplete = async (
   input: UploadIngestionCompleteInput,
 ): Promise<Result<UploadIngestionCompleteResult>> => {
   const op = "uploadIngestionComplete"
+  const storageMigrationRepository = storageMigrationRepositoryCreate(db)
   const now = isoDateCreate(input.now)
   const upload = db.select().from(uploadTable).where(eq(uploadTable.id, input.uploadId)).get()
   if (upload === undefined) return resultErrorCreate(op, `Upload not found: ${input.uploadId}`)
+  const admitted = storageMutationAssert(storageMigrationRepository, upload.environmentId)
+  if (!admitted.success) return admitted
 
   if (upload.status === "accepted" && upload.assetId !== null && upload.sourceRevisionId !== null) {
     const acceptedAssetId = upload.assetId
@@ -72,6 +78,8 @@ export const uploadIngestionComplete = async (
     const ensured = databaseTransactionRun<UploadIngestionCompleteResult>(
       db,
       (transaction) => {
+        const transactionAdmitted = storageMutationAssert(storageMigrationRepository, upload.environmentId, transaction)
+        if (!transactionAdmitted.success) return transactionAdmitted
         const environment = transaction
           .select()
           .from(environmentTable)
@@ -138,10 +146,18 @@ export const uploadIngestionComplete = async (
   const columns = foldersDatabaseColumnsCreate(folders.output)
   if (!columns.success) return columns
 
-  const stagingLocation = storageStagingObjectKeyCreate(binding.data, upload.id)
+  const stagingLocation =
+    upload.issuedBucket === null && upload.issuedObjectKey === null && upload.issuedExpiresAt === null
+      ? storageStagingObjectKeyCreate(binding.data, upload.id)
+      : uploadIssuedLocationCreate(binding.data, upload)
   if (!stagingLocation.success) return stagingLocation
   if (stagingLocation.data.objectKey !== upload.stagingObjectKey)
     return resultErrorCreate(op, "Upload staging object key does not match its upload id")
+  if (upload.issuedExpiresAt !== null) {
+    const expiresAt = Date.parse(upload.issuedExpiresAt)
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.parse(now))
+      return resultErrorCreate(op, "Upload intent has expired")
+  }
 
   const verification = await storageObjectVerify(storage, {
     location: stagingLocation.data,
@@ -168,16 +184,27 @@ export const uploadIngestionComplete = async (
   const sourceObjectKey = `sources/${sourceRevisionId}/${filename.output}`
   const sourceLocation = storageObjectLocationCreate(binding.data, "private-source", sourceObjectKey)
   if (!sourceLocation.success) return sourceLocation
-  const copied = await storageObjectCopyEnsure(storage, stagingLocation.data, sourceLocation.data, {
-    mediaType: verification.data.mediaType,
-    sha256: verification.data.sha256,
-    byteSize: verification.data.byteSize,
-  })
+  const copied = await storageObjectCopyEnsure(
+    storage,
+    stagingLocation.data,
+    sourceLocation.data,
+    {
+      mediaType: verification.data.mediaType,
+      sha256: verification.data.sha256,
+      byteSize: verification.data.byteSize,
+    },
+    storageMigrationRepository,
+    upload.environmentId,
+  )
   if (!copied.success) return copied
+  const stillAdmitted = storageMutationAssert(storageMigrationRepository, upload.environmentId)
+  if (!stillAdmitted.success) return stillAdmitted
 
   return databaseTransactionRun<UploadIngestionCompleteResult>(
     db,
     (transaction) => {
+      const transactionAdmitted = storageMutationAssert(storageMigrationRepository, upload.environmentId, transaction)
+      if (!transactionAdmitted.success) return transactionAdmitted
       const currentUpload = transaction.select().from(uploadTable).where(eq(uploadTable.id, upload.id)).get()
       if (currentUpload === undefined) return resultErrorCreate(op, `Upload not found: ${upload.id}`)
       if (
@@ -653,6 +680,8 @@ async function storageObjectCopyEnsure(
   source: Parameters<StorageAdapter["copyImmutable"]>[0]["source"],
   destination: Parameters<StorageAdapter["copyImmutable"]>[0]["destination"],
   expected: { byteSize: number; sha256: string; mediaType: string },
+  storageMigrationRepository: ReturnType<typeof storageMigrationRepositoryCreate>,
+  environmentId: string,
 ): Promise<Result<StorageObject>> {
   const existing = await storageObjectVerify(storage, {
     location: destination,
@@ -666,6 +695,8 @@ async function storageObjectCopyEnsure(
     if (head.data !== null) return { success: true, data: head.data }
     return resultErrorCreate("storageObjectCopyEnsure", "Copied object disappeared")
   }
+  const admitted = storageMutationAssert(storageMigrationRepository, environmentId)
+  if (!admitted.success) return admitted
   const copied = await storageCopyImmutable(storage, {
     source,
     destination,

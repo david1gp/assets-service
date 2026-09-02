@@ -12,13 +12,14 @@ export const storageCopyImmutable = async (
     destination: StorageObjectLocation & { bucket: string; objectKey: string }
     mediaType?: string
     sha256?: string
+    sourceEtag?: string
   },
 ): Promise<Result<StorageObject>> => {
   const op = "storageCopyImmutable"
-  if (input.source.bucket !== input.destination.bucket)
-    return resultErrorCreate(op, "Storage copies cannot cross buckets")
   if (input.source.binding.projectId !== input.destination.binding.projectId)
     return resultErrorCreate(op, "Storage copies cannot cross projects")
+  if (input.sourceEtag !== undefined && input.sourceEtag.length === 0)
+    return resultErrorCreate(op, "Source object etag cannot be empty")
   if (input.destination.namespace === "public-output") {
     const key = storagePublicObjectKeyValidate(input.destination.key)
     if (!key.success) return key

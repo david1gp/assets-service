@@ -26,11 +26,13 @@ import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageObjectLocationCreate } from "../storage/storageObjectLocationCreate.js"
 import { storageStagingObjectKeyCreate } from "../storage/storageStagingObjectKeyCreate.js"
 import type { JobHandler } from "../workflow/jobHandler.js"
@@ -67,6 +69,7 @@ export const assetDeletionHandle = async (
   input: AssetDeletionHandleInput,
 ): Promise<Result<null>> => {
   const op = "assetDeletionHandle"
+  const storageMigrationRepository = storageMigrationRepositoryCreate(input.db)
   const parsedJob = v.safeParse(
     v.strictObject({
       assetId: v.pipe(v.string(), v.minLength(1)),
@@ -100,6 +103,14 @@ export const assetDeletionHandle = async (
       "asset_missing",
     )
   }
+  const environmentIds = input.db
+    .select({ id: environmentTable.id })
+    .from(environmentTable)
+    .where(eq(environmentTable.projectId, asset.projectId))
+    .all()
+    .map((environment) => environment.id)
+  const admitted = storageMutationAssert(storageMigrationRepository, environmentIds)
+  if (!admitted.success) return admitted
 
   if (!state.data.completedSteps.includes(planStep) && state.data.pendingRemoteObjects.length === 0) {
     const plan = deletionRemotePlanRead(input.db, asset)
@@ -117,6 +128,8 @@ export const assetDeletionHandle = async (
   }
 
   for (const token of state.data.pendingRemoteObjects) {
+    const stillAdmitted = storageMutationAssert(storageMigrationRepository, environmentIds)
+    if (!stillAdmitted.success) return stillAdmitted
     const deleted = await remoteObjectDelete(
       input.db,
       input.storage,
@@ -139,13 +152,16 @@ export const assetDeletionHandle = async (
     state = completed
   }
 
+  const beforeCatalog = storageMutationAssert(storageMigrationRepository, environmentIds)
+  if (!beforeCatalog.success) return beforeCatalog
   const replacements = await catalogReplacementsPrepare(input.db, input.storage, asset)
   if (!replacements.success)
     return deletionFailurePersist(input.db, state.data, job, now, replacements.errorMessage, "catalog_prepare_failed")
 
   const finalized = databaseTransactionRun<null>(
     input.db,
-    (transaction) => deletionFinalize(transaction, asset, state.data, replacements.data, now),
+    (transaction) =>
+      deletionFinalize(transaction, asset, state.data, replacements.data, storageMigrationRepository, now),
     { behavior: "immediate" },
   )
   if (!finalized.success)
@@ -487,6 +503,8 @@ async function catalogReplacementsPrepare(
     if (!binding.success) return binding
     const location = storageObjectLocationCreate(binding.data, "private-source", targetGeneration.manifestObjectKey)
     if (!location.success) return location
+    const admitted = storageMutationAssert(storageMigrationRepositoryCreate(db), environment.id)
+    if (!admitted.success) return admitted
     const stored = await storageObjectPutEnsure(storage, location.data, manifestBytes, manifestSha256)
     if (!stored.success) return stored
     replacements.push({
@@ -541,6 +559,7 @@ function deletionFinalize(
   asset: typeof assetTable.$inferSelect,
   state: DeletionState,
   replacements: CatalogReplacement[],
+  storageMigrationRepository: ReturnType<typeof storageMigrationRepositoryCreate>,
   now: string,
 ): Result<null> {
   const op = "deletionFinalize"
@@ -552,6 +571,15 @@ function deletionFinalize(
   if (currentState === undefined) return resultErrorCreate(op, "The deletion state disappeared during finalization")
   if (currentState.updatedAt !== state.updatedAt)
     return resultErrorCreate(op, "The deletion state changed while deletion was in progress")
+
+  const environmentIds = transaction
+    .select({ id: environmentTable.id })
+    .from(environmentTable)
+    .where(eq(environmentTable.projectId, asset.projectId))
+    .all()
+    .map((environment) => environment.id)
+  const admitted = storageMutationAssert(storageMigrationRepository, environmentIds, transaction)
+  if (!admitted.success) return admitted
 
   for (const replacement of replacements) {
     const currentGeneration = transaction
