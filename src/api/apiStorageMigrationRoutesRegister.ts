@@ -328,31 +328,31 @@ export const apiStorageMigrationRoutesRegister = (
           "conflict",
           "The idempotency key belongs to a different storage migration",
         )
-      if (existing.data.status === "queued" || existing.data.status === "running") {
-        const repaired = options.workflowEnqueue(input.data)
-        if (!repaired.success) {
-          const conflict = /already|active|different|match|concurrently/i.test(repaired.errorMessage)
-          return failureResponseCreate(
-            context,
-            conflict ? 409 : 500,
-            conflict ? "conflict" : "internal_error",
-            conflict
-              ? "The storage migration conflicts with an existing migration"
-              : "The storage migration could not be started",
-          )
-        }
-        const migration = migrationCurrentRead(options.repository, repaired.data.migrationId)
-        if (!migration.success)
-          return failureResponseCreate(context, 500, "internal_error", "The storage migration could not be read", {
-            migrationId: repaired.data.migrationId,
-          })
-        return startResponseCreate(context, repaired.data, migration.data)
+      if (existing.data.status === "succeeded")
+        return startResponseCreate(
+          context,
+          { migrationId: existing.data.id, workflowId: `workflow-storage-migration-${existing.data.id}` },
+          existing.data,
+        )
+
+      const repaired = options.workflowEnqueue(input.data)
+      if (!repaired.success) {
+        const conflict = /already|active|different|match|concurrently/i.test(repaired.errorMessage)
+        return failureResponseCreate(
+          context,
+          conflict ? 409 : 500,
+          conflict ? "conflict" : "internal_error",
+          conflict
+            ? "The storage migration conflicts with an existing migration"
+            : "The storage migration could not be started",
+        )
       }
-      return startResponseCreate(
-        context,
-        { migrationId: existing.data.id, workflowId: `workflow-storage-migration-${existing.data.id}` },
-        existing.data,
-      )
+      const migration = migrationCurrentRead(options.repository, repaired.data.migrationId)
+      if (!migration.success)
+        return failureResponseCreate(context, 500, "internal_error", "The storage migration could not be read", {
+          migrationId: repaired.data.migrationId,
+        })
+      return startResponseCreate(context, repaired.data, migration.data)
     }
 
     const current = sourceBindingCreate(environment.data)

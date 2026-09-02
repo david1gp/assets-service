@@ -14,6 +14,7 @@ export const storageMigrationSchema = v.pipe(
     projectId: idSchema,
     environmentId: idSchema,
     idempotencyKey: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+    attempt: v.pipe(v.number(), v.integer(), v.minValue(1)),
     sourceBinding: storageMigrationBindingSnapshotSchema,
     targetBinding: storageMigrationBindingSnapshotSchema,
     status: storageMigrationStatusSchema,

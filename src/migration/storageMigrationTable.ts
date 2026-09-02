@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { check, index, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
@@ -17,6 +17,7 @@ export const storageMigrationTable = sqliteTable(
       .notNull()
       .references(() => environmentTable.id, { onDelete: "cascade", onUpdate: "cascade" }),
     idempotencyKey: text("idempotency_key").notNull(),
+    attempt: integer("attempt").notNull().default(1),
     sourceBinding: text("source_binding", { mode: "json" }).$type<StorageMigrationBindingSnapshot>().notNull(),
     targetBinding: text("target_binding", { mode: "json" }).$type<StorageMigrationBindingSnapshot>().notNull(),
     status: text("status", { enum: ["queued", "running", "succeeded", "failed", "cancelled"] }).notNull(),
@@ -29,7 +30,11 @@ export const storageMigrationTable = sqliteTable(
     completedAt: text("completed_at"),
   },
   (table) => [
-    uniqueIndex("storage_migrations_environment_idempotency_unique").on(table.environmentId, table.idempotencyKey),
+    uniqueIndex("storage_migrations_environment_idempotency_attempt_unique").on(
+      table.environmentId,
+      table.idempotencyKey,
+      table.attempt,
+    ),
     uniqueIndex("storage_migrations_environment_active_unique")
       .on(table.environmentId)
       .where(sql`${table.status} IN ('queued', 'running')`),

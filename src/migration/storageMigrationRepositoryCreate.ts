@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import * as v from "valibot"
 
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
@@ -72,13 +72,16 @@ export const storageMigrationRepositoryCreate = (
             eq(storageMigrationTable.idempotencyKey, parsed.output.idempotencyKey),
           ),
         )
+        .orderBy(desc(storageMigrationTable.attempt))
         .get()
+      let attempt = 1
       if (existing !== undefined) {
         const migration = storageMigrationRecordRead(existing, op)
         if (!migration.success) return migration
         if (!storageMigrationIdentityMatches(migration.data, parsed.output))
           return resultErrorCreate(op, "Idempotency key already belongs to a different storage migration")
-        return migration
+        if (migration.data.status !== "failed" && migration.data.status !== "cancelled") return migration
+        attempt = existing.attempt + 1
       }
 
       const environment = transaction
@@ -143,6 +146,7 @@ export const storageMigrationRepositoryCreate = (
         projectId: parsed.output.projectId,
         environmentId: parsed.output.environmentId,
         idempotencyKey: parsed.output.idempotencyKey,
+        attempt,
         sourceBinding: parsed.output.sourceBinding,
         targetBinding: parsed.output.targetBinding,
         status: "queued",
@@ -188,6 +192,7 @@ export const storageMigrationRepositoryCreate = (
             eq(storageMigrationTable.idempotencyKey, idempotencyKey),
           ),
         )
+        .orderBy(desc(storageMigrationTable.attempt))
         .get()
       if (record === undefined) return { success: true, data: null }
       return storageMigrationRecordRead(record, op)
