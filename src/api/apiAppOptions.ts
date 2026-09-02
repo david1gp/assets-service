@@ -5,6 +5,8 @@ import type { CatalogApiRepository } from "../catalog/catalogApiRepository.js"
 import type { CatalogPublicationService } from "../catalog/catalogPublicationService.js"
 import type { DeletionApiRepository } from "../deletion/deletionApiRepository.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
+import type { StorageMigrationRepository } from "../migration/storageMigrationRepository.js"
+import type { StorageMigrationCreateInput } from "../migration/storageMigrationCreateInputSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import type { UploadApiRepository } from "../upload/uploadApiRepository.js"
@@ -14,6 +16,10 @@ import type { ApiAuthenticationOptions } from "./apiAuthenticationOptions.js"
 export type ApiAppOptions = {
   authentication: ApiAuthenticationOptions
   projectRepository: ProjectRepository
+  storageMigrationRepository?: StorageMigrationRepository
+  storageMigrationWorkflowEnqueue?: (
+    input: StorageMigrationCreateInput,
+  ) => Result<{ migrationId: string; workflowId: string }>
   assetApiRepository?: AssetApiRepository
   storage?: StorageAdapter
   uploadApiRepository?: UploadApiRepository

@@ -30,7 +30,7 @@ const successResponseCreate = (context: { get: (key: string) => unknown }, data:
 const failureResponseCreate = (
   context: { get: (key: string) => unknown },
   status: number,
-  code: "not_found" | "validation_failed" | "not_configured" | "internal_error",
+  code: "not_found" | "validation_failed" | "not_configured" | "conflict" | "internal_error",
   message: string,
 ) => apiErrorResponseCreate({ requestId: requestIdRead(context), status, code, message, retryable: status >= 500 })
 const idRead = (context: { req: { param: (name: string) => string } }, name: string): string | null => {
@@ -231,11 +231,16 @@ export const apiCatalogRoutesRegister = (
       const rebuilt = await publicationService.catalogProductionRebuild(projectId)
       if (!rebuilt.success) {
         const notFound = /not found|does not exist/i.test(rebuilt.errorMessage)
+        const conflict = /already active/i.test(rebuilt.errorMessage)
         return failureResponseCreate(
           context,
-          notFound ? 404 : 500,
-          notFound ? "not_found" : "internal_error",
-          notFound ? "The production environment was not found" : "The catalog could not be rebuilt",
+          notFound ? 404 : conflict ? 409 : 500,
+          notFound ? "not_found" : conflict ? "conflict" : "internal_error",
+          notFound
+            ? "The production environment was not found"
+            : conflict
+              ? "The storage environment is being migrated"
+              : "The catalog could not be rebuilt",
         )
       }
       return successResponseCreate(context, rebuilt.data)

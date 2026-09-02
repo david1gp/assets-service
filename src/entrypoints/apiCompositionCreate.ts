@@ -15,6 +15,8 @@ import { r2StorageAdapterCreate } from "../infrastructure/storage/r2StorageAdapt
 import { zitadelJwksClientCreate } from "../infrastructure/zitadel/zitadelJwksClientCreate.js"
 import { zitadelOidcClientCreate } from "../infrastructure/zitadel/zitadelOidcClientCreate.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
+import { storageMigrationWorkflowEnqueue } from "../migration/storageMigrationWorkflowEnqueue.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
@@ -41,6 +43,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     return stateStore
   }
   const projectRepository = projectRepositoryCreate(connection.data.db)
+  const storageMigrationRepository = storageMigrationRepositoryCreate(connection.data.db)
   const storage = r2StorageAdapterCreate({
     accountId: config.service.r2AccountId,
     accessKeyId: config.service.r2AccessKeyId,
@@ -73,6 +76,8 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
 
   const app = apiAppCreate({
     projectRepository,
+    storageMigrationRepository,
+    storageMigrationWorkflowEnqueue: (input) => storageMigrationWorkflowEnqueue(connection.data.db, input),
     assetApiRepository,
     storage,
     uploadApiRepository,

@@ -11,6 +11,11 @@ import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { storageUploadIntentSchema } from "../storage/storageUploadIntentSchema.js"
+import { storageMigrationPlanRequestSchema } from "./storageMigrationPlanRequestSchema.js"
+import { storageMigrationPlanResponseSchema } from "./storageMigrationPlanResponseSchema.js"
+import { storageMigrationStartRequestSchema } from "./storageMigrationStartRequestSchema.js"
+import { storageMigrationStartResponseSchema } from "./storageMigrationStartResponseSchema.js"
+import { storageMigrationStatusResponseSchema } from "./storageMigrationStatusResponseSchema.js"
 import { assetStructureFolderMembershipSchema } from "../structure/assetStructureFolderMembershipSchema.js"
 import { structureFolderCreateInputSchema } from "../structure/structureFolderCreateInputSchema.js"
 import { structureFolderSchema } from "../structure/structureFolderSchema.js"
@@ -18,6 +23,7 @@ import { uploadSchema } from "../upload/uploadSchema.js"
 import { jobKindSchema } from "../workflow/jobKindSchema.js"
 import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
 import { workflowSchema } from "../workflow/workflowSchema.js"
+import { workflowKindSchema } from "../workflow/workflowKindSchema.js"
 import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
@@ -100,7 +106,7 @@ const backupListInputSchema = v.strictObject({
 const workflowListInputSchema = v.strictObject({
   ...pageInputSchema.entries,
   status: v.optional(workflowStatusSchema),
-  kind: v.optional(v.picklist(["asset_processing", "catalog_generation", "deletion", "cleanup"])),
+  kind: v.optional(workflowKindSchema),
   assetId: v.optional(idSchema),
 })
 
@@ -397,6 +403,33 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}`,
       responseSchema: environmentSchema,
       operation: "assetsApiClientEnvironmentRead",
+    })
+
+  const storageMigrationPlan = (projectId: string, environment: string, input: unknown = {}) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/storage-migration/plan`,
+      method: "POST",
+      body: input,
+      bodySchema: storageMigrationPlanRequestSchema,
+      responseSchema: storageMigrationPlanResponseSchema,
+      operation: "assetsApiClientStorageMigrationPlan",
+    })
+
+  const storageMigrationStart = (projectId: string, environment: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/storage-migration/start`,
+      method: "POST",
+      body: input,
+      bodySchema: storageMigrationStartRequestSchema,
+      responseSchema: storageMigrationStartResponseSchema,
+      operation: "assetsApiClientStorageMigrationStart",
+    })
+
+  const storageMigrationStatusRead = (projectId: string, environment: string, migrationId: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/storage-migration/${encodeURIComponent(migrationId)}/status`,
+      responseSchema: storageMigrationStatusResponseSchema,
+      operation: "assetsApiClientStorageMigrationStatusRead",
     })
 
   const uploadIntentCreate = (projectId: string, input: unknown) =>
@@ -901,6 +934,9 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     projectSettingsWrite,
     environmentsRead,
     environmentRead,
+    storageMigrationPlan,
+    storageMigrationStart,
+    storageMigrationStatusRead,
     uploadIntentCreate,
     uploadObjectPut,
     uploadCompletionComplete,

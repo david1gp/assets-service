@@ -121,6 +121,40 @@ test("assets API client sends an explicit upload target", async () => {
   expect(await request?.json()).toMatchObject({ assetId: "asset-1" })
 })
 
+test("assets API client filters and validates storage migration workflows without asset ids", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({
+        workflows: [
+          {
+            id: "workflow-storage-migration",
+            projectId: "project-1",
+            assetId: null,
+            kind: "storage_migration",
+            status: "queued",
+            createdAt: "2026-09-01T00:00:00.000Z",
+            updatedAt: "2026-09-01T00:00:00.000Z",
+          },
+        ],
+        page: { limit: 50, nextCursor: null },
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const workflows = await clientResult.data.workflowListRead("project-1", { kind: "storage_migration" })
+
+  expect(workflows).toMatchObject({
+    success: true,
+    data: { workflows: [{ assetId: null, kind: "storage_migration" }] },
+  })
+  expect(new URL(request?.url ?? "https://assets.example.test").searchParams.get("kind")).toBe("storage_migration")
+})
+
 test("assets API client reads all matching assets across pages and preserves filters", async () => {
   const assetCreate = (id: string) => ({
     id,

@@ -9,6 +9,8 @@ import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
+import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
+import { storageMigrationWorkflowEnqueue } from "../migration/storageMigrationWorkflowEnqueue.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
 import { workflowApiRepositoryCreate } from "../workflow/workflowApiRepositoryCreate.js"
@@ -64,6 +66,8 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
   const app = apiAppCreate({
     authentication: authentication.options,
     projectRepository: projectRepositoryCreate(connection.data.db),
+    storageMigrationRepository: storageMigrationRepositoryCreate(connection.data.db),
+    storageMigrationWorkflowEnqueue: (input) => storageMigrationWorkflowEnqueue(connection.data.db, input),
     assetApiRepository: assetApiRepositoryCreate(connection.data.db),
     storage: uploadStorage.storage,
     uploadApiRepository: uploadApiRepositoryCreate(connection.data.db, uploadStorage.storage),

@@ -54,6 +54,13 @@ const workflow = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
+const storageMigrationWorkflow = {
+  ...workflow,
+  id: "workflow-storage-migration",
+  assetId: null,
+  kind: "storage_migration" as const,
+  status: "queued" as const,
+}
 const job = {
   id: "job-1",
   workflowId: "workflow-1",
@@ -183,7 +190,10 @@ const projectRepositoryCreate = (): ProjectRepository => ({
 })
 
 const workflowRepositoryCreate = (): WorkflowApiRepository => ({
-  workflowsRead: () => ({ success: true, data: { items: [workflow], nextCursor: null } }),
+  workflowsRead: (_projectId, options) => ({
+    success: true,
+    data: { items: options.kind === "storage_migration" ? [storageMigrationWorkflow] : [workflow], nextCursor: null },
+  }),
   workflowRead: () => ({ success: true, data: { workflow, jobs: [job] } }),
   jobsRead: () => ({ success: true, data: { items: [job], nextCursor: null } }),
   jobRead: () => ({ success: true, data: { job, workflow } }),
@@ -418,6 +428,25 @@ describe("task 6 API routes", () => {
     })
     expect(denied.status).toBe(403)
     expect(isolated.status).toBe(404)
+  })
+
+  test("lists storage migration workflows through the generic workflow API", async () => {
+    const options = optionsCreate("admin", {})
+    const app = apiAppCreate(options)
+    const admin = await sessionCreate(options, "admin")
+
+    const valid = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/workflows?kind=storage_migration", admin),
+    )
+    const invalid = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/workflows?kind=legacy_import", admin),
+    )
+
+    expect(valid.status).toBe(200)
+    expect(await valid.json()).toMatchObject({
+      data: { workflows: [{ id: "workflow-storage-migration", assetId: null, kind: "storage_migration" }] },
+    })
+    expect(invalid.status).toBe(400)
   })
 
   test("rejects uploader access to every admin mutation boundary", async () => {

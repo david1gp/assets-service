@@ -44,6 +44,7 @@ import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
 import { apiResponseCreate } from "./apiResponseCreate.js"
 import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
 import { apiStructureRoutesRegister } from "./apiStructureRoutesRegister.js"
+import { apiStorageMigrationRoutesRegister } from "./apiStorageMigrationRoutesRegister.js"
 import { apiSuccessEnvelopeCreate } from "./apiSuccessEnvelopeCreate.js"
 import { apiUploadStatusRoutesRegister } from "./apiUploadStatusRoutesRegister.js"
 import { apiWorkflowRoutesRegister } from "./apiWorkflowRoutesRegister.js"
@@ -197,6 +198,18 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/settings$/, methods: ["GET"] },
+    {
+      pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/storage-migration\/plan$/,
+      methods: ["POST"],
+    },
+    {
+      pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/storage-migration\/start$/,
+      methods: ["POST"],
+    },
+    {
+      pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/storage-migration\/[^/]+\/status$/,
+      methods: ["GET"],
+    },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/uploads\/intent$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/uploads\/[^/]+\/complete$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/uploads$/, methods: ["GET"] },
@@ -1181,6 +1194,13 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     repository: options.assetApiRepository,
     authenticationMiddleware,
     uploaderMiddleware,
+    adminMiddleware,
+  })
+  apiStorageMigrationRoutesRegister(app, {
+    projectRepository: options.projectRepository,
+    repository: options.storageMigrationRepository,
+    workflowEnqueue: options.storageMigrationWorkflowEnqueue,
+    authenticationMiddleware,
     adminMiddleware,
   })
   apiAuditRoutesRegister(app, {
