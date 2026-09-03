@@ -75,7 +75,7 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
       url.searchParams.set("redirect_uri", options.config.redirectUri)
       url.searchParams.set(
         "scope",
-        "openid profile email urn:zitadel:iam:org:project:roles urn:zitadel:iam:org:id urn:zitadel:iam:user:resourceowner urn:zitadel:iam:user:resourceowner:id urn:zitadel:iam:org:project:id",
+        "openid profile email urn:zitadel:iam:org:project:roles urn:zitadel:iam:org:id urn:zitadel:iam:user:resourceowner urn:zitadel:iam:user:resourceowner:id urn:zitadel:iam:org:project:id:zitadel:aud",
       )
       url.searchParams.set("state", input.state)
       url.searchParams.set("code_challenge", input.codeChallenge)
@@ -143,9 +143,14 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
       return resultErrorCreate(op, "Unable to reach the Zitadel membership endpoint", error, { retryable: true })
     }
     if (!response.ok)
-      return resultErrorCreate(op, "The Zitadel membership lookup failed", { status: response.status }, {
-        retryable: response.status === 429 || response.status >= 500,
-      })
+      return resultErrorCreate(
+        op,
+        "The Zitadel membership lookup failed",
+        { status: response.status },
+        {
+          retryable: response.status === 429 || response.status >= 500,
+        },
+      )
     const body = await responseBodyRead(response, op)
     if (!body.success) return body
     const parsed = v.safeParse(zitadelMembershipSearchResponseSchema, body.data)
