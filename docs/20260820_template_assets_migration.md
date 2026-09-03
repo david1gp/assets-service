@@ -41,10 +41,8 @@ Migrate the template.leonardomora.de project’s local assets to the assets serv
 
 - The remote template project is clean on `main` and uses TanStack Solid Start with `bun run build`.
 - Assets live under `images/` and `videos/`; no fonts are currently present, and hand-managed SVGs remain outside the service migration.
-- Production URL helpers currently target `assets.template.leonardomora.de`; they must move to the assets-service public host/path returned by upload.
 - The remote environment already has API and Cloudflare credentials, but its assets identity is `abikur`; a dedicated `template` identity/config is required.
 - The existing shared R2-backed production service should be reused; no new bucket is currently required.
-- No Cloudflare Pages project for the template is configured yet.
 - The `template` project/environment and a dedicated Zitadel machine identity now exist; leo’s CLI environment is stored at `~/.config/assets-service/template.env` with mode `600`.
 - The shared `contentoren-assets-service-public` bucket, custom public host, API readiness, and production API/worker services are healthy.
 - Uploaded 62 assets (61 images and 1 video); all public objects return HTTP 200 and the final diff reports 62 matching assets.
