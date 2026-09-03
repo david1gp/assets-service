@@ -143,7 +143,7 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
       return resultErrorCreate(op, "Unable to reach the Zitadel membership endpoint", error, { retryable: true })
     }
     if (!response.ok)
-      return resultErrorCreate(op, "The Zitadel membership lookup failed", undefined, {
+      return resultErrorCreate(op, "The Zitadel membership lookup failed", { status: response.status }, {
         retryable: response.status === 429 || response.status >= 500,
       })
     const body = await responseBodyRead(response, op)

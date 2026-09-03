@@ -365,7 +365,10 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       },
     )
     if (!callback.success) {
-      console.error(`[auth/callback failed] [${callback.op}] ${callback.errorMessage}`, callback.rawData)
+      console.error(
+        `[auth/callback failed] [${requestIdRead(context)}] [${callback.op}] ${callback.errorMessage}`,
+        callback.rawData,
+      )
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 401,
