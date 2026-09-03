@@ -25,5 +25,5 @@ Enable `leo@leo-server` to register Assets Service projects noninteractively and
 - [x] 1. Implement and test exact-subject machine authorization for Assets Service project registration.
 - [x] 2. Implement and test CLI bearer authentication for `assets projects create` and document the automation workflow.
 - [x] 3. Add and verify idempotent Zitadel automation for the provisioner identity and per-project access.
-- [ ] 4. Configure and deploy the Assets Service provisioner identity.
-- [ ] 5. Install protected credentials on Leo and verify AllGroups Chat registration and asset access.
+- [x] 4. Configure and deploy the Assets Service provisioner identity.
+- [x] 5. Install protected credentials on Leo and verify AllGroups Chat registration and asset access.
