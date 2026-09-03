@@ -56,7 +56,9 @@ Create a Zitadel OIDC application for the public API host. Set its redirect URI 
 https://assets-api.example.test/api/v1/auth/callback
 ```
 
-Set `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID`, `ZITADEL_REDIRECT_URI`, `ZITADEL_AUDIENCE`, `ZITADEL_ORGANIZATION_ID`, and `ZITADEL_PROJECT_ID`. Set `ZITADEL_SERVICE_ACCOUNT_CLIENT_ID` only when service-to-service bearer tokens are needed. The doctor checks HTTPS issuer discovery and JWKS reachability, but it does not print credentials.
+Set `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID`, `ZITADEL_REDIRECT_URI`, `ZITADEL_AUDIENCE`, `ZITADEL_ORGANIZATION_ID`, `ZITADEL_CUSTOMER_ORGANIZATION_ID`, and `ZITADEL_PROJECT_ID`. `ZITADEL_ORGANIZATION_ID` identifies the staff organization and `ZITADEL_CUSTOMER_ORGANIZATION_ID` identifies the customer organization; both are required and must be different. Set `ZITADEL_SERVICE_ACCOUNT_CLIENT_ID` only when service-to-service bearer tokens are needed. The doctor checks HTTPS issuer discovery and JWKS reachability, but it does not print credentials.
+
+The `0018_authentication_session_policy` migration advances the database-backed human session policy to version 2. Human session payloads created before policy versioning have no version and fail closed (and are revoked) on their next request; new human sessions record the current version. Service PATs and JWT bearer credentials do not use the session store and are not invalidated by this policy. Apply the normal database migrations before starting the new API release.
 
 ## Telegram
 
