@@ -43,6 +43,7 @@ import {
   organizationConfigurationResolve,
 } from "../config/organizationConfigurationResolve.js"
 import type { OrganizationDefinition } from "../config/organizationDefinitionSchema.js"
+import { projectCreateEnvironmentFileRead } from "../config/projectCreateEnvironmentFileRead.js"
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
@@ -312,7 +313,7 @@ const commandHelp = {
   organizationResolution:
     "Organization selection: --organization, selected .env ASSETS_ORGANIZATION, process ASSETS_ORGANIZATION, global directory mapping, or unrestricted resolution.",
   environmentFile:
-    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched.",
+    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched. For projects create only, ~/.config/assets-service/project-create.env is loaded automatically when neither --env-file nor ASSETS_ENV_FILE is set, taking precedence over project and working directory .env discovery.",
 }
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
@@ -2671,10 +2672,30 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
   if (flagRead(parsed.data, "help") || parsed.data.command === "help")
     return outputWrite({ result: { success: true, data: commandHelp } }, parsed.data.json, stdout, stderr)
 
+  const isProjectCreate = parsed.data.command === "projects" && parsed.data.subcommand === "create"
+  if (isProjectCreate && optionRead(parsed.data, "token") !== undefined)
+    return outputWrite(
+      { result: resultFailure("assetsCliProjectCreate", "Tokens are not accepted as command arguments") },
+      parsed.data.json,
+      stdout,
+      stderr,
+    )
+
+  const explicitEnvFile = optionRead(parsed.data, "env-file")
+  const hasProcessEnvFile = sourceEnv.ASSETS_ENV_FILE !== undefined && sourceEnv.ASSETS_ENV_FILE.length > 0
+  let projectCreateEnvFile: string | undefined
+
+  if (isProjectCreate && explicitEnvFile === undefined && !hasProcessEnvFile) {
+    const readResult = await projectCreateEnvironmentFileRead({ env: sourceEnv })
+    if (!readResult.success) return outputWrite({ result: readResult }, parsed.data.json, stdout, stderr)
+    projectCreateEnvFile = readResult.data.path
+  }
+
+  const resolvedEnvFile = explicitEnvFile ?? (isProjectCreate ? projectCreateEnvFile : undefined)
   const commandRoot = commandRootRead(parsed.data)
   const environmentResult = await environmentConfigurationResolve({
     env: sourceEnv,
-    ...(optionRead(parsed.data, "env-file") === undefined ? {} : { envFile: optionRead(parsed.data, "env-file") }),
+    ...(resolvedEnvFile === undefined ? {} : { envFile: resolvedEnvFile }),
     ...(commandRoot === undefined ? {} : { commandRoot }),
   })
   if (!environmentResult.success) return outputWrite({ result: environmentResult }, parsed.data.json, stdout, stderr)
@@ -2711,7 +2732,7 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     ...(optionRead(parsed.data, "organization") === undefined
       ? {}
       : { organization: optionRead(parsed.data, "organization") }),
-    ...(optionRead(parsed.data, "env-file") === undefined ? {} : { envFile: optionRead(parsed.data, "env-file") }),
+    ...(resolvedEnvFile === undefined ? {} : { envFile: resolvedEnvFile }),
     ...(commandRoot === undefined ? {} : { commandRoot }),
   })
   if (!organizationResult.success) return outputWrite({ result: organizationResult }, parsed.data.json, stdout, stderr)

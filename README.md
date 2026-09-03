@@ -80,7 +80,10 @@ ASSETS_ORGANIZATION=contentoren
 ```
 
 The environment file is selected in this order: `--env-file <path>`, `ASSETS_ENV_FILE`, `<command-root>/.env`, then
-`$PWD/.env`. Explicit paths are relative to the working directory and must exist; a default `.env` is optional. The CLI
+`$PWD/.env`. For `assets projects create` only, when neither explicit `--env-file` nor process `ASSETS_ENV_FILE` is set,
+the CLI automatically loads `~/.config/assets-service/project-create.env`, taking precedence over project/PWD `.env`
+discovery. All other commands keep standard project-scoped credential behavior and never implicitly load this global
+provisioner file. Explicit paths are relative to the working directory and must exist; a default `.env` is optional. The CLI
 does not search ancestor directories. For organization selection, the precise precedence is `--organization`,
 `ASSETS_ORGANIZATION` in the selected `.env`, process `ASSETS_ORGANIZATION`, the global directory mapping, then
 unrestricted resolution. Organization selectors may be a configured key, ID, or slug. `ZITADEL_ORGANIZATION_ID` is
@@ -131,11 +134,17 @@ database row. The `--zitadel-project-id` value records the existing binding only
 anything in Zitadel.
 
 For human interactive sessions, use `ASSETS_SESSION_COOKIE`. For automated machine provisioning, authenticate via
-protected token sources: `ASSETS_TOKEN` or `ASSETS_ACCESS_TOKEN` in the environment or a mode-`0600` `.env` file, or
-a stored session written by `echo $TOKEN | bun run assets auth login --token-stdin` (or `--session <path>`). Tokens
-are never accepted as command-line arguments. It creates a missing configured database organization or attaches the
-project to the matching existing organization. Repeating the exact request returns the existing registration;
-different values for an existing registration are rejected.
+protected token sources: `ASSETS_TOKEN` or `ASSETS_ACCESS_TOKEN` in the environment or an environment file. For
+`assets projects create` only, when neither explicit `--env-file` nor process `ASSETS_ENV_FILE` is set, the CLI
+automatically loads exactly `~/.config/assets-service/project-create.env`. This command-specific provisioner file takes
+precedence over project and working directory `.env` discovery, while explicit `--env-file` remains highest and
+`ASSETS_ENV_FILE` remains next. If the implicit file is absent or unusable during project creation, the CLI produces
+a clear actionable error without exposing credentials. All other commands keep standard environment and project-scoped
+credential behavior and never implicitly load this global provisioner file. Stored sessions written by
+`echo $TOKEN | bun run assets auth login --token-stdin` (or `--session <path>`) are also supported. Tokens are never
+accepted as command-line arguments. It creates a missing configured database organization or attaches the project to
+the matching existing organization. Repeating the exact request returns the existing registration; different values for
+an existing registration are rejected.
 
 ```bash
 bun run assets projects create \

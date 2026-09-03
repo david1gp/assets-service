@@ -151,6 +151,13 @@ const globalOrganizationConfigurationWrite = async (homeDirectory: string, confi
   await writeFile(path, JSON.stringify(configuration))
 }
 
+const projectCreateEnvironmentFileWrite = async (homeDirectory: string, contents = ""): Promise<string> => {
+  const path = join(homeDirectory, ".config", "assets-service", "project-create.env")
+  await mkdir(join(path, ".."), { recursive: true })
+  await writeFile(path, contents)
+  return path
+}
+
 const globalOrganizationCompatibilityConfigurationWrite = async (
   homeDirectory: string,
   configuration: unknown,
@@ -298,6 +305,7 @@ test("projects create sends the complete registration to the service", async () 
   let request: Request | undefined
   try {
     await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(homeDirectory)
     const exitCode = await assetsCliMain(
       [
         "projects",
@@ -368,6 +376,7 @@ test("projects create authenticates with ASSETS_TOKEN bearer credential", async 
   let request: Request | undefined
   try {
     await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(homeDirectory)
     const exitCode = await assetsCliMain(
       [
         "projects",
@@ -432,6 +441,7 @@ test("projects create authenticates with ASSETS_ACCESS_TOKEN bearer credential",
   let request: Request | undefined
   try {
     await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(homeDirectory)
     const exitCode = await assetsCliMain(
       [
         "projects",
@@ -512,6 +522,7 @@ test("projects create authenticates with stored session token from auth login to
     })
     expect(loginExitCode).toBe(0)
 
+    await projectCreateEnvironmentFileWrite(homeDirectory)
     const exitCode = await assetsCliMain(
       [
         "projects",
@@ -645,6 +656,7 @@ test("projects create validates both environment bindings before requesting the 
   let fetchCount = 0
   try {
     await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(homeDirectory)
     const exitCode = await assetsCliMain(
       [
         "projects",
@@ -694,6 +706,488 @@ test("projects create validates both environment bindings before requesting the 
     expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: false, error: { code: "validation_failed" } })
   } finally {
     await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create automatically loads ~/.config/assets-service/project-create.env when neither --env-file nor ASSETS_ENV_FILE is set", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-auto-env-home-"))
+  const output: string[] = []
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=provisioner-from-implicit-env\nASSETS_API_URL=https://assets.example.test\n",
+    )
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.headers.get("authorization")).toBe("Bearer provisioner-from-implicit-env")
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create fails with clear actionable error when ~/.config/assets-service/project-create.env is absent", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-absent-env-home-"))
+  const jsonOutput: string[] = []
+  const humanStderr: string[] = []
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCodeJson = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        stdout: (text) => jsonOutput.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCodeJson).toBe(1)
+    const parsedJson = JSON.parse(jsonOutput[0] ?? "")
+    expect(parsedJson).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation_failed",
+      },
+    })
+    expect(parsedJson.error.message).toContain("Project creation environment file was not found")
+    expect(parsedJson.error.message).toContain(join(homeDirectory, ".config", "assets-service", "project-create.env"))
+    expect(parsedJson.error.message).toContain("--env-file")
+    expect(parsedJson.error.message).toContain("ASSETS_ENV_FILE")
+
+    const exitCodeHuman = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        stdout: () => undefined,
+        stderr: (text) => humanStderr.push(text),
+      },
+    )
+
+    expect(exitCodeHuman).toBe(1)
+    expect(humanStderr.join("")).toContain("Project creation environment file was not found")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create fails with clear actionable error without credentials when project-create.env is unusable", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-unusable-home-"))
+  const output: string[] = []
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const envDir = join(homeDirectory, ".config", "assets-service")
+    const envPath = join(envDir, "project-create.env")
+    await mkdir(envDir, { recursive: true })
+    await writeFile(envPath, "SECRET_TOKEN=super-confidential-token\0MALFORMED")
+
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(1)
+    const parsed = JSON.parse(output[0] ?? "")
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.message).toContain("was invalid")
+    expect(parsed.error.message).not.toContain("super-confidential-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create gives precedence to implicit project-create.env over project/PWD .env discovery", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-pwd-precedence-home-"))
+  const workingDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-pwd-dir-"))
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await writeFile(
+      join(workingDirectory, ".env"),
+      "ASSETS_TOKEN=pwd-local-token\nASSETS_API_URL=https://pwd.example.test\n",
+    )
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=global-provisioner-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: workingDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.headers.get("authorization")).toBe("Bearer global-provisioner-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(workingDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create respects explicit --env-file over implicit project-create.env and process ASSETS_ENV_FILE", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-env-opt-home-"))
+  const explicitEnvDir = await mkdtemp(join(tmpdir(), "assets-project-create-explicit-dir-"))
+  const explicitEnvPath = join(explicitEnvDir, "custom.env")
+  const processEnvPath = join(explicitEnvDir, "process.env")
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await writeFile(explicitEnvPath, "ASSETS_TOKEN=explicit-cli-token\nASSETS_API_URL=https://assets.example.test\n")
+    await writeFile(processEnvPath, "ASSETS_TOKEN=process-env-token\nASSETS_API_URL=https://assets.example.test\n")
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=implicit-file-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--env-file",
+        explicitEnvPath,
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_ENV_FILE: processEnvPath,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.headers.get("authorization")).toBe("Bearer explicit-cli-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(explicitEnvDir, { recursive: true, force: true })
+  }
+})
+
+test("projects create respects process ASSETS_ENV_FILE over implicit project-create.env", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-env-process-home-"))
+  const envDir = await mkdtemp(join(tmpdir(), "assets-project-create-process-dir-"))
+  const processEnvPath = join(envDir, "process.env")
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await writeFile(processEnvPath, "ASSETS_TOKEN=process-env-token\nASSETS_API_URL=https://assets.example.test\n")
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=implicit-file-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          HOME: homeDirectory,
+          PWD: homeDirectory,
+          ASSETS_ENV_FILE: processEnvPath,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.headers.get("authorization")).toBe("Bearer process-env-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(envDir, { recursive: true, force: true })
+  }
+})
+
+test("other commands never implicitly load ~/.config/assets-service/project-create.env", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-other-commands-home-"))
+  const workingDirectory = await mkdtemp(join(tmpdir(), "assets-other-commands-dir-"))
+  const output: string[] = []
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await writeFile(
+      join(workingDirectory, ".env"),
+      "ASSETS_PROJECT=project-from-pwd\nASSETS_API_URL=https://pwd.test\n",
+    )
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_PROJECT=project-from-implicit-create\nASSETS_API_URL=https://implicit.test\n",
+    )
+
+    const exitCode = await assetsCliMain(["config", "show", workingDirectory, "--json"], {
+      env: {
+        HOME: homeDirectory,
+        PWD: workingDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    const configData = JSON.parse(output[0] ?? "").data
+    expect(configData.environmentFile.path).toBe(join(workingDirectory, ".env"))
+    expect(configData.environmentFile.source).toBe("command-root")
+    expect(configData.project.value).toBe("project-from-pwd")
+    expect(configData.apiUrl.value).toBe("https://pwd.test")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(workingDirectory, { recursive: true, force: true })
   }
 })
 
