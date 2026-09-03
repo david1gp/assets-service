@@ -3,7 +3,7 @@
  * on `red-500` (3.9:1) and `outlineRed` paints `red-500` text on the page
  * background (also 3.9:1), both under the WCAG AA 4.5:1 floor for body text.
  * `./ui` is a read-only copy, so the app passes these through the `class` prop,
- * where tailwind-merge lets them replace the variant colors.
+ * where cn lets them replace the variant colors.
  *
  * `red-700` on white is 5.9:1 and `red-300` on `slate-900` is 8.1:1.
  */
