@@ -381,7 +381,6 @@ describe("HTTP API", () => {
     expect(requestedOrganizationAdmin).toBe(false)
   })
 
-<<<<<<< HEAD
   test("keeps customer contributors on owned bindings and exact contributor grants", async () => {
     const options = optionsCreate()
     const otherProject = { ...project, id: "project-2", name: "Other project" }
@@ -429,7 +428,8 @@ describe("HTTP API", () => {
     expect(settingsResponse.status).toBe(403)
     expect(otherProjectResponse.status).toBe(200)
     expect(requested).toEqual([{ organizationId: "org-1", projectIds: ["zitadel-2"], organizationAdmin: false }])
-=======
+  })
+
   test("creates projects only for a human organization administrator and passes the subject for the grant record", async () => {
     let receivedSubject: string | undefined
     let receivedInput: unknown
@@ -534,7 +534,6 @@ describe("HTTP API", () => {
       }),
     )
     expect(serviceForbidden.status).toBe(403)
->>>>>>> e2f56ed (feat(projects): add authenticated project registration CLI and API)
   })
 
   test("allows an organization administrator to access an ungranted same-organization project only", async () => {
