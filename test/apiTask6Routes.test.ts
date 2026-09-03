@@ -295,6 +295,7 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
     redirectUri: "https://assets.example.test/api/v1/auth/callback",
     audience: "assets-api",
     organizationId: "org-1",
+    customerOrganizationId: "org-customers",
     projectId: "zitadel-1",
     sessionCookieName: "assets_session",
     stateCookieName: "assets_state",
@@ -323,7 +324,10 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
           success: true as const,
           data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
         }),
-        organizationMembershipRead: async () => ({ success: true as const, data: false }),
+        organizationMembershipRead: async () => ({
+          success: true as const,
+          data: { isExactMember: false, isOrganizationAdmin: false },
+        }),
       },
       jwksClient: { keysRead: async () => ({ success: true as const, data: [] }) },
       serviceBearer: undefined,
@@ -341,11 +345,11 @@ const optionsCreate = (role: "contributor" | "admin", received: Received): ApiAp
   }
 }
 
-const sessionCreate = async (options: ApiAppOptions, role: "contributor" | "admin") => {
+const sessionCreate = async (options: ApiAppOptions, role: "contributor" | "admin", organizationId = "org-1") => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "actor-1",
-      organizationId: "org-1",
+      organizationId,
       organizationAdmin: false,
       method: "human_session",
       grants: [{ projectId: "zitadel-1", roles: [role] }],
@@ -469,6 +473,30 @@ describe("task 6 API routes", () => {
       ["/api/v1/projects/project-service/catalogs/production/rebuild", { method: "POST", body: "{}" }],
     ]
     const responses = await Promise.all(requests.map(([path, init]) => app.fetch(requestCreate(path, uploader, init))))
+    expect(responses.map((response) => response.status)).toEqual(requests.map(() => 403))
+  })
+
+  test("rejects customer uploader access to every admin mutation boundary", async () => {
+    const options = optionsCreate("contributor", {})
+    const app = apiAppCreate(options)
+    const customer = await sessionCreate(options, "contributor", "org-customers")
+    const requests: Array<[string, RequestInit]> = [
+      ["/api/v1/projects/project-service/settings", {}],
+      ["/api/v1/projects/project-service/environments/development/settings", {}],
+      ["/api/v1/projects/project-service/assets/asset-1/outputs", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/outputs", { method: "PUT", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/outputs", { method: "DELETE", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/metadata", { method: "PATCH", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/metadata/unset", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/move", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/assets/asset-1/deletion-request", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/workflows/workflow-1/retry", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/jobs/job-1/cancel", { method: "POST", body: "{}" }],
+      ["/api/v1/projects/project-service/audit-events", {}],
+      ["/api/v1/projects/project-service/catalogs/production/rebuild", { method: "POST", body: "{}" }],
+    ]
+    const responses = await Promise.all(requests.map(([path, init]) => app.fetch(requestCreate(path, customer, init))))
+
     expect(responses.map((response) => response.status)).toEqual(requests.map(() => 403))
   })
 

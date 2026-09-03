@@ -215,4 +215,60 @@ describe("projectRepository.projectsRead", () => {
       await cleanup(databasePath, connection)
     }
   })
+
+  test("filters project lists by organization-owned bindings and exact grants", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      recordInsertRequired(connection.db, organizationTable, {
+        id: "org-2",
+        name: "Other",
+        slug: "other",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, {
+        ...project,
+        id: "project-2",
+        name: "Second project",
+        slug: "second-project",
+      })
+      recordInsertRequired(connection.db, projectBindingTable, {
+        id: "binding-2",
+        projectId: "project-2",
+        organizationId: "org-1",
+        zitadelProjectId: "zitadel-2",
+        serviceProjectId: "service-project-2",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, {
+        ...project,
+        id: "project-3",
+        name: "Other project",
+        slug: "other-project",
+      })
+      recordInsertRequired(connection.db, projectBindingTable, {
+        id: "binding-3",
+        projectId: "project-3",
+        organizationId: "org-2",
+        zitadelProjectId: "zitadel-3",
+        serviceProjectId: "service-project-3",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+
+      const administrator = repository.projectsRead("org-1", [], true)
+      const firstGrant = repository.projectsRead("org-1", ["zitadel-1"])
+      const secondGrant = repository.projectsRead("org-1", ["zitadel-2"])
+      const combinedGrants = repository.projectsRead("org-1", ["zitadel-1", "zitadel-2"])
+      const foreignGrant = repository.projectsRead("org-1", ["zitadel-3"])
+      expect(administrator.success && administrator.data.map((item) => item.id)).toEqual(["project-1", "project-2"])
+      expect(firstGrant.success && firstGrant.data.map((item) => item.id)).toEqual(["project-1"])
+      expect(secondGrant.success && secondGrant.data.map((item) => item.id)).toEqual(["project-2"])
+      expect(combinedGrants.success && combinedGrants.data.map((item) => item.id)).toEqual(["project-1", "project-2"])
+      expect(foreignGrant.success && foreignGrant.data).toEqual([])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
 })

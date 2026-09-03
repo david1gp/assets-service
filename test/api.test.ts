@@ -86,6 +86,7 @@ const authenticationConfig = {
   redirectUri: "https://assets.example.test/api/v1/auth/callback",
   audience: "assets-api",
   organizationId: "org-1",
+  customerOrganizationId: "org-customers",
   projectId: "zitadel-1",
   sessionCookieName: "assets_session",
   stateCookieName: "assets_state",
@@ -142,7 +143,10 @@ const optionsCreate = (): ApiAppOptions => {
       success: true as const,
       data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
     }),
-    organizationMembershipRead: async () => ({ success: true as const, data: false }),
+    organizationMembershipRead: async () => ({
+      success: true as const,
+      data: { isExactMember: false, isOrganizationAdmin: false },
+    }),
   }
   const jwksClient = { keysRead: async () => ({ success: true as const, data: [] }) }
   const options: ApiAppOptions = {
@@ -165,14 +169,16 @@ const sessionCreate = async (
   options: ApiAppOptions,
   role: "contributor" | "admin" = "contributor",
   organizationAdmin = false,
+  organizationId = "org-1",
+  grantProjectId = "zitadel-1",
 ) => {
   const session: AuthenticationSession = {
     principal: {
       subjectId: "human-1",
-      organizationId: "org-1",
+      organizationId,
       organizationAdmin,
       method: "human_session",
-      grants: [{ projectId: "zitadel-1", roles: [role] }],
+      grants: [{ projectId: grantProjectId, roles: [role] }],
       issuedAt: now - 60,
       expiresAt: now + 600,
     },
@@ -368,6 +374,55 @@ describe("HTTP API", () => {
     )
     expect(regularResponse.status).toBe(200)
     expect(requestedOrganizationAdmin).toBe(false)
+  })
+
+  test("keeps customer contributors on owned bindings and exact contributor grants", async () => {
+    const options = optionsCreate()
+    const otherProject = { ...project, id: "project-2", name: "Other project" }
+    const otherBinding = {
+      ...binding,
+      id: "binding-2",
+      projectId: otherProject.id,
+      zitadelProjectId: "zitadel-2",
+      serviceProjectId: "project-service-2",
+    }
+    const requested: { organizationId: string; projectIds: readonly string[]; organizationAdmin?: boolean }[] = []
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectsRead: (organizationId, projectIds, organizationAdmin) => {
+        requested.push({ organizationId, projectIds, organizationAdmin })
+        return { success: true, data: [projectListItem] }
+      },
+      projectRead: (identifier) =>
+        identifier === otherProject.id ? { success: true, data: otherProject } : repository.projectRead(identifier),
+      projectBindingRead: (identifier) =>
+        identifier === otherBinding.serviceProjectId
+          ? { success: true, data: otherBinding }
+          : repository.projectBindingRead(identifier),
+    }
+    const app = apiAppCreate(options)
+    const customer = await sessionCreate(options, "contributor", false, "org-customers", "zitadel-2")
+    const listed = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: customer } }),
+    )
+    const projectResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service", { headers: { cookie: customer } }),
+    )
+    const settingsResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/settings", {
+        headers: { cookie: customer },
+      }),
+    )
+    const otherProjectResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service-2", { headers: { cookie: customer } }),
+    )
+
+    expect(listed.status).toBe(200)
+    expect(projectResponse.status).toBe(403)
+    expect(settingsResponse.status).toBe(403)
+    expect(otherProjectResponse.status).toBe(200)
+    expect(requested).toEqual([{ organizationId: "org-1", projectIds: ["zitadel-2"], organizationAdmin: false }])
   })
 
   test("allows an organization administrator to access an ungranted same-organization project only", async () => {

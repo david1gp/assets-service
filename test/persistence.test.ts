@@ -48,6 +48,7 @@ describe("SQLite persistence", () => {
         "asset_structure_folder_memberships",
         "assets",
         "audit_events",
+        "authentication_session_policy",
         "backup_receipts",
         "backup_remote_path_migration_runs",
         "blobs",

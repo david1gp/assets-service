@@ -217,6 +217,7 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
     redirectUri: "https://assets.example.test/api/v1/auth/callback",
     audience: "assets-api",
     organizationId: "org-1",
+    customerOrganizationId: "org-customers",
     projectId: "zitadel-1",
     sessionCookieName: "assets_session",
     stateCookieName: "assets_state",
@@ -240,7 +241,10 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
       success: true as const,
       data: { access_token: "token", token_type: "Bearer", expires_in: 600 },
     }),
-    organizationMembershipRead: async () => ({ success: true as const, data: false }),
+    organizationMembershipRead: async () => ({
+      success: true as const,
+      data: { isExactMember: false, isOrganizationAdmin: false },
+    }),
   }
   return {
     authentication: {
@@ -266,11 +270,12 @@ const sessionCookieRead = async (
   role: "contributor" | "admin",
   organizationAdmin = false,
   subjectId = "human-1",
+  organizationId = "org-1",
 ) => {
   const session: AuthenticationSession = {
     principal: {
       subjectId,
-      organizationId: "org-1",
+      organizationId,
       organizationAdmin,
       method: "human_session",
       grants: organizationAdmin ? [] : [{ projectId: "zitadel-1", roles: [role] }],
@@ -405,6 +410,55 @@ describe("asset API routes", () => {
     expect(intent.status).toBe(201)
     expect(lastUploaderId).toBe("human-1")
     expect(lastNotificationEligible).toBe(false)
+  })
+
+  test("allows a customer uploader only on the exactly granted project", async () => {
+    const options = optionsCreate()
+    const otherProject = { ...project, id: "project-2", name: "Other project" }
+    const otherBinding = {
+      ...binding,
+      id: "binding-2",
+      projectId: otherProject.id,
+      zitadelProjectId: "zitadel-2",
+      serviceProjectId: "project-service-2",
+    }
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectRead: (identifier) =>
+        identifier === otherProject.id ? { success: true, data: otherProject } : repository.projectRead(identifier),
+      projectBindingRead: (identifier) =>
+        identifier === otherBinding.serviceProjectId
+          ? { success: true, data: otherBinding }
+          : repository.projectBindingRead(identifier),
+    }
+    const app = apiAppCreate(options)
+    const customer = await sessionCookieRead(options, "contributor", false, "customer-uploader-1", "org-customers")
+    const body = JSON.stringify({
+      originalFilename: "hero.jpg",
+      assetId: "asset-1",
+      folders: ["home"],
+      integrationNote: "Hero",
+      byteSize: 10,
+      mediaType: "image/jpeg",
+    })
+    const exactProject = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/uploads/intent", customer, {
+        method: "POST",
+        body,
+      }),
+    )
+    const wrongProject = await app.fetch(
+      requestCreate("/api/v1/projects/project-service-2/uploads/intent", customer, {
+        method: "POST",
+        body,
+      }),
+    )
+
+    expect(exactProject.status).toBe(201)
+    expect(lastUploaderId).toBe("customer-uploader-1")
+    expect(lastNotificationEligible).toBe(true)
+    expect(wrongProject.status).toBe(403)
   })
 
   test("persists an organization administrator upload actor without enabling customer notifications", async () => {
