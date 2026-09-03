@@ -154,7 +154,7 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     const body = await responseBodyRead(response, op)
     if (!body.success) return body
     const parsed = v.safeParse(zitadelMembershipSearchResponseSchema, body.data)
-    if (!parsed.success) return resultErrorCreate(op, "The Zitadel membership response was invalid")
+    if (!parsed.success) return resultErrorCreate(op, "The Zitadel membership response was invalid", parsed.issues)
     const exactMemberships = parsed.output.result.filter((membership) => membership.orgId === organizationId)
     const isOrganizationAdmin = exactMemberships.some((membership) =>
       membership.roles.some((role) => organizationAdministratorRoles.has(role)),

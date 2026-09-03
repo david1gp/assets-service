@@ -24,5 +24,5 @@ const membershipSchema = v.pipe(
 
 export const zitadelMembershipSearchResponseSchema = v.strictObject({
   details: v.optional(v.record(v.string(), v.unknown())),
-  result: v.array(membershipSchema),
+  result: v.nullish(v.array(membershipSchema), []),
 })

@@ -326,12 +326,33 @@ describe("Zitadel authentication contracts", () => {
     const malformedJson = await malformedJsonClient.organizationMembershipRead("human-access-token", "org-1")
     expect(malformedJson.success).toBe(false)
 
+    const omittedResultClient = zitadelOidcClientCreate({
+      config,
+      fetcher: async () => new Response(JSON.stringify({ details: { viewTimestamp: "2026-09-03T05:45:39.491722Z" } })),
+    })
+    const omittedResult = await omittedResultClient.organizationMembershipRead("human-access-token", "org-1")
+    expect(omittedResult).toEqual({
+      success: true,
+      data: { isExactMember: false, isOrganizationAdmin: false },
+    })
+
+    const nullResultClient = zitadelOidcClientCreate({
+      config,
+      fetcher: async () => new Response(JSON.stringify({ result: null })),
+    })
+    const nullResult = await nullResultClient.organizationMembershipRead("human-access-token", "org-1")
+    expect(nullResult).toEqual({
+      success: true,
+      data: { isExactMember: false, isOrganizationAdmin: false },
+    })
+
     const malformedEnvelopeClient = zitadelOidcClientCreate({
       config,
-      fetcher: async () => new Response(JSON.stringify({})),
+      fetcher: async () => new Response(JSON.stringify({ unexpected: true })),
     })
     const malformedEnvelope = await malformedEnvelopeClient.organizationMembershipRead("human-access-token", "org-1")
     expect(malformedEnvelope.success).toBe(false)
+    if (!malformedEnvelope.success) expect(malformedEnvelope.rawData).toBeDefined()
 
     const malformedMembershipClient = zitadelOidcClientCreate({
       config,
