@@ -259,10 +259,14 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
   const uploaderMiddleware = apiProjectRoleMiddlewareCreate({
     projectRepository: options.projectRepository,
     requiredRole: "contributor",
+    organizationId: options.authentication.config.organizationId,
+    customerOrganizationId: options.authentication.config.customerOrganizationId,
   })
   const adminMiddleware = apiProjectRoleMiddlewareCreate({
     projectRepository: options.projectRepository,
     requiredRole: "admin",
+    organizationId: options.authentication.config.organizationId,
+    customerOrganizationId: options.authentication.config.customerOrganizationId,
   })
 
   const metadataUnsetHandle = (
@@ -436,11 +440,22 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       })
     const parsedQuery = v.safeParse(projectListQuerySchema, queryObjectRead(context.req.raw))
     if (!parsedQuery.success) return validationFailureCreate(context, "The project list query was invalid")
-    const projects = options.projectRepository.projectsRead(
-      authentication.principal.organizationId,
-      authentication.principal.grants.map((grant) => grant.projectId),
-      authentication.principal.method === "human_session" && authentication.principal.organizationAdmin,
-    )
+    const isCustomer =
+      authentication.principal.method === "human_session" &&
+      authentication.principal.organizationId === options.authentication.config.customerOrganizationId
+    const zitadelProjectIds = isCustomer
+      ? authentication.principal.grants
+          .filter((grant) => grant.roles.includes("contributor"))
+          .map((grant) => grant.projectId)
+      : authentication.principal.grants.map((grant) => grant.projectId)
+    const projectOrganizationId = isCustomer
+      ? options.authentication.config.organizationId
+      : authentication.principal.organizationId
+    const organizationAdmin =
+      authentication.principal.method === "human_session" &&
+      authentication.principal.organizationId === options.authentication.config.organizationId &&
+      authentication.principal.organizationAdmin
+    const projects = options.projectRepository.projectsRead(projectOrganizationId, zitadelProjectIds, organizationAdmin)
     if (!projects.success) return failureFromRepositoryCreate(context)
     const search = parsedQuery.output.search?.toLocaleLowerCase()
     const filtered =

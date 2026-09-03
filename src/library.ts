@@ -397,6 +397,8 @@ export type { ZitadelOidcClient } from "./infrastructure/zitadel/zitadelOidcClie
 export { zitadelOidcClientCreate } from "./infrastructure/zitadel/zitadelOidcClientCreate.js"
 export type { ZitadelOidcDiscovery } from "./infrastructure/zitadel/zitadelOidcDiscoverySchema.js"
 export { zitadelOidcDiscoverySchema } from "./infrastructure/zitadel/zitadelOidcDiscoverySchema.js"
+export type { ZitadelOrganizationMembership } from "./infrastructure/zitadel/zitadelOrganizationMembershipSchema.js"
+export { zitadelOrganizationMembershipSchema } from "./infrastructure/zitadel/zitadelOrganizationMembershipSchema.js"
 export type { ZitadelProjectProvisioningRequest } from "./infrastructure/zitadel/zitadelProjectProvisioningRequestSchema.js"
 export { zitadelProjectProvisioningRequestSchema } from "./infrastructure/zitadel/zitadelProjectProvisioningRequestSchema.js"
 export type { ZitadelProjectProvisioningResult } from "./infrastructure/zitadel/zitadelProjectProvisioningResultSchema.js"

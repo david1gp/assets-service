@@ -11,12 +11,17 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
 type ApiProjectAuthorization = { project: Project; binding: ProjectBinding; authentication: RequestAuthentication }
+type ApiProjectAuthorizationScope = {
+  organizationId?: string
+  customerOrganizationId?: string
+}
 
 export const apiProjectAuthorizationRead = (
   projectIdentifier: string,
   authentication: RequestAuthentication,
   projectRepository: ProjectRepository,
   requiredRole: AuthenticationRole,
+  scope: ApiProjectAuthorizationScope = {},
 ): Result<ApiProjectAuthorization> => {
   const parsedIdentifier = v.safeParse(idSchema, projectIdentifier)
   if (!parsedIdentifier.success)
@@ -29,10 +34,14 @@ export const apiProjectAuthorizationRead = (
     binding.data,
     requiredRole,
     binding.data.serviceProjectId,
+    undefined,
+    scope,
   )
   if (!authorization.success) return authorization
   const project = projectRepository.projectRead(binding.data.projectId)
   if (!project.success) return project
   if (!project.data) return resultErrorCreate("apiProjectAuthorizationRead", "The project was not found")
+  if (project.data.organizationId !== binding.data.organizationId)
+    return resultErrorCreate("apiProjectAuthorizationRead", "The project binding was invalid")
   return { success: true, data: { project: project.data, binding: binding.data, authentication } }
 }

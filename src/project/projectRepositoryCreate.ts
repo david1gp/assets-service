@@ -166,7 +166,11 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
           ),
         )
         .where(
-          and(eq(projectTable.organizationId, organizationId), ...(projectFilter === undefined ? [] : [projectFilter])),
+          and(
+            eq(projectTable.organizationId, organizationId),
+            eq(projectBindingTable.organizationId, organizationId),
+            ...(projectFilter === undefined ? [] : [projectFilter]),
+          ),
         )
         .groupBy(projectTable.id)
         .orderBy(asc(projectTable.name), asc(projectTable.id))

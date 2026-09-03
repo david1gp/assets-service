@@ -117,9 +117,9 @@ export const humanLoginCallback = async (
     jwksUri: discovery.data.jwks_uri,
     jwksClient: options.jwksClient,
     organizationId: options.config.organizationId,
+    allowedOrganizationIds: [options.config.organizationId, options.config.customerOrganizationId],
     defaultProjectId: options.config.projectId,
     method: "human_session",
-    allowMissingOrganizationClaim: true,
     now: options.now,
     clockSkewSeconds: options.config.clockSkewSeconds,
   })
@@ -132,35 +132,32 @@ export const humanLoginCallback = async (
     displayName = oidcIdTokenDisplayNameExtract(verifiedIdTokenPayload)
   }
 
-  const accessToken = await jwtTokenParse(token.data.access_token)
-  if (!accessToken.success) return accessToken
-  const organizationClaimPresent = [
-    accessToken.data.payload["urn:zitadel:iam:org:id"],
-    accessToken.data.payload["urn:zitadel:iam:user:resourceowner:id"],
-    accessToken.data.payload["urn:zitadel:iam:user:resourceowner"],
-    accessToken.data.payload.organization_id,
-    accessToken.data.payload.org_id,
-    accessToken.data.payload.organizationId,
-    accessToken.data.payload.orgId,
-  ].some((value) => typeof value === "string" && value.length > 0)
-  const organizationAdmin = await options.oidcClient.organizationMembershipRead(
+  const membership = await options.oidcClient.organizationMembershipRead(
     token.data.access_token,
-    options.config.organizationId,
+    principal.data.organizationId,
   )
-  const isContentorenOrg =
-    principal.data.organizationId === "380716752838852623" ||
-    principal.data.organizationId.toLowerCase() === "contentoren" ||
-    options.config.organizationId === "380716752838852623" ||
-    options.config.organizationId.toLowerCase() === "contentoren"
-  const isOrganizationAdmin =
-    principal.data.organizationAdmin || (organizationAdmin.success && organizationAdmin.data) || isContentorenOrg
-  const hasConfiguredProjectGrant = principal.data.grants.some((grant) => grant.projectId === options.config.projectId)
-  if (!isOrganizationAdmin && !organizationAdmin.success && (!organizationClaimPresent || !hasConfiguredProjectGrant)) {
-    return organizationAdmin
-  }
-  if (!isOrganizationAdmin && (!organizationClaimPresent || !hasConfiguredProjectGrant)) {
+  if (!membership.success) return membership
+  if (!membership.data.isExactMember) return resultErrorCreate(op, "The exact organization membership was missing")
+
+  const isContentorenOrganization = principal.data.organizationId === options.config.organizationId
+  const isCustomerOrganization = principal.data.organizationId === options.config.customerOrganizationId
+  if (!isContentorenOrganization && !isCustomerOrganization)
+    return resultErrorCreate(op, "The JWT organization was invalid")
+
+  const grants = isCustomerOrganization
+    ? principal.data.grants
+        .map((grant) => ({
+          ...grant,
+          roles: grant.roles.filter((role) => role === "contributor"),
+        }))
+        .filter((grant) => grant.roles.length > 0)
+    : principal.data.grants
+  if (isCustomerOrganization && grants.length === 0) {
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   }
+  const isOrganizationAdmin = isContentorenOrganization
+  const sessionPolicyVersion = options.sessionStore.sessionPolicyVersionRead()
+  if (!sessionPolicyVersion.success) return sessionPolicyVersion
 
   const now = Math.floor((options.now ?? (() => Date.now()))() / 1000)
   const expiresAt = Math.min(now + options.config.sessionTtlSeconds, principal.data.expiresAt)
@@ -168,12 +165,14 @@ export const humanLoginCallback = async (
     principal: {
       ...principal.data,
       ...(displayName === undefined ? {} : { displayName }),
+      grants,
       organizationAdmin: isOrganizationAdmin,
       expiresAt,
     },
     createdAt: now,
     expiresAt,
     rotateAt: Math.min(now + options.config.sessionRotationSeconds, expiresAt),
+    sessionPolicyVersion: sessionPolicyVersion.data,
   }
   const sessionId = await options.sessionStore.create(session)
   if (!sessionId.success) return sessionId

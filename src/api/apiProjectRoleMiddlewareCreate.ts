@@ -12,6 +12,8 @@ export const apiProjectRoleMiddlewareCreate =
   (options: {
     projectRepository: ProjectRepository
     requiredRole: AuthenticationRole
+    organizationId?: string
+    customerOrganizationId?: string
   }): MiddlewareHandler<ApiContext> =>
   async (context, next) => {
     const authentication = context.get("authentication") as RequestAuthentication | undefined
@@ -28,6 +30,10 @@ export const apiProjectRoleMiddlewareCreate =
       authentication,
       options.projectRepository,
       options.requiredRole,
+      {
+        organizationId: options.organizationId,
+        customerOrganizationId: options.customerOrganizationId,
+      },
     )
     if (!authorization.success) {
       const invalidIdentifier = authorization.errorMessage === "The project identifier was invalid"

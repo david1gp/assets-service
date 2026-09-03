@@ -13,6 +13,8 @@ type ProjectProtectedRequestBoundaryOptions = {
   requiredRole: AuthenticationRole
   serviceProjectId: string
   requiredMethod?: AuthenticationMethod
+  organizationId?: string
+  customerOrganizationId?: string
 }
 
 export const projectProtectedRequestBoundaryCreate = (options: ProjectProtectedRequestBoundaryOptions) =>
@@ -27,6 +29,10 @@ export const projectProtectedRequestBoundaryCreate = (options: ProjectProtectedR
         options.requiredRole,
         options.serviceProjectId,
         options.requiredMethod,
+        {
+          organizationId: options.organizationId,
+          customerOrganizationId: options.customerOrganizationId,
+        },
       )
     },
   })

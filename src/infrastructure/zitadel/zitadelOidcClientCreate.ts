@@ -8,6 +8,7 @@ import type { Result } from "../../schemas/resultSchema.js"
 import type { ZitadelOidcClient } from "./zitadelOidcClient.js"
 import { type ZitadelOidcDiscovery, zitadelOidcDiscoverySchema } from "./zitadelOidcDiscoverySchema.js"
 import { zitadelMembershipSearchResponseSchema } from "./zitadelMembershipSearchResponseSchema.js"
+import type { ZitadelOrganizationMembership } from "./zitadelOrganizationMembershipSchema.js"
 
 const organizationAdministratorRoles = new Set([
   "ORG_OWNER",
@@ -115,7 +116,10 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     return { success: true, data: parsed.output }
   }
 
-  const organizationMembershipRead = async (accessToken: string, organizationId: string): Promise<Result<boolean>> => {
+  const organizationMembershipRead = async (
+    accessToken: string,
+    organizationId: string,
+  ): Promise<Result<ZitadelOrganizationMembership>> => {
     const op = "zitadelOrganizationMembershipRead"
     let membershipsUri: string
     try {
@@ -146,12 +150,14 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     if (!body.success) return body
     const parsed = v.safeParse(zitadelMembershipSearchResponseSchema, body.data)
     if (!parsed.success) return resultErrorCreate(op, "The Zitadel membership response was invalid")
-    const organizationAdmin = parsed.output.result.some(
-      (membership) =>
-        membership.orgId === organizationId &&
-        membership.roles.some((role) => organizationAdministratorRoles.has(role)),
+    const exactMemberships = parsed.output.result.filter((membership) => membership.orgId === organizationId)
+    const isOrganizationAdmin = exactMemberships.some((membership) =>
+      membership.roles.some((role) => organizationAdministratorRoles.has(role)),
     )
-    return { success: true, data: organizationAdmin }
+    return {
+      success: true,
+      data: { isExactMember: exactMemberships.length > 0, isOrganizationAdmin },
+    }
   }
 
   return { discoveryRead, authorizationUrlCreate, authorizationCodeExchange, organizationMembershipRead }

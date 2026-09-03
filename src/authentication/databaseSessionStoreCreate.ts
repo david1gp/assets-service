@@ -1,11 +1,14 @@
 import { createHash, randomBytes } from "node:crypto"
 
+import * as v from "valibot"
+
+import type { DatabaseConnection } from "../infrastructure/db/databaseConnection.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { sessionPolicyVersionDefault } from "./sessionPolicyVersionDefault.js"
+import { sessionPolicyVersionSchema } from "./sessionPolicyVersionSchema.js"
 import { type AuthenticationSession, sessionSchema } from "./sessionSchema.js"
 import type { SessionStore } from "./sessionStore.js"
-import type { DatabaseConnection } from "../infrastructure/db/databaseConnection.js"
-import * as v from "valibot"
 
 export const databaseSessionStoreCreate = (connection: DatabaseConnection): Result<SessionStore> => {
   const op = "databaseSessionStoreCreate"
@@ -20,7 +23,17 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
       );
       CREATE INDEX IF NOT EXISTS authentication_sessions_expiry_index
         ON authentication_sessions (expires_at);
+      CREATE TABLE IF NOT EXISTS authentication_session_policy (
+        id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1),
+        version INTEGER NOT NULL CHECK (version > 0)
+      );
     `)
+    connection.client
+      .prepare("INSERT OR IGNORE INTO authentication_session_policy (id, version) VALUES (1, ?)")
+      .run(sessionPolicyVersionDefault)
+    connection.client
+      .prepare("UPDATE authentication_session_policy SET version = ? WHERE id = 1 AND version < ?")
+      .run(sessionPolicyVersionDefault, sessionPolicyVersionDefault)
   } catch (error) {
     return resultErrorCreate(op, "The authentication session table could not be created", error)
   }
@@ -36,6 +49,18 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
       return resultErrorCreate(op, "The stored authentication session was not valid JSON", error)
     }
   }
+  const sessionPolicyVersionRead = (): Result<number> => {
+    try {
+      const row = connection.client.prepare("SELECT version FROM authentication_session_policy WHERE id = 1").get() as {
+        version?: unknown
+      } | null
+      const parsed = v.safeParse(sessionPolicyVersionSchema, row?.version)
+      if (!parsed.success) return resultErrorCreate(op, "The authentication session policy was invalid")
+      return { success: true, data: parsed.output }
+    } catch (error) {
+      return resultErrorCreate(op, "The authentication session policy could not be read", error)
+    }
+  }
   const sessionCopy = (session: AuthenticationSession): AuthenticationSession => ({
     ...session,
     principal: {
@@ -43,12 +68,21 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
       grants: session.principal.grants.map((grant) => ({ ...grant, roles: [...grant.roles] })),
     },
   })
+  const sessionValueCreate = (session: AuthenticationSession): Result<AuthenticationSession> => {
+    const parsed = v.safeParse(sessionSchema, session)
+    if (!parsed.success) return resultErrorCreate(op, "The authentication session was invalid")
+    if (parsed.output.principal.method !== "human_session" || parsed.output.sessionPolicyVersion !== undefined)
+      return { success: true, data: sessionCopy(parsed.output) }
+    const policyVersion = sessionPolicyVersionRead()
+    if (!policyVersion.success) return policyVersion
+    return { success: true, data: sessionCopy({ ...parsed.output, sessionPolicyVersion: policyVersion.data }) }
+  }
 
   const store: SessionStore = {
+    sessionPolicyVersionRead,
     async create(session): Promise<Result<string>> {
-      const parsed = v.safeParse(sessionSchema, session)
-      if (!parsed.success) return resultErrorCreate(op, "The authentication session was invalid")
-      const value = sessionCopy(parsed.output)
+      const value = sessionValueCreate(session)
+      if (!value.success) return value
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const sessionId = sessionIdCreate()
         try {
@@ -56,7 +90,13 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
             .prepare(
               "INSERT INTO authentication_sessions (id_hash, payload, created_at, expires_at, rotate_at) VALUES (?, ?, ?, ?, ?)",
             )
-            .run(hashCreate(sessionId), JSON.stringify(value), value.createdAt, value.expiresAt, value.rotateAt)
+            .run(
+              hashCreate(sessionId),
+              JSON.stringify(value.data),
+              value.data.createdAt,
+              value.data.expiresAt,
+              value.data.rotateAt,
+            )
           return { success: true, data: sessionId }
         } catch (error) {
           if (attempt === 2) return resultErrorCreate(op, "The authentication session could not be created", error)
@@ -89,17 +129,16 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
           connection.client.exec("ROLLBACK")
           return resultErrorCreate(op, "The session was not found")
         }
-        const parsed = v.safeParse(sessionSchema, session)
-        if (!parsed.success) {
+        const value = sessionValueCreate(session)
+        if (!value.success) {
           connection.client.exec("ROLLBACK")
-          return resultErrorCreate(op, "The authentication session was invalid")
+          return value
         }
-        const value = sessionCopy(parsed.output)
         connection.client
           .prepare(
             "INSERT INTO authentication_sessions (id_hash, payload, created_at, expires_at, rotate_at) VALUES (?, ?, ?, ?, ?)",
           )
-          .run(nextHash, JSON.stringify(value), value.createdAt, value.expiresAt, value.rotateAt)
+          .run(nextHash, JSON.stringify(value.data), value.data.createdAt, value.data.expiresAt, value.data.rotateAt)
         const deleted = connection.client
           .prepare("DELETE FROM authentication_sessions WHERE id_hash = ?")
           .run(oldHash) as { changes?: number }

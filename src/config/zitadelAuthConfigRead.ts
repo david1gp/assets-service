@@ -14,6 +14,7 @@ export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.e
     redirectUri: environment.ZITADEL_REDIRECT_URI,
     audience: environment.ZITADEL_AUDIENCE,
     organizationId: environment.ZITADEL_ORGANIZATION_ID,
+    customerOrganizationId: environment.ZITADEL_CUSTOMER_ORGANIZATION_ID,
     projectId: environment.ZITADEL_PROJECT_ID,
     sessionCookieName: environment.ASSETS_SESSION_COOKIE_NAME ?? "assets_session",
     stateCookieName: environment.ASSETS_STATE_COOKIE_NAME ?? "assets_state",

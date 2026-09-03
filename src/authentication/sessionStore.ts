@@ -2,6 +2,7 @@ import type { Result } from "../schemas/resultSchema.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 
 export type SessionStore = {
+  sessionPolicyVersionRead: () => Result<number>
   create: (session: AuthenticationSession) => Promise<Result<string>>
   read: (sessionId: string) => Promise<Result<AuthenticationSession | null>>
   rotate: (sessionId: string, session: AuthenticationSession) => Promise<Result<string>>

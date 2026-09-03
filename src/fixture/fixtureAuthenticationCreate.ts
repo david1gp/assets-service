@@ -18,6 +18,7 @@ const configCreate = (origin: string): ZitadelAuthConfig => ({
   redirectUri: `${origin}/api/v1/auth/callback`,
   audience: "assets-api-fixture",
   organizationId: "org-fixture",
+  customerOrganizationId: "org-fixture-customers",
   projectId: "zitadel-fixture",
   sessionCookieName: "assets_session",
   stateCookieName: "assets_state",

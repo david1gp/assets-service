@@ -1,15 +1,18 @@
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { sessionPolicyVersionDefault } from "./sessionPolicyVersionDefault.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { SessionStore } from "./sessionStore.js"
 
 type MemorySessionStoreOptions = {
   sessionIdCreate?: () => string
+  sessionPolicyVersion?: number
 }
 
 export const memorySessionStoreCreate = (options: MemorySessionStoreOptions = {}): SessionStore => {
   const sessions = new Map<string, AuthenticationSession>()
   const sessionIdCreate = options.sessionIdCreate ?? (() => crypto.randomUUID())
+  const sessionPolicyVersion = options.sessionPolicyVersion ?? sessionPolicyVersionDefault
   const copy = (session: AuthenticationSession): AuthenticationSession => ({
     ...session,
     principal: {
@@ -17,13 +20,20 @@ export const memorySessionStoreCreate = (options: MemorySessionStoreOptions = {}
       grants: session.principal.grants.map((grant) => ({ ...grant, roles: [...grant.roles] })),
     },
   })
+  const sessionValueCreate = (session: AuthenticationSession): AuthenticationSession =>
+    copy(
+      session.principal.method === "human_session" && session.sessionPolicyVersion === undefined
+        ? { ...session, sessionPolicyVersion }
+        : session,
+    )
 
   return {
+    sessionPolicyVersionRead: () => ({ success: true, data: sessionPolicyVersion }),
     async create(session): Promise<Result<string>> {
       const sessionId = sessionIdCreate()
       if (sessions.has(sessionId))
         return resultErrorCreate("memorySessionStoreCreate", "The session identifier already exists")
-      sessions.set(sessionId, copy(session))
+      sessions.set(sessionId, sessionValueCreate(session))
       return { success: true, data: sessionId }
     },
     async read(sessionId): Promise<Result<AuthenticationSession | null>> {
@@ -36,7 +46,7 @@ export const memorySessionStoreCreate = (options: MemorySessionStoreOptions = {}
       if (sessions.has(nextSessionId))
         return resultErrorCreate("memorySessionStoreRotate", "The session identifier already exists")
       sessions.delete(sessionId)
-      sessions.set(nextSessionId, copy(session))
+      sessions.set(nextSessionId, sessionValueCreate(session))
       return { success: true, data: nextSessionId }
     },
     async revoke(sessionId): Promise<Result<undefined>> {

@@ -38,6 +38,14 @@ export const requestAuthenticationRead = async (
     await options.sessionStore.revoke(sessionId)
     return resultErrorCreate("requestAuthenticationRead", "The session has expired")
   }
+  if (session.data.principal.method === "human_session") {
+    const policyVersion = options.sessionStore.sessionPolicyVersionRead()
+    if (!policyVersion.success) return policyVersion
+    if (session.data.sessionPolicyVersion !== policyVersion.data) {
+      await options.sessionStore.revoke(sessionId)
+      return resultErrorCreate("requestAuthenticationRead", "The session policy was outdated")
+    }
+  }
   if (session.data.rotateAt > now) return { success: true, data: { principal: session.data.principal } }
 
   const rotatedSession = {

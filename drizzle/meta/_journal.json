@@ -127,6 +127,13 @@
       "when": 1788333294132,
       "tag": "0017_storage_migration_retry_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788333294133,
+      "tag": "0018_authentication_session_policy",
+      "breakpoints": true
     }
   ]
 }
