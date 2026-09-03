@@ -7,13 +7,21 @@ import type { ApiAuthenticationOptions } from "./apiAuthenticationOptions.js"
 export const apiRequestAuthenticationRead = async (
   request: Request,
   options: ApiAuthenticationOptions,
-): Promise<Result<RequestAuthentication>> =>
-  requestAuthenticationRead(request, {
+): Promise<Result<RequestAuthentication>> => {
+  const serviceBearer = options.serviceBearer
+    ? {
+        ...options.serviceBearer,
+        projectProvisionerSubjectId:
+          options.serviceBearer.projectProvisionerSubjectId ?? options.config.projectProvisionerSubjectId,
+      }
+    : undefined
+  return requestAuthenticationRead(request, {
     sessionStore: options.sessionStore,
     sessionCookieName: options.config.sessionCookieName,
     sessionRotationSeconds: options.config.sessionRotationSeconds,
-    serviceBearer: options.serviceBearer,
+    serviceBearer,
     now: options.now,
   }).catch((error: unknown) =>
     resultErrorCreate("apiRequestAuthenticationRead", "Authentication could not be read", error),
   )
+}

@@ -91,7 +91,12 @@ export const servicePatPrincipalValidate = async (
     if (roles.length === 0) continue
     grants.push({ projectId: grant.projectId, roles })
   }
-  if (grants.length === 0) return resultErrorCreate(op, "The JWT did not contain the required project grant")
+  const isProjectProvisioner =
+    Boolean(options.projectProvisionerSubjectId) &&
+    user.output.user.id === options.projectProvisionerSubjectId &&
+    user.output.user.details.resourceOwner === options.organizationId
+  if (!isProjectProvisioner && grants.length === 0)
+    return resultErrorCreate(op, "The JWT did not contain the required project grant")
   if (options.projectId !== undefined && !grants.some((grant) => grant.projectId === options.projectId))
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
 
@@ -100,6 +105,7 @@ export const servicePatPrincipalValidate = async (
     subjectId: user.output.user.id,
     organizationId: user.output.user.details.resourceOwner,
     organizationAdmin: false,
+    projectProvisioner: isProjectProvisioner,
     method: "service_account",
     grants,
     issuedAt: now,

@@ -11,6 +11,9 @@ export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.e
     ...(environment.ZITADEL_SERVICE_ACCOUNT_CLIENT_ID
       ? { serviceAccountClientId: environment.ZITADEL_SERVICE_ACCOUNT_CLIENT_ID }
       : {}),
+    ...(environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID
+      ? { projectProvisionerSubjectId: environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID }
+      : {}),
     redirectUri: environment.ZITADEL_REDIRECT_URI,
     audience: environment.ZITADEL_AUDIENCE,
     organizationId: environment.ZITADEL_ORGANIZATION_ID,

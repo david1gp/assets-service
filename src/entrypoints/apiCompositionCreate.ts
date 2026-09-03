@@ -60,19 +60,21 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })
-  const serviceBearer = config.zitadel.serviceAccountClientId
-    ? {
-        issuer: config.zitadel.issuer,
-        audience: config.zitadel.audience,
-        jwksClient,
-        discoveryRead: oidcClient.discoveryRead,
-        organizationId: config.zitadel.organizationId,
-        serviceAccountClientId: config.zitadel.serviceAccountClientId,
-        defaultProjectId: config.zitadel.projectId,
-        now: undefined,
-        clockSkewSeconds: config.zitadel.clockSkewSeconds,
-      }
-    : undefined
+  const serviceBearer =
+    config.zitadel.serviceAccountClientId || config.zitadel.projectProvisionerSubjectId
+      ? {
+          issuer: config.zitadel.issuer,
+          audience: config.zitadel.audience,
+          jwksClient,
+          discoveryRead: oidcClient.discoveryRead,
+          organizationId: config.zitadel.organizationId,
+          serviceAccountClientId: config.zitadel.serviceAccountClientId,
+          defaultProjectId: config.zitadel.projectId,
+          now: undefined,
+          clockSkewSeconds: config.zitadel.clockSkewSeconds,
+          projectProvisionerSubjectId: config.zitadel.projectProvisionerSubjectId,
+        }
+      : undefined
 
   const app = apiAppCreate({
     projectRepository,

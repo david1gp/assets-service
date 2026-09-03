@@ -484,7 +484,11 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         code: "unauthorized",
         message: "Authentication is required",
       })
-    if (authentication.principal.method !== "human_session" || !authentication.principal.organizationAdmin)
+    const isHumanOrgAdmin =
+      authentication.principal.method === "human_session" && Boolean(authentication.principal.organizationAdmin)
+    const isMachineProvisioner =
+      authentication.principal.method === "service_account" && Boolean(authentication.principal.projectProvisioner)
+    if (!isHumanOrgAdmin && !isMachineProvisioner)
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 403,

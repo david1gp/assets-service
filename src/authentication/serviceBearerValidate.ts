@@ -22,6 +22,7 @@ export const serviceBearerValidate = async (
       projectId: options.projectId,
       fetcher: options.patFetcher,
       now: options.now,
+      projectProvisionerSubjectId: options.projectProvisionerSubjectId,
     })
   }
 
@@ -33,7 +34,7 @@ export const serviceBearerValidate = async (
     discoveryRead: options.discoveryRead,
     organizationId: options.organizationId,
     defaultProjectId: options.defaultProjectId,
-    requiredClientId: options.serviceAccountClientId,
+    requiredClientId: options.serviceAccountClientId ?? "",
     requiredProjectId: options.projectId,
     method: "service_account",
     now: options.now,

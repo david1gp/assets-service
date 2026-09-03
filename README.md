@@ -119,16 +119,23 @@ role for the selected project. `--project` accepts a project ID or name; otherwi
 
 ### Remote project registration
 
-Organization administrators can register a project and its complete initial service configuration through the
-authenticated remote CLI. The command requires one explicit binding and both environment bindings. It requires a human
-session whose authenticated principal has organization-admin authority for the selected organization; service-account
-authentication is rejected. The authenticated administrator is also recorded as an initial `project_grants` database
-row for the new project. Runtime authorization remains based on the authenticated Zitadel claims, not that database row.
-The `--zitadel-project-id` value records the existing binding only; this command does not provision anything in Zitadel.
-Use `ASSETS_SESSION_COOKIE` for the authenticated human session; an `ASSETS_TOKEN` bearer credential is treated as
-service-account authentication and is rejected. It creates a missing configured database organization or attaches the
-project to the matching existing organization. Repeating the exact request returns the existing registration; different
-values for an existing registration are rejected.
+Organization administrators and authorized automation can register a project and its complete initial service
+configuration through the authenticated remote CLI. The command requires one explicit binding and both environment
+bindings. It requires either an authenticated human session whose principal has organization-admin authority for the
+selected organization, or a bearer token corresponding to the exact machine identity configured as the Assets
+Service project provisioner (via `ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID`) in the same organization. Ordinary
+service credentials without the dedicated provisioner subject are rejected. When registered by a human session,
+the administrator is recorded as an initial `project_grants` database row for the new project; machine provisioners
+record the provisioner subject ID. Runtime authorization remains based on the authenticated Zitadel claims, not that
+database row. The `--zitadel-project-id` value records the existing binding only; this command does not provision
+anything in Zitadel.
+
+For human interactive sessions, use `ASSETS_SESSION_COOKIE`. For automated machine provisioning, authenticate via
+protected token sources: `ASSETS_TOKEN` or `ASSETS_ACCESS_TOKEN` in the environment or a mode-`0600` `.env` file, or
+a stored session written by `echo $TOKEN | bun run assets auth login --token-stdin` (or `--session <path>`). Tokens
+are never accepted as command-line arguments. It creates a missing configured database organization or attaches the
+project to the matching existing organization. Repeating the exact request returns the existing registration;
+different values for an existing registration are rejected.
 
 ```bash
 bun run assets projects create \

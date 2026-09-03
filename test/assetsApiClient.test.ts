@@ -116,6 +116,91 @@ test("assets API client registers a project with an authenticated JSON request",
   expect(await request?.clone().json()).toMatchObject({ binding: { serviceProjectId: "service-1" } })
 })
 
+test("assets API client sends session cookie for project registration when configured", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    sessionCookie: "human-session-cookie",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({
+        project: {
+          project: {
+            id: "project-1",
+            organizationId: "org-1",
+            name: "Registered",
+            slug: "registered",
+            defaultEnvironment: "development",
+            createdAt: "2026-08-17T00:00:00.000Z",
+            updatedAt: "2026-08-17T00:00:00.000Z",
+          },
+          organization: null,
+          binding: {
+            id: "binding-1",
+            projectId: "project-1",
+            organizationId: "org-1",
+            zitadelProjectId: "zitadel-1",
+            serviceProjectId: "service-1",
+            createdAt: "2026-08-17T00:00:00.000Z",
+            updatedAt: "2026-08-17T00:00:00.000Z",
+          },
+          environments: [
+            {
+              id: "environment-development",
+              projectId: "project-1",
+              name: "development",
+              r2Bucket: "assets-development",
+              r2Prefix: "service-1",
+              publicBaseUrl: "https://development.assets.example.test",
+              createdAt: "2026-08-17T00:00:00.000Z",
+              updatedAt: "2026-08-17T00:00:00.000Z",
+            },
+            {
+              id: "environment-production",
+              projectId: "project-1",
+              name: "production",
+              r2Bucket: "assets-production",
+              r2Prefix: "service-1",
+              publicBaseUrl: "https://assets.example.test",
+              createdAt: "2026-08-17T00:00:00.000Z",
+              updatedAt: "2026-08-17T00:00:00.000Z",
+            },
+          ],
+        },
+        created: true,
+      })
+    },
+  })
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const created = await clientResult.data.projectCreate({
+    organization: { id: "org-1", name: "Example", slug: "example" },
+    name: "Registered",
+    slug: "registered",
+    defaultEnvironment: "development",
+    binding: { zitadelProjectId: "zitadel-1", serviceProjectId: "service-1" },
+    environments: [
+      {
+        name: "development",
+        r2Bucket: "assets-development",
+        r2Prefix: "service-1",
+        publicBaseUrl: "https://development.assets.example.test",
+      },
+      {
+        name: "production",
+        r2Bucket: "assets-production",
+        r2Prefix: "service-1",
+        publicBaseUrl: "https://assets.example.test",
+      },
+    ],
+  })
+
+  expect(created).toMatchObject({ success: true, data: { created: true } })
+  expect(request?.headers.get("authorization")).toBeNull()
+  expect(request?.headers.get("cookie")).toBe("human-session-cookie")
+})
+
 test("assets API client rejects project registration without both environments before fetching", async () => {
   let fetchCount = 0
   const clientResult = assetsApiClientCreate({

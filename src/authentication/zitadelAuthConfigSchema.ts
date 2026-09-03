@@ -7,6 +7,7 @@ export const zitadelAuthConfigSchema = v.pipe(
     issuer: v.pipe(v.string(), v.url()),
     clientId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
     serviceAccountClientId: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
+    projectProvisionerSubjectId: v.optional(idSchema),
     redirectUri: v.pipe(v.string(), v.url()),
     audience: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
     organizationId: idSchema,

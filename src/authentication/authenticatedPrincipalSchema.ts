@@ -8,6 +8,7 @@ export const authenticatedPrincipalSchema = v.strictObject({
   displayName: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
   organizationId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
   organizationAdmin: v.optional(v.boolean(), false),
+  projectProvisioner: v.optional(v.boolean()),
   method: authenticationMethodSchema,
   grants: v.array(projectGrantSchema),
   issuedAt: v.pipe(v.number(), v.integer(), v.minValue(0)),

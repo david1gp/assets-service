@@ -213,6 +213,7 @@ describe("Zitadel authentication contracts", () => {
         method: "service_account",
         subjectId: "machine-user-1",
         organizationAdmin: false,
+        projectProvisioner: false,
         grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
       },
     })
@@ -221,6 +222,157 @@ describe("Zitadel authentication contracts", () => {
       "https://zitadel.example.test/auth/v1/users/me",
       "https://zitadel.example.test/auth/v1/usergrants/me/_search",
     ])
+  })
+
+  test("preserves project provisioner capability only for exact PAT subject and organization", async () => {
+    const pat = "eyJhbGciOiJBMjU2R0NNS1ciLCJlbmMiOiJBMjU2R0NNIn0.ciphertext.tag.iv.extra"
+    const provisionerSubjectId = "machine-provisioner-1"
+    const createPatFetcher =
+      (userId: string, orgId: string, grantsResult: unknown[] = []) =>
+      async (input: string | URL) => {
+        if (String(input).endsWith("/auth/v1/users/me")) {
+          return new Response(
+            JSON.stringify({
+              user: {
+                id: userId,
+                state: "USER_STATE_ACTIVE",
+                details: { resourceOwner: orgId },
+                machine: { name: "Assets Provisioner" },
+              },
+            }),
+          )
+        }
+        return new Response(JSON.stringify({ result: grantsResult }))
+      }
+
+    // 1. Exact subject and organization with no project grants -> succeeds with projectProvisioner: true
+    const validProvisioner = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${pat}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        projectProvisionerSubjectId: provisionerSubjectId,
+        now: () => nowSeconds * 1000,
+        patFetcher: createPatFetcher(provisionerSubjectId, "org-1", []),
+      },
+    )
+    expect(validProvisioner).toMatchObject({
+      success: true,
+      data: {
+        method: "service_account",
+        subjectId: provisionerSubjectId,
+        organizationId: "org-1",
+        organizationAdmin: false,
+        projectProvisioner: true,
+        grants: [],
+      },
+    })
+
+    // 2. Different subject with no grants -> rejected
+    const wrongSubjectNoGrants = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${pat}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        projectProvisionerSubjectId: provisionerSubjectId,
+        now: () => nowSeconds * 1000,
+        patFetcher: createPatFetcher("other-machine-user", "org-1", []),
+      },
+    )
+    expect(wrongSubjectNoGrants.success).toBe(false)
+    if (!wrongSubjectNoGrants.success) {
+      expect(wrongSubjectNoGrants.errorMessage).toContain("The JWT did not contain the required project grant")
+    }
+
+    // 3. Different subject with active project grant -> succeeds, but projectProvisioner is false
+    const wrongSubjectWithGrants = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${pat}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        projectProvisionerSubjectId: provisionerSubjectId,
+        now: () => nowSeconds * 1000,
+        patFetcher: createPatFetcher("other-machine-user", "org-1", [
+          {
+            projectId: "zitadel-project-1",
+            orgId: "org-1",
+            state: "USER_GRANT_STATE_ACTIVE",
+            roleKeys: ["admin"],
+          },
+        ]),
+      },
+    )
+    expect(wrongSubjectWithGrants).toMatchObject({
+      success: true,
+      data: {
+        method: "service_account",
+        subjectId: "other-machine-user",
+        organizationAdmin: false,
+        projectProvisioner: false,
+        grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
+      },
+    })
+
+    // 4. Same subject but wrong organization -> rejected
+    const wrongOrganization = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${pat}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        projectProvisionerSubjectId: provisionerSubjectId,
+        now: () => nowSeconds * 1000,
+        patFetcher: createPatFetcher(provisionerSubjectId, "wrong-org", []),
+      },
+    )
+    expect(wrongOrganization.success).toBe(false)
+    if (!wrongOrganization.success) {
+      expect(wrongOrganization.errorMessage).toContain("The JWT organization was invalid")
+    }
+
+    // 5. JWT token matching the provisioner subject does NOT get projectProvisioner capability
+    const keys = await keyPairCreate()
+    const jwk = await jwkCreate(keys.publicKey)
+    const jwksClient = zitadelJwksClientMemoryCreate([jwk])
+    const jwtToken = await tokenCreate(
+      keys.privateKey,
+      tokenClaimsCreate({
+        sub: provisionerSubjectId,
+        client_id: "machine-client-1",
+      }),
+    )
+    const jwtResult = await serviceBearerValidate(
+      new Request("https://assets.example.test", { headers: { authorization: `Bearer ${jwtToken}` } }),
+      {
+        issuer: "https://zitadel.example.test",
+        audience: "assets-api",
+        jwksUri: "https://zitadel.example.test/oauth/v2/keys",
+        jwksClient,
+        organizationId: "org-1",
+        serviceAccountClientId: "machine-client-1",
+        projectProvisionerSubjectId: provisionerSubjectId,
+        now: () => nowSeconds * 1000,
+      },
+    )
+    expect(jwtResult).toMatchObject({
+      success: true,
+      data: {
+        method: "service_account",
+        subjectId: provisionerSubjectId,
+      },
+    })
+    if (jwtResult.success) expect(jwtResult.data.projectProvisioner).not.toBe(true)
   })
 
   test("reads the exact organization-scoped membership roles from Zitadel", async () => {

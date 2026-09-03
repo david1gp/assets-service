@@ -8,10 +8,11 @@ export type ServiceBearerValidateOptions = {
   jwksClient: ZitadelJwksClient
   discoveryRead?: () => Promise<Result<{ issuer: string; jwks_uri: string }>>
   organizationId: string
-  serviceAccountClientId: string
+  serviceAccountClientId?: string
   defaultProjectId?: string
   projectId?: string
   now?: () => number
   clockSkewSeconds?: number
   patFetcher?: (input: string | URL, init?: RequestInit) => Promise<Response>
+  projectProvisionerSubjectId?: string
 }

@@ -362,6 +362,283 @@ test("projects create sends the complete registration to the service", async () 
   }
 })
 
+test("projects create authenticates with ASSETS_TOKEN bearer credential", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-token-home-"))
+  const output: string[] = []
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          ASSETS_TOKEN: "machine-provisioner-pat",
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.method).toBe("POST")
+    expect(request?.url).toBe("https://assets.example.test/api/v1/projects")
+    expect(request?.headers.get("authorization")).toBe("Bearer machine-provisioner-pat")
+    expect(request?.headers.get("cookie")).toBeNull()
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create authenticates with ASSETS_ACCESS_TOKEN bearer credential", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-access-token-home-"))
+  const output: string[] = []
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          ASSETS_TOKEN: undefined,
+          ASSETS_ACCESS_TOKEN: "machine-provisioner-access-pat",
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.method).toBe("POST")
+    expect(request?.url).toBe("https://assets.example.test/api/v1/projects")
+    expect(request?.headers.get("authorization")).toBe("Bearer machine-provisioner-access-pat")
+    expect(request?.headers.get("cookie")).toBeNull()
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create authenticates with stored session token from auth login token-stdin", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-stdin-home-"))
+  const sessionFile = join(homeDirectory, "cli-session.json")
+  const output: string[] = []
+  let request: Request | undefined
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const loginExitCode = await assetsCliMain(["auth", "login", "--token-stdin"], {
+      env: {
+        ...cliEnvironment,
+        ASSETS_TOKEN: undefined,
+        ASSETS_ACCESS_TOKEN: undefined,
+        HOME: homeDirectory,
+        ASSETS_SESSION_FILE: sessionFile,
+      },
+      stdinRead: async () => "session-pat-from-stdin\n",
+      stdout: () => undefined,
+      stderr: () => undefined,
+    })
+    expect(loginExitCode).toBe(0)
+
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          ASSETS_TOKEN: undefined,
+          ASSETS_ACCESS_TOKEN: undefined,
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: sessionFile,
+        },
+        fetcher: async (input, init) => {
+          request = new Request(String(input), init)
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(request?.method).toBe("POST")
+    expect(request?.url).toBe("https://assets.example.test/api/v1/projects")
+    expect(request?.headers.get("authorization")).toBe("Bearer session-pat-from-stdin")
+    expect(request?.headers.get("cookie")).toBeNull()
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create rejects --token as a command-line argument", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-arg-reject-home-"))
+  const output: string[] = []
+  let fetchCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    const exitCode = await assetsCliMain(
+      [
+        "projects",
+        "create",
+        "--organization",
+        "contentoren",
+        "--name",
+        "Allgroups Chat",
+        "--slug",
+        "allgroups-chat",
+        "--default-environment",
+        "development",
+        "--service-project-id",
+        "allgroups-chat",
+        "--zitadel-project-id",
+        "zitadel-allgroups-chat",
+        "--development-r2-bucket",
+        "allgroups-chat",
+        "--development-r2-prefix",
+        "allgroups-chat",
+        "--development-public-base-url",
+        "https://dev.assets.example.test",
+        "--production-r2-bucket",
+        "allgroups-chat",
+        "--production-r2-prefix",
+        "allgroups-chat",
+        "--production-public-base-url",
+        "https://assets.example.test",
+        "--token",
+        "leaked-cli-arg-token",
+        "--json",
+      ],
+      {
+        env: {
+          ...cliEnvironment,
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        fetcher: async () => {
+          fetchCount += 1
+          return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(1)
+    expect(fetchCount).toBe(0)
+    const parsed = JSON.parse(output[0] ?? "")
+    expect(parsed).toMatchObject({
+      ok: false,
+      error: {
+        message: "Tokens are not accepted as command arguments",
+      },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
 test("projects create validates both environment bindings before requesting the service", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-validation-home-"))
   const output: string[] = []

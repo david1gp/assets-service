@@ -40,3 +40,26 @@ test("rejects using the staff organization as the customer organization", () => 
     "ZITADEL_ORGANIZATION_ID and ZITADEL_CUSTOMER_ORGANIZATION_ID must be different",
   )
 })
+
+test("reads the optional project provisioner subject ID when configured", () => {
+  const unset = zitadelAuthConfigRead(environment)
+  expect(unset.success).toBe(true)
+  if (unset.success) expect(unset.data.projectProvisionerSubjectId).toBeUndefined()
+
+  const set = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID: "machine-provisioner-1",
+  })
+  expect(set).toMatchObject({
+    success: true,
+    data: {
+      projectProvisionerSubjectId: "machine-provisioner-1",
+    },
+  })
+
+  const invalid = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID: "-invalid-id",
+  })
+  expect(invalid.success).toBe(false)
+})

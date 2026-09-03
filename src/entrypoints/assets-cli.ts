@@ -2037,6 +2037,8 @@ const projectCreateInputRead = (
   organization: OrganizationDefinition | undefined,
 ): Result<ProjectCreate> => {
   const op = "assetsCliProjectCreate"
+  if (optionRead(parsed, "token") !== undefined)
+    return resultFailure(op, "Tokens are not accepted as command arguments")
   if (organization === undefined)
     return resultFailure(op, "Project creation requires a resolved organization; use --organization")
   if (parsed.positionals.length !== 0)

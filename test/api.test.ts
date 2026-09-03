@@ -24,7 +24,10 @@ const keyPairCreate = async () =>
     ["sign", "verify"],
   )
 
-const serviceTokenCreate = async (privateKey: CryptoKey): Promise<string> => {
+const serviceTokenCreate = async (
+  privateKey: CryptoKey,
+  claimsOverride: Record<string, unknown> = {},
+): Promise<string> => {
   const header = base64UrlEncode(JSON.stringify({ alg: "RS256", kid: "key-1", typ: "JWT" }))
   const payload = base64UrlEncode(
     JSON.stringify({
@@ -36,6 +39,7 @@ const serviceTokenCreate = async (privateKey: CryptoKey): Promise<string> => {
       "urn:zitadel:iam:org:id": "org-1",
       client_id: "machine-client-1",
       assets_project_grants: { "zitadel-1": ["contributor"] },
+      ...claimsOverride,
     }),
   )
   const signingInput = `${header}.${payload}`
@@ -534,6 +538,195 @@ describe("HTTP API", () => {
       }),
     )
     expect(serviceForbidden.status).toBe(403)
+  })
+
+  test("creates projects for the exact configured machine provisioner via PAT and enforces organization equality", async () => {
+    let receivedSubject: string | undefined
+    let receivedInput: unknown
+    const provisionerSubjectId = "machine-provisioner-1"
+    const pat = "eyJhbGciOiJBMjU2R0NNS1ciLCJlbmMiOiJBMjU2R0NNIn0.ciphertext.tag.iv.extra"
+
+    const makeOptions = (
+      configuredSubject?: string,
+      userSubject = provisionerSubjectId,
+      userOrg = "org-1",
+      grants: unknown[] = [],
+    ) => {
+      const options = optionsCreate()
+      options.authentication.config = {
+        ...options.authentication.config,
+        ...(configuredSubject ? { projectProvisionerSubjectId: configuredSubject } : {}),
+      }
+      options.authentication.serviceBearer = {
+        issuer: options.authentication.config.issuer,
+        audience: options.authentication.config.audience,
+        jwksClient: zitadelJwksClientMemoryCreate([]),
+        organizationId: "org-1",
+        projectProvisionerSubjectId: configuredSubject,
+        now: () => now * 1000,
+        patFetcher: async (input) => {
+          if (String(input).endsWith("/auth/v1/users/me")) {
+            return new Response(
+              JSON.stringify({
+                user: {
+                  id: userSubject,
+                  state: "USER_STATE_ACTIVE",
+                  details: { resourceOwner: userOrg },
+                  machine: { name: "Provisioner" },
+                },
+              }),
+            )
+          }
+          return new Response(JSON.stringify({ result: grants }))
+        },
+      }
+      const repository = options.projectRepository
+      options.projectRepository = {
+        ...repository,
+        projectCreate: (input, subjectId) => {
+          receivedInput = input
+          receivedSubject = subjectId
+          return {
+            success: true,
+            data: {
+              project: { project, organization: null, binding, environments: [environment] },
+              created: true,
+            },
+          }
+        },
+      }
+      return options
+    }
+
+    const body = {
+      organization: { id: "org-1", name: "Example", slug: "example" },
+      name: "Provisioned",
+      slug: "provisioned",
+      defaultEnvironment: "development",
+      binding: { zitadelProjectId: "zitadel-provisioned", serviceProjectId: "service-provisioned" },
+      environments: [
+        {
+          name: "development",
+          r2Bucket: "assets-development",
+          r2Prefix: "provisioned/development",
+          publicBaseUrl: "https://development.assets.example.test",
+        },
+        {
+          name: "production",
+          r2Bucket: "assets-production",
+          r2Prefix: "provisioned/production",
+          publicBaseUrl: "https://assets.example.test",
+        },
+      ],
+    }
+
+    // 1. Valid machine provisioner PAT succeeds
+    const provisionerOptions = makeOptions(provisionerSubjectId)
+    const provisionerApp = apiAppCreate(provisionerOptions)
+    const successResponse = await provisionerApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${pat}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(successResponse.status).toBe(201)
+    expect(receivedSubject).toBe(provisionerSubjectId)
+    expect(receivedInput).toEqual(body)
+
+    // 2. Organization mismatch in body is rejected
+    const wrongOrgResponse = await provisionerApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${pat}`, "content-type": "application/json" },
+        body: JSON.stringify({ ...body, organization: { ...body.organization, id: "org-2" } }),
+      }),
+    )
+    expect(wrongOrgResponse.status).toBe(403)
+    const wrongOrgBody = (await wrongOrgResponse.json()) as { error: { message: string } }
+    expect(wrongOrgBody.error.message).toBe("The project organization was not allowed")
+
+    // 3. Different machine subject with active project grant is authenticated but forbidden from project creation
+    const wrongSubjectOptions = makeOptions(provisionerSubjectId, "other-machine-subject", "org-1", [
+      {
+        projectId: "zitadel-other",
+        orgId: "org-1",
+        state: "USER_GRANT_STATE_ACTIVE",
+        roleKeys: ["admin"],
+      },
+    ])
+    const wrongSubjectApp = apiAppCreate(wrongSubjectOptions)
+    const wrongSubjectResponse = await wrongSubjectApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${pat}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(wrongSubjectResponse.status).toBe(403)
+    const wrongSubjectBody = (await wrongSubjectResponse.json()) as { error: { message: string } }
+    expect(wrongSubjectBody.error.message).toBe("Organization administrator access is required")
+
+    // 4. Different machine subject without grants is rejected at authentication
+    const noGrantsSubjectOptions = makeOptions(provisionerSubjectId, "other-machine-subject", "org-1", [])
+    const noGrantsSubjectApp = apiAppCreate(noGrantsSubjectOptions)
+    const noGrantsSubjectResponse = await noGrantsSubjectApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${pat}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(noGrantsSubjectResponse.status).toBe(401)
+
+    // 5. Provisioner not configured on server with active grants is forbidden from project creation
+    const unconfiguredOptions = makeOptions(undefined, provisionerSubjectId, "org-1", [
+      {
+        projectId: "zitadel-other",
+        orgId: "org-1",
+        state: "USER_GRANT_STATE_ACTIVE",
+        roleKeys: ["admin"],
+      },
+    ])
+    const unconfiguredApp = apiAppCreate(unconfiguredOptions)
+    const unconfiguredResponse = await unconfiguredApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${pat}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(unconfiguredResponse.status).toBe(403)
+    const unconfiguredBody = (await unconfiguredResponse.json()) as { error: { message: string } }
+    expect(unconfiguredBody.error.message).toBe("Organization administrator access is required")
+
+    // 5. JWT token (even with provisioner subject) is rejected
+    const keys = await keyPairCreate()
+    const jwk = await jwkCreate(keys.publicKey)
+    const jwtToken = await serviceTokenCreate(keys.privateKey, {
+      sub: provisionerSubjectId,
+      client_id: "machine-client-1",
+    })
+    const jwtOptions = makeOptions(provisionerSubjectId)
+    jwtOptions.authentication.serviceBearer = {
+      issuer: jwtOptions.authentication.config.issuer,
+      audience: jwtOptions.authentication.config.audience,
+      jwksClient: zitadelJwksClientMemoryCreate([jwk]),
+      jwksUri: "https://zitadel.example.test/keys",
+      organizationId: "org-1",
+      serviceAccountClientId: "machine-client-1",
+      projectProvisionerSubjectId: provisionerSubjectId,
+      now: () => now * 1000,
+    }
+    const jwtApp = apiAppCreate(jwtOptions)
+    const jwtResponse = await jwtApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: `Bearer ${jwtToken}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    )
+    expect(jwtResponse.status).toBe(403)
   })
 
   test("allows an organization administrator to access an ungranted same-organization project only", async () => {
