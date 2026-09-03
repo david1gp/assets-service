@@ -17,6 +17,7 @@ Replace every `CHANGE_ME` value. Keep `.env`, the R2 secret key, the Zitadel ser
 | --- | --- |
 | `ASSETS_ENVIRONMENT` | `development` or `production`. |
 | `ASSETS_API_HOST` | Public HTTPS API URL. Use the same host in the Zitadel redirect URI. |
+| `ASSETS_API_BIND` | Local listener address, normally `127.0.0.1`. |
 | `ASSETS_API_PORT` | Local listener, normally `8787`. |
 | `ASSETS_DATABASE_PATH` | SQLite file. In Compose use `/var/lib/assets-service/assets.sqlite`. |
 | `ASSETS_WORKER_ID` | Stable, unique worker name. |

@@ -15,7 +15,9 @@ operational R2 settings below remain environment-configured.
 | Variable | Purpose |
 | --- | --- |
 | `ASSETS_ENVIRONMENT` | `development` or `production` |
-| `ASSETS_API_HOST`, `ASSETS_API_PORT` | API bind address and port |
+| `ASSETS_API_HOST` | Public HTTPS API URL used by Caddy and API clients |
+| `ASSETS_API_BIND` | Local API bind address; defaults to `127.0.0.1` |
+| `ASSETS_API_PORT` | Local API listener port |
 | `ASSETS_DATABASE_PATH` | SQLite database path |
 | `ASSETS_WORKER_ID` | Stable worker identity for logs and leases |
 | `CLOUDFLARE_ACCOUNT_ID` | R2 account identifier |
