@@ -145,6 +145,33 @@ test("environment configuration gives any process alias precedence over any env-
   }
 })
 
+test("environment configuration falls back to the working-directory .env when the command root has none", async () => {
+  const workingDirectory = await mkdtemp(join(tmpdir(), "assets-env-working-directory-"))
+  const commandRoot = await mkdtemp(join(tmpdir(), "assets-env-command-root-"))
+  try {
+    await writeFile(join(workingDirectory, ".env"), "ASSETS_API_URL=https://from-working-directory.test\n")
+    const result = await environmentConfigurationResolve({
+      env: { PWD: workingDirectory },
+      commandRoot,
+    })
+    expect(result).toEqual({
+      success: true,
+      data: {
+        environment: {
+          ASSETS_API_URL: "https://from-working-directory.test",
+          PWD: workingDirectory,
+        },
+        fileEnvironment: { ASSETS_API_URL: "https://from-working-directory.test" },
+        envFilePath: join(workingDirectory, ".env"),
+        envFileLoaded: true,
+      },
+    })
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true })
+    await rm(commandRoot, { recursive: true, force: true })
+  }
+})
+
 test("ASSETS_ENV_FILE selects the file before the command-root default", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-env-selection-"))
   try {

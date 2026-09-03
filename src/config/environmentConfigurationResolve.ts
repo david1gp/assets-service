@@ -35,9 +35,20 @@ export const environmentConfigurationResolve = async (
 
   const configuredPath = options.envFile ?? sourceEnvironment.ASSETS_ENV_FILE
   const explicitFile = configuredPath !== undefined && configuredPath.length > 0
-  const envFilePath = environmentFilePathResolve(options)
-  const file = await environmentFileRead(envFilePath, { required: explicitFile })
+  let envFilePath = environmentFilePathResolve(options)
+  let file = await environmentFileRead(envFilePath, { required: explicitFile })
   if (!file.success) return file
+  if (file.data === null && !explicitFile && options.commandRoot !== undefined) {
+    const workingDirectoryFilePath = environmentFilePathResolve({ ...options, commandRoot: undefined })
+    if (workingDirectoryFilePath !== envFilePath) {
+      const workingDirectoryFile = await environmentFileRead(workingDirectoryFilePath)
+      if (!workingDirectoryFile.success) return workingDirectoryFile
+      if (workingDirectoryFile.data !== null) {
+        envFilePath = workingDirectoryFilePath
+        file = workingDirectoryFile
+      }
+    }
+  }
   const fileEnvironment = file.data ?? {}
   const environment: NodeJS.ProcessEnv = { ...fileEnvironment }
   for (const [key, value] of Object.entries(sourceEnvironment)) {

@@ -768,11 +768,15 @@ const configShowEnvironmentFileSourceRead = (
   parsed: ParsedCommand,
   sourceEnvironment: NodeJS.ProcessEnv,
   commandRoot: string | undefined,
+  envFilePath: string,
 ): string => {
   if (optionRead(parsed, "env-file") !== undefined) return "option"
   if (sourceEnvironment.ASSETS_ENV_FILE !== undefined && sourceEnvironment.ASSETS_ENV_FILE.length > 0)
     return "process-environment"
-  return commandRoot === undefined ? "working-directory" : "command-root"
+  if (commandRoot === undefined) return "working-directory"
+  const workingDirectory = resolve(sourceEnvironment.PWD ?? process.cwd())
+  const commandRootFilePath = join(resolve(workingDirectory, commandRoot), ".env")
+  return envFilePath === commandRootFilePath ? "command-root" : "working-directory"
 }
 
 const configShowValueRead = (candidates: readonly (readonly [string | undefined, string])[]): ConfigShowValueOutput => {
@@ -852,7 +856,7 @@ const configShowCommandRun = async (input: {
     globalConfiguration,
     environmentFile: {
       path: environment.envFilePath,
-      source: configShowEnvironmentFileSourceRead(parsed, sourceEnvironment, commandRoot),
+      source: configShowEnvironmentFileSourceRead(parsed, sourceEnvironment, commandRoot, environment.envFilePath),
       loaded: environment.envFileLoaded,
     },
     organization: {
