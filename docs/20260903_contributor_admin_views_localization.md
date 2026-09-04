@@ -31,8 +31,8 @@ Provide organization-derived contributor and admin experiences on separate proje
 
 ## Tasks
 
-- [ ] 1. Add a typed server-derived `admin`/`contributor` mode to authenticated session data using configured Contentoren and Contentoren-Customers organization IDs; update schemas, API client contracts, and authentication/session tests.
-- [ ] 2. Add `languageSignal`, validated browser/local-storage initialization, deferred persistence, and the reactive `ttc(englishText, germanText)` helper with focused tests.
+- [x] 1. Add a typed server-derived `admin`/`contributor` mode to authenticated session data using configured Contentoren and Contentoren-Customers organization IDs; update schemas, API client contracts, and authentication/session tests.
+- [x] 2. Add `languageSignal`, validated browser/local-storage initialization, deferred persistence, and the reactive `ttc(englishText, germanText)` helper with focused tests.
 - [ ] 3. Add the EN/DE language toggle to the shared shell beside the existing theme control and localize shared shell, authentication, query, navigation, and account controls.
 - [ ] 4. Add admin and contributor project route trees, known-route recognition, mode guards, safe legacy-route redirects, and an admin-only view switch; test direct URL access, switching, and contributor denial of admin paths.
 - [ ] 5. Make contributor project selection redirect directly to the contributor root only when the complete accessible result contains exactly one project; preserve zero/multiple-project and all admin selection behavior.
