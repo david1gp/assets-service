@@ -428,6 +428,18 @@ describe("asset API persistence", () => {
         }).success,
       ).toBe(true)
 
+      const catalogRepository = catalogApiRepositoryCreate(connection.db)
+      const listsBefore = catalogRepository.catalogListsRead("project-1", "development", {})
+      expect(listsBefore).toMatchObject({
+        success: true,
+        data: { imageList: expect.stringContaining('"alt": null') },
+      })
+      const currentBefore = catalogRepository.catalogCurrentRead("project-1", "development")
+      expect(currentBefore).toMatchObject({
+        success: true,
+        data: { catalog: { outputs: [{ metadata: catalogMetadata }] } },
+      })
+
       const result = assetApiRepositoryCreate(connection.db).assetMetadataSet("project-1", "asset-1", "Catalog alt")
       expect(result).toMatchObject({
         success: true,
@@ -442,17 +454,32 @@ describe("asset API persistence", () => {
         },
       ])
 
-      const catalogRepository = catalogApiRepositoryCreate(connection.db)
       const lists = catalogRepository.catalogListsRead("project-1", "development", {})
       expect(lists).toMatchObject({
         success: true,
-        data: { imageList: expect.stringContaining('"alt": null') },
+        data: { imageList: expect.stringContaining('"alt": "Catalog alt"') },
       })
-      expect(lists).toMatchObject({ data: { imageList: expect.not.stringContaining("Catalog alt") } })
+      const historicalLists = catalogRepository.catalogListsRead("project-1", "development", {
+        generationId: "generation-asset-1",
+      })
+      expect(historicalLists).toMatchObject({
+        success: true,
+        data: { imageList: expect.stringContaining('"alt": "Catalog alt"') },
+      })
       const current = catalogRepository.catalogCurrentRead("project-1", "development")
       expect(current).toMatchObject({
         success: true,
-        data: { catalog: { outputs: [{ metadata: catalogMetadata }] } },
+        data: { catalog: { outputs: [{ metadata: { ...catalogMetadata, alt: "Catalog alt" } }] } },
+      })
+      const historical = catalogRepository.catalogRead("project-1", "generation-asset-1", "development")
+      expect(historical).toMatchObject({
+        success: true,
+        data: { catalog: { outputs: [{ metadata: { ...catalogMetadata, alt: "Catalog alt" } }] } },
+      })
+      const history = catalogRepository.catalogsRead("project-1", "development", {})
+      expect(history).toMatchObject({
+        success: true,
+        data: { items: [{ catalog: { outputs: [{ metadata: { ...catalogMetadata, alt: "Catalog alt" } }] } }] },
       })
     } finally {
       databaseClose(connection)

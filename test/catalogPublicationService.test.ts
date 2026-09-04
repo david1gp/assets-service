@@ -269,7 +269,7 @@ test("leaves only an orphaned manifest when migration starts after catalog stora
   }
 })
 
-test("keeps historical and current catalog metadata immutable until a new generation is published", async () => {
+test("overlays current metadata onto historical and current catalog reads until a new generation is published", async () => {
   const setup = await setupCreate()
   try {
     const context = contextRead(setup.first, "asset-hero")
@@ -323,12 +323,12 @@ test("keeps historical and current catalog metadata immutable until a new genera
       throw new Error("catalog fixture missing")
     expect(
       currentBeforePublish.data.catalog.outputs.find((output) => output.assetId === "asset-hero")?.metadata,
-    ).toMatchObject({ alt: "A wide product shot on a dark background" })
+    ).toMatchObject({ alt: "Updated alt" })
     expect(
       historicalBeforePublish.data.catalog.outputs.find((output) => output.assetId === "asset-hero")?.metadata,
-    ).toMatchObject({ alt: "A wide product shot on a dark background" })
-    expect(listsBeforePublish.data.imageList).toContain('"alt": "A wide product shot on a dark background"')
-    expect(listsBeforePublish.data.imageList).not.toContain("Updated alt")
+    ).toMatchObject({ alt: "Updated alt" })
+    expect(listsBeforePublish.data.imageList).toContain('"alt": "Updated alt"')
+    expect(listsBeforePublish.data.imageList).not.toContain("A wide product shot on a dark background")
 
     const published = await catalogPublicationServiceCreate(
       setup.first.db,
@@ -365,8 +365,7 @@ test("keeps historical and current catalog metadata immutable until a new genera
     expect(historyAfterPublish.data.items.find((item) => item.generationId === "generation-1")?.catalog).toEqual(
       historicalBeforePublish.data.catalog,
     )
-    expect(historicalLists.data.imageList).toContain('"alt": "A wide product shot on a dark background"')
-    expect(historicalLists.data.imageList).not.toContain("Updated alt")
+    expect(historicalLists.data.imageList).toContain('"alt": "Updated alt"')
     expect(currentLists.data.imageList).toContain('"alt": "Updated alt"')
   } finally {
     databaseClose(setup.second)
