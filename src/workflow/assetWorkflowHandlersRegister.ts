@@ -726,8 +726,6 @@ async function publishAssetHandle(
     return resultErrorCreate("publishAssetHandle", "Verified gdrive_beta backup receipt is required")
 
   const workflowJobs = input.db.select().from(jobTable).where(eq(jobTable.workflowId, job.workflowId)).all()
-  if (!workflowJobs.some((candidate) => candidate.kind === "backup_original" && candidate.id === backup.jobId))
-    return resultErrorCreate("publishAssetHandle", "Backup receipt does not belong to this workflow")
   const definitions = input.db
     .select()
     .from(outputDefinitionTable)
