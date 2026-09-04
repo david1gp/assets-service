@@ -76,7 +76,6 @@
     "backend:deploy": "bash ./ops/deploy-contentoren.sh backend:deploy",
     "deploy": "prodctl deploy",
     "production:logs": "prodctl logs",
-    "deploy:docker": "bash ./ops/deploy.sh",
     "ops:validate": "bun test test/operationsArtifacts.test.ts",
     "format": "biome format --write src test ops docs package.json tsconfig.json tsconfig.lib.json biome.json bunfig.toml cliff.toml README.md",
     "format:check": "biome format src test ops docs package.json tsconfig.json tsconfig.lib.json biome.json bunfig.toml cliff.toml README.md",
