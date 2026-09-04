@@ -22,6 +22,7 @@ import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
 import { workflowKindSchema } from "../workflow/workflowKindSchema.js"
 import { workflowSchema } from "../workflow/workflowSchema.js"
 import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
+import { authSessionResponseSchema } from "./authSessionResponseSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
 import { assetListResponseSchema } from "./assetListResponseSchema.js"
@@ -130,7 +131,6 @@ const auditEventListInputSchema = v.strictObject({
 const environmentsResponseSchema = v.strictObject({ environments: v.array(environmentSchema) })
 const healthResponseSchema = v.strictObject({ status: v.pipe(v.string(), v.minLength(1)) })
 const authLoginResponseSchema = v.strictObject({ authorizationUrl: v.pipe(v.string(), v.url()) })
-const authSessionResponseSchema = v.strictObject({ authenticated: v.boolean(), principal: v.nullable(v.unknown()) })
 const outputMutationResponseSchema = v.strictObject({
   outputs: v.array(outputDefinitionSchema),
   workflowId: v.optional(idSchema),

@@ -117,6 +117,7 @@ export const humanLoginCallback = async (
     jwksUri: discovery.data.jwks_uri,
     jwksClient: options.jwksClient,
     organizationId: options.config.organizationId,
+    customerOrganizationId: options.config.customerOrganizationId,
     allowedOrganizationIds: [options.config.organizationId, options.config.customerOrganizationId],
     defaultProjectId: options.config.projectId,
     method: "human_session",
@@ -165,6 +166,7 @@ export const humanLoginCallback = async (
     principal: {
       ...principal.data,
       ...(displayName === undefined ? {} : { displayName }),
+      mode: isContentorenOrganization ? "admin" : "contributor",
       grants,
       organizationAdmin: isOrganizationAdmin,
       expiresAt,

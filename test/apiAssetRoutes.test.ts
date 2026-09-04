@@ -280,6 +280,7 @@ const sessionCookieRead = async (
     principal: {
       subjectId,
       organizationId,
+      mode: organizationId === "org-1" ? "admin" : "contributor",
       organizationAdmin,
       method: "human_session",
       grants: organizationAdmin ? [] : [{ projectId: "zitadel-1", roles: [role] }],

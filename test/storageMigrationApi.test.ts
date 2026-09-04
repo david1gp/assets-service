@@ -210,6 +210,7 @@ const sessionCreate = async (options: ApiAppOptions, role: "contributor" | "admi
     principal: {
       subjectId: "actor-1",
       organizationId: "org-1",
+      mode: "admin",
       organizationAdmin: false,
       method: "human_session",
       grants: [{ projectId: "zitadel-1", roles: [role] }],

@@ -68,6 +68,7 @@ const sessionSet = (displayName?: string) => {
       subjectId: "subject-1",
       ...(displayName === undefined ? {} : { displayName }),
       organizationId: "organization-1",
+      mode: "contributor",
       organizationAdmin: false,
       method: "human_session",
       grants: [{ projectId: "project-1", roles: ["admin"] }],

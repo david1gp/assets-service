@@ -29,6 +29,36 @@ test("assets API client sends authenticated JSON requests and validates response
   expect(requests[1]?.headers.get("authorization")).toBeNull()
 })
 
+test("assets API client validates the server-derived session mode", async () => {
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    sessionCookie: "human-session-cookie",
+    fetcher: async () =>
+      envelopeResponseCreate({
+        authenticated: true,
+        principal: {
+          subjectId: "human-1",
+          organizationId: "org-customers",
+          mode: "contributor",
+          organizationAdmin: false,
+          method: "human_session",
+          grants: [{ projectId: "project-1", roles: ["contributor"] }],
+          issuedAt: 1,
+          expiresAt: 2,
+        },
+      }),
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const session = await clientResult.data.authSessionRead()
+  expect(session).toMatchObject({
+    success: true,
+    data: { authenticated: true, principal: { organizationId: "org-customers", mode: "contributor" } },
+  })
+})
+
 test("assets API client registers a project with an authenticated JSON request", async () => {
   let request: Request | undefined
   const clientResult = assetsApiClientCreate({

@@ -185,6 +185,7 @@ const sessionCreate = async (
     principal: {
       subjectId: "human-1",
       organizationId,
+      mode: organizationId === authenticationConfig.organizationId ? "admin" : "contributor",
       organizationAdmin,
       method,
       grants: organizationAdmin ? [] : [{ projectId: grantProjectId, roles: [role] }],
@@ -808,6 +809,7 @@ describe("HTTP API", () => {
         principal: {
           subjectId: `human-isolation-${index}`,
           organizationId: value.organizationId,
+          mode: value.organizationId === authenticationConfig.organizationId ? "admin" : "contributor",
           organizationAdmin: false,
           method: "human_session",
           grants: [{ projectId: value.projectId, roles: ["admin"] }],
@@ -860,7 +862,10 @@ describe("HTTP API", () => {
     expect(invalidLogin.status).toBe(400)
     expect(await invalidLogin.json()).toMatchObject({ ok: false, error: { code: "validation_failed" } })
     expect(session.status).toBe(200)
-    expect(await session.json()).toMatchObject({ ok: true, data: { authenticated: true } })
+    expect(await session.json()).toMatchObject({
+      ok: true,
+      data: { authenticated: true, principal: { mode: "admin" } },
+    })
     expect(logout.status).toBe(200)
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0")
   })

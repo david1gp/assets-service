@@ -1,5 +1,6 @@
 import * as v from "valibot"
 
+import { authenticationModeSchema } from "./authenticationModeSchema.js"
 import { authenticationMethodSchema } from "./authenticationMethodSchema.js"
 import { projectGrantSchema } from "./projectGrantSchema.js"
 
@@ -7,6 +8,7 @@ export const authenticatedPrincipalSchema = v.strictObject({
   subjectId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
   displayName: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(256))),
   organizationId: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+  mode: authenticationModeSchema,
   organizationAdmin: v.optional(v.boolean(), false),
   projectProvisioner: v.optional(v.boolean()),
   method: authenticationMethodSchema,

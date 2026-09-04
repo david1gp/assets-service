@@ -15,6 +15,7 @@ type JwtPrincipalValidateOptions = {
   discoveryRead?: () => Promise<Result<{ issuer: string; jwks_uri: string }>>
   jwksClient: ZitadelJwksClient
   organizationId: string
+  customerOrganizationId?: string
   defaultProjectId?: string
   requiredClientId?: string
   requiredProjectId?: string
@@ -211,6 +212,13 @@ export const jwtPrincipalValidate = async (
       })
   }
   const organizationId = claimedOrganizationId ?? options.organizationId
+  const mode =
+    organizationId === options.organizationId
+      ? "admin"
+      : organizationId === options.customerOrganizationId
+        ? "contributor"
+        : null
+  if (mode === null) return resultErrorCreate(op, "The JWT organization was invalid")
   const grants = [...projectGrantsRead(claims, organizationId, options.defaultProjectId)].map(([projectId, roles]) => ({
     projectId,
     roles: [...roles].sort(),
@@ -226,6 +234,7 @@ export const jwtPrincipalValidate = async (
   const validated = v.safeParse(authenticatedPrincipalSchema, {
     subjectId,
     organizationId,
+    mode,
     organizationAdmin: false,
     method: options.method,
     grants,

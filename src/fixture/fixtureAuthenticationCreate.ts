@@ -49,6 +49,7 @@ export const fixtureAuthenticationCreate = (options: {
       principal: {
         subjectId: options.subjectId,
         organizationId: config.organizationId,
+        mode: "admin",
         organizationAdmin: false,
         method: "human_session",
         grants: [{ projectId: options.projectId, roles: ["contributor", "admin"] }],

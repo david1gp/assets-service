@@ -98,7 +98,12 @@ describe("Zitadel authentication contracts", () => {
     )
     expect(valid).toMatchObject({
       success: true,
-      data: { method: "service_account", organizationAdmin: false, grants: [{ projectId: "zitadel-project-1" }] },
+      data: {
+        method: "service_account",
+        mode: "admin",
+        organizationAdmin: false,
+        grants: [{ projectId: "zitadel-project-1" }],
+      },
     })
     if (valid.success) expect(valid.data).not.toHaveProperty("displayName")
 
@@ -212,6 +217,7 @@ describe("Zitadel authentication contracts", () => {
       data: {
         method: "service_account",
         subjectId: "machine-user-1",
+        mode: "admin",
         organizationAdmin: false,
         projectProvisioner: false,
         grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
@@ -265,6 +271,7 @@ describe("Zitadel authentication contracts", () => {
         method: "service_account",
         subjectId: provisionerSubjectId,
         organizationId: "org-1",
+        mode: "admin",
         organizationAdmin: false,
         projectProvisioner: true,
         grants: [],
@@ -316,6 +323,7 @@ describe("Zitadel authentication contracts", () => {
       data: {
         method: "service_account",
         subjectId: "other-machine-user",
+        mode: "admin",
         organizationAdmin: false,
         projectProvisioner: false,
         grants: [{ projectId: "zitadel-project-1", roles: ["admin"] }],
@@ -868,7 +876,10 @@ describe("Zitadel authentication contracts", () => {
     const claimedOwner = await callbackRun({ assets_project_grants: {}, "urn:zitadel:iam:org:id": "org-1" }, [
       "ORG_OWNER",
     ])
-    expect(claimedOwner.result).toMatchObject({ success: true, data: { principal: { organizationAdmin: true } } })
+    expect(claimedOwner.result).toMatchObject({
+      success: true,
+      data: { principal: { mode: "admin", organizationAdmin: true } },
+    })
     expect(claimedOwner.membershipCalls).toBe(1)
 
     const ordinaryContentorenMember = await callbackRun(
@@ -877,7 +888,9 @@ describe("Zitadel authentication contracts", () => {
     )
     expect(ordinaryContentorenMember.result).toMatchObject({
       success: true,
-      data: { principal: { organizationId: config.organizationId, organizationAdmin: true, grants: [] } },
+      data: {
+        principal: { organizationId: config.organizationId, mode: "admin", organizationAdmin: true, grants: [] },
+      },
     })
     expect(ordinaryContentorenMember.membershipCalls).toBe(1)
 
@@ -985,6 +998,7 @@ describe("Zitadel authentication contracts", () => {
       data: {
         principal: {
           organizationId: config.customerOrganizationId,
+          mode: "contributor",
           organizationAdmin: false,
           grants: [{ projectId: "non-default-bound-project", roles: ["contributor"] }],
         },
@@ -1007,7 +1021,7 @@ describe("Zitadel authentication contracts", () => {
     )
     expect(customerMixedRoles.result).toMatchObject({
       success: true,
-      data: { principal: { organizationAdmin: false, grants: [{ roles: ["contributor"] }] } },
+      data: { principal: { mode: "contributor", organizationAdmin: false, grants: [{ roles: ["contributor"] }] } },
     })
 
     const customerMembershipFailure = await callbackRun(
@@ -1076,6 +1090,7 @@ describe("Zitadel authentication contracts", () => {
       success: true,
       data: {
         organizationId: "org-1",
+        mode: "admin",
         organizationAdmin: false,
         grants: [{ projectId: "zitadel-project-1", roles: ["contributor"] }],
       },
@@ -1241,6 +1256,7 @@ describe("Zitadel authentication contracts", () => {
           subjectId: "human-1",
           displayName: "Ada Lovelace",
           organizationId: "org-1",
+          mode: "admin",
           organizationAdmin: false,
           method: "human_session" as const,
           grants: [{ projectId: "project-1", roles: ["contributor"] }],
@@ -1361,6 +1377,7 @@ describe("Zitadel authentication contracts", () => {
       success: true,
       data: {
         organizationId: "org-1",
+        mode: "admin",
         organizationAdmin: false,
         grants: [
           { projectId: "zitadel-project-1", roles: ["contributor"] },
