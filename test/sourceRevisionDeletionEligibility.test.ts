@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
-
+import { sourceRevisionDeletionEligibilityRepositoryCreate } from "../src/deletion/sourceRevisionDeletionEligibilityRepositoryCreate.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
@@ -19,7 +19,6 @@ import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersio
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
-import { sourceRevisionDeletionEligibilityRepositoryCreate } from "../src/deletion/sourceRevisionDeletionEligibilityRepositoryCreate.js"
 
 const now = "2026-08-18T00:00:00.000Z"
 const sourceRevisionId = "source-eligibility"
@@ -263,6 +262,55 @@ test("source revision deletion eligibility proves every current safety condition
       .update(backupReceiptTable)
       .set({ sha256: receipt.sha256 })
       .where(eq(backupReceiptTable.id, receipt.id))
+      .run()
+
+    // A verified receipt produced by an earlier workflow still satisfies the check, because
+    // backup_original is idempotent and does not re-create a receipt on reprocess.
+    expect(
+      databaseRecordInsert(opened.data.db, workflowTable, {
+        id: "workflow-eligibility-earlier",
+        projectId: "project-eligibility",
+        assetId: "asset-eligibility",
+        sourceRevisionId,
+        kind: "asset_processing",
+        status: "succeeded",
+        createdAt: now,
+        updatedAt: now,
+      }).success,
+    ).toBe(true)
+    expect(
+      databaseRecordInsert(opened.data.db, jobTable, {
+        id: "job-eligibility-earlier-backup",
+        workflowId: "workflow-eligibility-earlier",
+        kind: "backup_original",
+        status: "succeeded",
+        availableAt: now,
+        priority: 0,
+        attempts: 1,
+        retryLimit: 1,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+        idempotencyKey: "job-eligibility-earlier-backup",
+        payloadSchemaVersion: 1,
+        payload: { assetId: "asset-eligibility", sourceRevisionId, environmentId: "environment-eligibility" },
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      }).success,
+    ).toBe(true)
+    opened.data.db
+      .update(backupReceiptTable)
+      .set({ jobId: "job-eligibility-earlier-backup" })
+      .where(eq(backupReceiptTable.id, "receipt-eligibility"))
+      .run()
+    expect(
+      repository.sourceRevisionDeletionEligibilityRead("project-eligibility", "development", sourceRevisionId),
+    ).toMatchObject({ success: true, data: { eligible: true, checks: { successfulWorkflow: true } } })
+    opened.data.db
+      .update(backupReceiptTable)
+      .set({ jobId: "job-eligibility-backup" })
+      .where(eq(backupReceiptTable.id, "receipt-eligibility"))
       .run()
 
     opened.data.db
