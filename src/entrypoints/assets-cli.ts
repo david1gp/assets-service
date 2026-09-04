@@ -664,7 +664,6 @@ const assetReferenceUniqueRead = async (
   const assets = await client.assetsReadAll(projectId, { include: "outputs,metadata,history" })
   if (!assets.success) return assets
   const matches = assets.data.filter((asset) => {
-    if (asset.projectId !== projectId) return false
     if (asset.id === reference || asset.sourcePath === reference) return true
     return (asset.outputHistory ?? []).some(
       (output) => assetIdentifierCreate(asset.folders, asset.basename, output.definition.key) === reference,
@@ -1494,7 +1493,7 @@ const uploadAllCommandRun = async (
         )
         continue
       }
-      if (reprocessed.data.asset.id !== remoteAssetId || reprocessed.data.asset.projectId !== projectId) {
+      if (reprocessed.data.asset.id !== remoteAssetId) {
         failed = true
         entries.push(
           uploadAllOutputEntryCreate(entry, "failed", {
@@ -1934,7 +1933,7 @@ const assetReprocessCommandRun = async (
     environmentId: targetEnvironment.data,
   })
   if (!reprocessed.success) return { result: reprocessed }
-  if (reprocessed.data.asset.id !== assetId.data || reprocessed.data.asset.projectId !== projectId)
+  if (reprocessed.data.asset.id !== assetId.data)
     return { result: resultFailure("assetsCliReprocess", "The reprocessed asset did not match the request") }
   if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait")) return { result: reprocessed }
 
