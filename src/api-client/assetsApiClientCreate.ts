@@ -61,6 +61,8 @@ import { uploadCompletionRequestSchema } from "./uploadCompletionRequestSchema.j
 import { uploadCompletionResponseSchema } from "./uploadCompletionResponseSchema.js"
 import { uploadIntentRequestSchema } from "./uploadIntentRequestSchema.js"
 import { uploadIntentResponseSchema } from "./uploadIntentResponseSchema.js"
+import { uploadListQuerySchema } from "./uploadListQuerySchema.js"
+import { uploadListResponseSchema } from "./uploadListResponseSchema.js"
 import { workflowActionRequestSchema } from "./workflowActionRequestSchema.js"
 import { workflowListResponseSchema } from "./workflowListResponseSchema.js"
 import { workflowResponseSchema } from "./workflowResponseSchema.js"
@@ -507,6 +509,35 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       path: `/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(uploadId)}`,
       responseSchema: uploadSchema,
       operation: "assetsApiClientUploadRead",
+    })
+
+  const uploadListRead = async (
+    projectId: string,
+    query: { cursor?: number; limit?: number; status?: string; assetId?: string } = {},
+  ) => {
+    const valid = schemaParse(
+      uploadListQuerySchema,
+      query,
+      "assetsApiClientUploadListRead",
+      "The upload query was invalid",
+    )
+    if (!valid.success) return valid
+    return requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/uploads`,
+      query: valid.data as Query,
+      responseSchema: uploadListResponseSchema,
+      operation: "assetsApiClientUploadListRead",
+    })
+  }
+
+  const uploadsReadAll = (
+    projectId: string,
+    query: { status?: string; assetId?: string } = {},
+  ) =>
+    pageReadAll(async (pageQuery) => {
+      const page = await uploadListRead(projectId, { ...query, ...pageQuery })
+      if (!page.success) return page
+      return { success: true, data: { items: page.data.uploads, nextCursor: page.data.page.nextCursor } }
     })
 
   const assetListRead = async (
@@ -966,6 +997,8 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     uploadObjectPut,
     uploadCompletionComplete,
     uploadRead,
+    uploadListRead,
+    uploadsReadAll,
     assetListRead,
     assetsReadAll,
     assetRead,

@@ -140,7 +140,7 @@ export const sourceRevisionDeletionEligibilityRepositoryCreate = (
                 job.status === "succeeded" &&
                 jobPayloadMatches(job, source.asset.id, source.source.id, targetEnvironment.id),
             )
-            return backupJob !== undefined && publishJob !== undefined && verifiedBackup?.jobId === backupJob.id
+            return backupJob !== undefined && publishJob !== undefined && verifiedBackup !== undefined
           })
 
         const definitions = transaction
