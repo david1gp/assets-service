@@ -1,4 +1,5 @@
 import { and, asc, eq } from "drizzle-orm"
+import * as v from "valibot"
 
 import type { AssetDatabase } from "../infrastructure/db/assetDatabase.js"
 import { assetTable } from "../infrastructure/db/schema/assetTable.js"
@@ -7,6 +8,7 @@ import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinit
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
+import { idSchema } from "../schemas/idSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { workflowJobCreate } from "./workflowJobCreate.js"
 import { workflowJobIdCreate } from "./workflowJobIdCreate.js"
@@ -19,6 +21,7 @@ export const assetProcessingWorkflowEnqueue = (
     projectId: string
     assetId: string
     workflowId: string
+    environmentId?: string
     now?: string
     retryLimit?: number
     forceNewVersion?: boolean
@@ -27,6 +30,7 @@ export const assetProcessingWorkflowEnqueue = (
   const op = "assetProcessingWorkflowEnqueue"
   const now = input.now ?? new Date().toISOString()
   const retryLimit = input.retryLimit ?? 3
+  const forceNewVersion = input.forceNewVersion === true || input.environmentId !== undefined
   if (!Number.isInteger(retryLimit) || retryLimit < 0) return resultErrorCreate(op, "Retry limit is invalid")
 
   const project = db.select().from(projectTable).where(eq(projectTable.id, input.projectId)).get()
@@ -44,13 +48,28 @@ export const assetProcessingWorkflowEnqueue = (
     .get()
   if (source === undefined || source.assetId !== asset.id)
     return resultErrorCreate(op, "The asset source revision was not found")
-  const environment = db
-    .select()
-    .from(environmentTable)
-    .where(eq(environmentTable.projectId, input.projectId))
-    .all()
-    .find((candidate) => candidate.name === project.defaultEnvironment)
-  if (environment === undefined) return resultErrorCreate(op, "The project environment was not found")
+  let environment: typeof environmentTable.$inferSelect | undefined
+  if (input.environmentId === undefined) {
+    environment = db
+      .select()
+      .from(environmentTable)
+      .where(eq(environmentTable.projectId, input.projectId))
+      .all()
+      .find((candidate) => candidate.name === project.defaultEnvironment)
+    if (environment === undefined) return resultErrorCreate(op, "The project environment was not found")
+  } else {
+    const requestedEnvironmentId = v.safeParse(idSchema, input.environmentId)
+    if (!requestedEnvironmentId.success) return resultErrorCreate(op, "The requested environment identifier is invalid")
+    const requestedEnvironment = db
+      .select()
+      .from(environmentTable)
+      .where(eq(environmentTable.id, requestedEnvironmentId.output))
+      .get()
+    if (requestedEnvironment === undefined) return resultErrorCreate(op, "The requested environment was not found")
+    if (requestedEnvironment.projectId !== input.projectId)
+      return resultErrorCreate(op, "The requested environment is not bound to the project")
+    environment = requestedEnvironment
+  }
 
   const workflow: Workflow = {
     id: input.workflowId,
@@ -66,7 +85,7 @@ export const assetProcessingWorkflowEnqueue = (
     assetId: input.assetId,
     sourceRevisionId: source.id,
     environmentId: environment.id,
-    ...(input.forceNewVersion === true ? { values: { forceNewVersion: true } } : {}),
+    ...(forceNewVersion ? { values: { forceNewVersion: true } } : {}),
   }
   const definitions = db
     .select()

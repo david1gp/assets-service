@@ -13,6 +13,7 @@ import { catalogGenerationTable } from "../infrastructure/db/schema/catalogGener
 import { catalogOutputTable } from "../infrastructure/db/schema/catalogOutputTable.js"
 import { catalogTable } from "../infrastructure/db/schema/catalogTable.js"
 import { deletionStateTable } from "../infrastructure/db/schema/deletionStateTable.js"
+import { environmentTable } from "../infrastructure/db/schema/environmentTable.js"
 import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
 import { outputVersionTable } from "../infrastructure/db/schema/outputVersionTable.js"
@@ -41,6 +42,7 @@ import {
   type AssetMoveInput,
   type AssetOutputHistory,
   type AssetOutputSetInput,
+  type AssetReprocessInput,
 } from "./assetApiRepository.js"
 import { assetBasenameCreate } from "./assetBasenameCreate.js"
 import { assetFilenameSchema } from "./assetFilenameSchema.js"
@@ -470,6 +472,37 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     return assetMetadataChange(projectId, assetId, null)
   }
 
+  const assetReprocess = (
+    projectId: string,
+    assetId: string,
+    input: AssetReprocessInput,
+  ): Result<AssetApiMutation | null> => {
+    const op = "assetApiRepositoryReprocess"
+    try {
+      const environmentId = v.safeParse(idSchema, input.environmentId)
+      if (!environmentId.success) return resultErrorCreate(op, "The reprocess environment identifier was invalid")
+      const environment = db.select().from(environmentTable).where(eq(environmentTable.id, environmentId.output)).get()
+      if (environment === undefined) return resultErrorCreate(op, "The reprocess environment was not found")
+      if (environment.projectId !== projectId)
+        return resultErrorCreate(op, "The reprocess environment must belong to the asset project")
+      const detail = assetRead(projectId, assetId)
+      if (!detail.success) return detail
+      if (detail.data === null) return { success: true, data: null }
+      const workflowId = assetReprocessWorkflowIdCreate(
+        projectId,
+        assetId,
+        environment.id,
+        detail.data.currentSourceRevisionId,
+      )
+      return assetMutationRead(projectId, assetId, workflowId, {
+        environmentId: environment.id,
+        forceNewVersion: true,
+      })
+    } catch (error) {
+      return resultErrorCreate(op, "The asset could not be reprocessed", error)
+    }
+  }
+
   const assetMove = (
     projectId: string,
     assetId: string,
@@ -562,6 +595,7 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     assetOutputsSet,
     assetMetadataSet,
     assetMetadataUnset,
+    assetReprocess,
     assetMove,
     ...structureFolderRepository,
   }
@@ -657,6 +691,7 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     projectIdentifier: string,
     identifier: string,
     workflowId?: string,
+    enqueueOptions?: { environmentId?: string; forceNewVersion?: boolean },
   ): Result<AssetApiMutation | null> {
     const detail = assetRead(projectIdentifier, identifier)
     if (!detail.success) return detail
@@ -666,6 +701,7 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
       projectId: projectIdentifier,
       assetId: identifier,
       workflowId,
+      ...enqueueOptions,
     })
     if (!enqueued.success) return enqueued
     return { success: true, data: { asset: detail.data, workflowId: enqueued.data.workflowId } }
@@ -919,4 +955,13 @@ function definitionToInput(
 
 function outputWorkflowIdCreate(assetId: string, operation: string, input?: unknown): string {
   return `workflow-output-${canonicalJsonDigest({ assetId, operation, input })}`
+}
+
+function assetReprocessWorkflowIdCreate(
+  projectId: string,
+  assetId: string,
+  environmentId: string,
+  sourceRevisionId: string,
+): string {
+  return `workflow-reprocess-${canonicalJsonDigest({ projectId, assetId, environmentId, sourceRevisionId })}`
 }

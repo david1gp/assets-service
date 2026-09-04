@@ -320,6 +320,85 @@ describe("asset API persistence", () => {
     }
   })
 
+  test("reprocesses an existing asset into its requested environment without changing its source revision", () => {
+    const connection = databaseCreate()
+    try {
+      expect(
+        databaseRecordInsert(connection.db, environmentTable, {
+          id: "environment-production",
+          projectId: "project-1",
+          name: "production",
+          r2Bucket: "assets-production",
+          r2Prefix: "project-1",
+          publicBaseUrl: "https://assets-production.example.test",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, projectTable, {
+          id: "project-2",
+          organizationId: "org-1",
+          name: "Other",
+          slug: "other",
+          defaultEnvironment: "development",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+      expect(
+        databaseRecordInsert(connection.db, environmentTable, {
+          id: "environment-other",
+          projectId: "project-2",
+          name: "production",
+          r2Bucket: "assets-other",
+          r2Prefix: "project-2",
+          publicBaseUrl: "https://other.example.test",
+          createdAt: now,
+          updatedAt: now,
+        }).success,
+      ).toBe(true)
+
+      const repository = assetApiRepositoryCreate(connection.db)
+      const reprocessed = repository.assetReprocess("project-1", "asset-1", {
+        environmentId: "environment-production",
+      })
+      expect(reprocessed).toMatchObject({
+        success: true,
+        data: {
+          asset: { currentSourceRevisionId: "source-1" },
+          workflowId: expect.any(String),
+        },
+      })
+      expect(
+        connection.db
+          .select()
+          .from(jobTable)
+          .all()
+          .every((job) => (job.payload as { environmentId?: string }).environmentId === "environment-production"),
+      ).toBe(true)
+      expect(connection.db.select().from(assetTable).get()?.currentSourceRevisionId).toBe("source-1")
+
+      expect(repository.assetReprocess("project-1", "asset-1", { environmentId: "missing-environment" })).toMatchObject(
+        {
+          success: false,
+          errorMessage: "The reprocess environment was not found",
+        },
+      )
+      expect(repository.assetReprocess("project-1", "asset-1", { environmentId: "" })).toMatchObject({
+        success: false,
+        errorMessage: "The reprocess environment identifier was invalid",
+      })
+      expect(repository.assetReprocess("project-1", "asset-1", { environmentId: "environment-other" })).toMatchObject({
+        success: false,
+        errorMessage: "The reprocess environment must belong to the asset project",
+      })
+      expect(connection.db.select().from(workflowTable).all()).toHaveLength(1)
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
   test("enqueues a project-scoped idempotent deletion request without executing it", () => {
     const connection = databaseCreate()
     try {

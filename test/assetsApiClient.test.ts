@@ -353,6 +353,60 @@ test("assets API client sends an explicit upload target", async () => {
   expect(await request?.json()).toMatchObject({ assetId: "asset-1" })
 })
 
+test("assets API client reprocesses an asset into an explicit environment", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken: "admin-token",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({
+        asset: {
+          id: "asset-1",
+          projectId: "project-1",
+          class: "image",
+          folders: ["home"],
+          filename: "hero.jpg",
+          basename: "hero",
+          currentSourceRevisionId: "source-1",
+          sourcePath: "home/hero.jpg",
+          sourceHistory: [
+            {
+              id: "source-1",
+              assetId: "asset-1",
+              revision: 1,
+              class: "image",
+              originalFilename: "hero.jpg",
+              mediaType: "image/jpeg",
+              byteSize: 10,
+              sha256: "a".repeat(64),
+              objectKey: "sources/asset-1/hero.jpg",
+              createdAt: "2026-08-17T00:00:00.000Z",
+            },
+          ],
+          outputHistory: [],
+          metadata: null,
+          createdAt: "2026-08-17T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        },
+        workflowId: "workflow-reprocess-1",
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const reprocessed = await clientResult.data.assetReprocess("project-1", "asset-1", {
+    environmentId: "environment-production",
+  })
+
+  expect(reprocessed).toMatchObject({ success: true, data: { workflowId: "workflow-reprocess-1" } })
+  expect(request?.method).toBe("POST")
+  expect(request?.url).toBe("https://assets.example.test/api/v1/projects/project-1/assets/asset-1/reprocess")
+  expect(request?.headers.get("authorization")).toBe("Bearer admin-token")
+  expect(await request?.clone().json()).toEqual({ environmentId: "environment-production" })
+})
+
 test("assets API client filters and validates storage migration workflows without asset ids", async () => {
   let request: Request | undefined
   const clientResult = assetsApiClientCreate({

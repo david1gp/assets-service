@@ -38,6 +38,10 @@ export type AssetOutputSetInput = {
   outputs: readonly OutputDefinitionInput[]
 }
 
+export type AssetReprocessInput = {
+  environmentId: string
+}
+
 export type AssetApiMutation = {
   asset: AssetDetail
   workflowId?: string
@@ -68,5 +72,6 @@ export type AssetApiRepository = {
   assetOutputsSet: (projectId: string, assetId: string, input: AssetOutputSetInput) => Result<AssetApiMutation | null>
   assetMetadataSet: (projectId: string, assetId: string, alt: string) => Result<AssetApiMutation | null>
   assetMetadataUnset: (projectId: string, assetId: string, field: "alt") => Result<AssetApiMutation | null>
+  assetReprocess: (projectId: string, assetId: string, input: AssetReprocessInput) => Result<AssetApiMutation | null>
   assetMove: (projectId: string, assetId: string, input: AssetMoveInput) => Result<Asset | null>
 } & Partial<StructureFolderRepository>

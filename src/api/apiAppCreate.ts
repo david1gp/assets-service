@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import * as v from "valibot"
+import { assetReprocessRequestSchema } from "../api-client/assetReprocessRequestSchema.js"
 import { assetListQuerySchema } from "../api-client/assetListQuerySchema.js"
 import { deleteAssetRequestSchema } from "../api-client/deleteAssetRequestSchema.js"
 import { metadataSetRequestSchema } from "../api-client/metadataSetRequestSchema.js"
@@ -226,6 +227,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/[^/]+$/, methods: ["DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/unset$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/move$/, methods: ["POST"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/reprocess$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/structure-membership$/, methods: ["PUT"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/structure$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/structure\/folders$/, methods: ["POST"] },
@@ -1146,6 +1148,26 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       if (!detail.success) return failureFromRepositoryCreate(context)
       if (detail.data === null) return assetNotFoundResponseCreate(context)
       return successResponseCreate(context, detail.data)
+    },
+  )
+
+  app.post(
+    `${apiVersionPath}/projects/:projectId/assets/:assetId/reprocess`,
+    authenticationMiddleware,
+    adminMiddleware,
+    async (context) => {
+      if (options.assetApiRepository === undefined) return dependencyFailureCreate(context)
+      const assetId = v.safeParse(idSchema, context.req.param("assetId"))
+      if (!assetId.success) return validationFailureCreate(context, "The asset identifier was invalid")
+      const body = await requestBodyRead(context.req.raw)
+      const parsed = v.safeParse(assetReprocessRequestSchema, body)
+      if (!parsed.success) return validationFailureCreate(context, "The reprocess request was invalid")
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const mutation = options.assetApiRepository.assetReprocess(project.id, assetId.output, parsed.output)
+      if (!mutation.success) return domainFailureResponseCreate(context, mutation.errorMessage)
+      if (mutation.data === null) return assetNotFoundResponseCreate(context)
+      return successResponseCreate(context, mutation.data, 202)
     },
   )
 

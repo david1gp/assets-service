@@ -57,6 +57,7 @@ import { storageObjectLocationCreate } from "../storage/storageObjectLocationCre
 import type { StorageObject } from "../storage/storageObjectSchema.js"
 import { storageObjectVerify } from "../storage/storageObjectVerify.js"
 import { storagePutImmutable } from "../storage/storagePutImmutable.js"
+import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import type { JobHandler } from "./jobHandler.js"
 import { jobHandlerRegistryCreate } from "./jobHandlerRegistryCreate.js"
 import { type JobPayload, jobPayloadSchema } from "./jobPayloadSchema.js"
@@ -88,6 +89,7 @@ type AssetContext = {
   source: typeof sourceRevisionTable.$inferSelect
   environment: typeof environmentTable.$inferSelect
   binding: ReturnType<typeof storageBindingResolve> extends Result<infer T> ? T : never
+  sourceBinding: ReturnType<typeof storageBindingResolve> extends Result<infer T> ? T : never
 }
 
 type PublishedOutput = {
@@ -143,7 +145,7 @@ async function verifyOriginalHandle(
 ): Promise<Result<null>> {
   const context = await assetContextRead(input.db, job)
   if (!context.success) return context
-  const sourceLocation = sourceLocationCreate(context.data.binding, context.data.source.objectKey)
+  const sourceLocation = sourceLocationCreate(context.data.sourceBinding, context.data.source.objectKey)
   if (!sourceLocation.success) return sourceLocation
   const verified = await storageObjectVerify(input.storage, {
     location: sourceLocation.data,
@@ -185,7 +187,7 @@ async function backupOriginalHandle(
     .where(eq(organizationTable.id, project.organizationId))
     .get()
   if (organization === undefined) return resultErrorCreate("backupOriginalHandle", "Organization not found")
-  const sourceLocation = sourceLocationCreate(context.data.binding, context.data.source.objectKey)
+  const sourceLocation = sourceLocationCreate(context.data.sourceBinding, context.data.source.objectKey)
   if (!sourceLocation.success) return sourceLocation
   const sourceBytes = await input.storage.readObject(sourceLocation.data)
   if (!sourceBytes.success) return sourceBytes
@@ -554,7 +556,7 @@ async function processOutputHandle(
   if (definition.kind !== context.data.asset.class)
     return resultErrorCreate("processOutputHandle", "Output class does not match the asset class")
 
-  const sourceLocation = sourceLocationCreate(context.data.binding, context.data.source.objectKey)
+  const sourceLocation = sourceLocationCreate(context.data.sourceBinding, context.data.source.objectKey)
   if (!sourceLocation.success) return sourceLocation
   const sourceBytes = await input.storage.readObject(sourceLocation.data)
   if (!sourceBytes.success) return sourceBytes
@@ -867,9 +869,52 @@ async function assetContextRead(db: AssetDatabase, job: Job): Promise<Result<Ass
     .where(eq(environmentTable.id, payload.data.environmentId))
     .get()
   if (environment === undefined) return resultErrorCreate("assetContextRead", "Environment not found")
+  if (environment.projectId !== asset.projectId)
+    return resultErrorCreate("assetContextRead", "Environment is not bound to the asset project")
   const binding = storageBindingResolve(environment, asset.projectId)
   if (!binding.success) return binding
-  return { success: true, data: { asset, source, environment, binding: binding.data } }
+
+  const sourceBlob = db
+    .select({ environment: blobTable.environment })
+    .from(blobTable)
+    .where(
+      and(
+        eq(blobTable.projectId, asset.projectId),
+        eq(blobTable.assetId, asset.id),
+        eq(blobTable.sourceRevisionId, source.id),
+        eq(blobTable.storage, "private"),
+        eq(blobTable.kind, "source"),
+        eq(blobTable.objectKey, source.objectKey),
+      ),
+    )
+    .get()
+  let sourceEnvironment = environment
+  if (sourceBlob !== undefined) {
+    const sourceEnvironmentName = v.safeParse(environmentNameSchema, sourceBlob.environment)
+    if (!sourceEnvironmentName.success) return resultErrorCreate("assetContextRead", "Source environment is invalid")
+    const resolvedSourceEnvironment = db
+      .select()
+      .from(environmentTable)
+      .where(
+        and(eq(environmentTable.projectId, asset.projectId), eq(environmentTable.name, sourceEnvironmentName.output)),
+      )
+      .get()
+    if (resolvedSourceEnvironment === undefined)
+      return resultErrorCreate("assetContextRead", "Source environment not found")
+    sourceEnvironment = resolvedSourceEnvironment
+  }
+  const sourceBinding = storageBindingResolve(sourceEnvironment, asset.projectId)
+  if (!sourceBinding.success) return sourceBinding
+  return {
+    success: true,
+    data: {
+      asset,
+      source,
+      environment,
+      binding: binding.data,
+      sourceBinding: sourceBinding.data,
+    },
+  }
 }
 
 function jobPayloadRead(job: Job): Result<JobPayload> {

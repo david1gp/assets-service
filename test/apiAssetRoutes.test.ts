@@ -21,6 +21,7 @@ const now = 1_700_000_000
 let lastUploaderId: string | undefined
 let lastNotificationEligible: boolean | undefined
 let lastUploadAssetId: string | undefined
+let lastReprocessEnvironmentId: string | undefined
 const project = {
   id: "project-1",
   organizationId: "org-1",
@@ -165,6 +166,10 @@ const assetRepositoryCreate = (): AssetApiRepository => ({
   assetOutputsSet: () => ({ success: true, data: { asset: detail, workflowId: "workflow-output-1" } }),
   assetMetadataSet: () => ({ success: true, data: { asset: detail } }),
   assetMetadataUnset: () => ({ success: true, data: { asset: detail } }),
+  assetReprocess: (_projectId, _assetId, input) => {
+    lastReprocessEnvironmentId = input.environmentId
+    return { success: true, data: { asset: detail, workflowId: "workflow-reprocess-1" } }
+  },
   assetMove: () => ({ success: true, data: asset }),
 })
 
@@ -213,6 +218,7 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   lastUploaderId = undefined
   lastNotificationEligible = undefined
   lastUploadAssetId = undefined
+  lastReprocessEnvironmentId = undefined
   const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => sessionId })
   const stateStore = memoryPkceStateStoreCreate({ now: () => now * 1000 })
   const authenticationConfig = {
@@ -615,6 +621,36 @@ describe("asset API routes", () => {
       deletionId: "deletion-1",
       workflowId: "workflow-deletion-1",
       status: "requested",
+    })
+  })
+
+  test("allows only administrators to reprocess an asset into a selected environment", async () => {
+    const options = optionsCreate()
+    const app = apiAppCreate(options)
+    const uploader = await sessionCookieRead(options, "contributor")
+    const denied = await app.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/reprocess", uploader, {
+        method: "POST",
+        body: JSON.stringify({ environmentId: sourceEnvironment.id }),
+      }),
+    )
+
+    const adminOptions = optionsCreate()
+    const adminApp = apiAppCreate(adminOptions)
+    const admin = await sessionCookieRead(adminOptions, "admin")
+    const accepted = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/reprocess", admin, {
+        method: "POST",
+        body: JSON.stringify({ environmentId: sourceEnvironment.id }),
+      }),
+    )
+
+    expect(denied.status).toBe(403)
+    expect(accepted.status).toBe(202)
+    expect(lastReprocessEnvironmentId).toBe(sourceEnvironment.id)
+    expect(((await accepted.json()) as { data: unknown }).data).toMatchObject({
+      asset: { id: asset.id, currentSourceRevisionId: asset.currentSourceRevisionId },
+      workflowId: "workflow-reprocess-1",
     })
   })
 

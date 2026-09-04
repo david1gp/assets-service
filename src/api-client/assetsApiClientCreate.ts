@@ -1,4 +1,6 @@
 import * as v from "valibot"
+import { assetReprocessRequestSchema } from "./assetReprocessRequestSchema.js"
+import { assetReprocessResponseSchema } from "./assetReprocessResponseSchema.js"
 import type { DeletionState } from "../deletion/deletionStateSchema.js"
 import { outputDefinitionSchema } from "../output/outputDefinitionSchema.js"
 import { environmentSchema } from "../project/environmentSchema.js"
@@ -626,6 +628,16 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientAssetMove",
     })
 
+  const assetReprocess = (projectId: string, assetId: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/reprocess`,
+      method: "POST",
+      body: input,
+      bodySchema: assetReprocessRequestSchema,
+      responseSchema: assetReprocessResponseSchema,
+      operation: "assetsApiClientAssetReprocess",
+    })
+
   const structureRead = (projectId: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/structure`,
@@ -967,6 +979,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     assetMetadataSet,
     assetMetadataUnset,
     assetMove,
+    assetReprocess,
     structureRead,
     structureFolderCreate,
     assetStructureFolderMembershipSet,
