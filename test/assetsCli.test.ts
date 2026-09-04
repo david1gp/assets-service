@@ -5052,3 +5052,90 @@ Summary: new=0 changed=1 matching=0 needs-processing=0 remote-only=1 unsupported
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test("uploads list displays recent uploads with ISO 8601 dates and filters by days and limit", async () => {
+  const uploadsData = [
+    {
+      id: "upload-1",
+      projectId: "project-1",
+      environmentId: "env-1",
+      originalFilename: "logo.png",
+      folders: ["branding"],
+      integrationNote: "test upload",
+      byteSize: 1234,
+      status: "accepted" as const,
+      createdAt: "2026-09-04T10:00:00.000Z",
+      updatedAt: "2026-09-04T10:00:00.000Z",
+    },
+    {
+      id: "upload-2",
+      projectId: "project-1",
+      environmentId: "env-1",
+      originalFilename: "banner.jpg",
+      folders: [],
+      integrationNote: "test upload 2",
+      byteSize: 5678,
+      status: "verified" as const,
+      createdAt: "2026-09-02T12:00:00.000Z",
+      updatedAt: "2026-09-02T12:00:00.000Z",
+    },
+    {
+      id: "upload-old",
+      projectId: "project-1",
+      environmentId: "env-1",
+      originalFilename: "old.png",
+      folders: [],
+      integrationNote: "old",
+      byteSize: 999,
+      status: "accepted" as const,
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    },
+  ]
+
+  const outputJson: string[] = []
+  const exitCodeJson = await assetsCliMain(["uploads", "list", "--days", "5", "--limit", "2", "--json"], {
+    env: cliEnvironment,
+    fetcher: async (input) => {
+      const url = new URL(input)
+      if (url.pathname.endsWith("/uploads")) {
+        return envelopeResponseCreate({
+          uploads: uploadsData,
+          page: { limit: 100, nextCursor: null },
+        })
+      }
+      throw new Error(`Unexpected request ${input}`)
+    },
+    stdout: (text) => outputJson.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(exitCodeJson).toBe(0)
+  const parsedJson = JSON.parse(outputJson[0] ?? "")
+  expect(parsedJson.ok).toBe(true)
+  expect(parsedJson.data.uploads).toHaveLength(2)
+  expect(parsedJson.data.uploads[0].id).toBe("upload-1")
+  expect(parsedJson.data.uploads[0].createdAt).toBe("2026-09-04T10:00:00.000Z")
+  expect(parsedJson.data.uploads[1].id).toBe("upload-2")
+  expect(parsedJson.data.uploads[1].createdAt).toBe("2026-09-02T12:00:00.000Z")
+
+  const outputHuman: string[] = []
+  const exitCodeHuman = await assetsCliMain(["uploads", "list", "--limit", "1"], {
+    env: cliEnvironment,
+    fetcher: async (input) => {
+      const url = new URL(input)
+      if (url.pathname.endsWith("/uploads")) {
+        return envelopeResponseCreate({
+          uploads: uploadsData,
+          page: { limit: 100, nextCursor: null },
+        })
+      }
+      throw new Error(`Unexpected request ${input}`)
+    },
+    stdout: (text) => outputHuman.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(exitCodeHuman).toBe(0)
+  expect(outputHuman[0]).toBe("- upload-1 [accepted] branding/logo.png (1234 bytes, 2026-09-04T10:00:00.000Z)\n")
+})

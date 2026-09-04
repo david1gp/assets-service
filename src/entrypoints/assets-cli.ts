@@ -44,6 +44,8 @@ import { projectCreateEnvironmentFileRead } from "../config/projectCreateEnviron
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
+import { uploadStatusSchema, type UploadStatus } from "../upload/uploadStatusSchema.js"
+import { type Upload } from "../upload/uploadSchema.js"
 import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectCreate } from "../project/projectCreateSchema.js"
@@ -227,6 +229,97 @@ const commandHelp = {
     "delete <asset-key>",
     "lists [--check] [--dir <directory>]",
   ],
+  globalOptions: [
+    "--api-url",
+    "--organization",
+    "--project",
+    "--environment",
+    "--env-file",
+    "--config",
+    "--session",
+    "--json",
+    "--help",
+    "--version",
+  ],
+  subcommands: {
+    "auth login": ["--token-stdin", "--token"],
+    "projects create": [
+      "--organization",
+      "--name",
+      "--slug",
+      "--default-environment",
+      "--service-project-id",
+      "--zitadel-project-id",
+      "--development-r2-bucket",
+      "--development-r2-prefix",
+      "--development-public-base-url",
+      "--production-r2-bucket",
+      "--production-r2-prefix",
+      "--production-public-base-url",
+    ],
+    "config show": [],
+    doctor: ["--environment"],
+    diff: [
+      "--image-dir",
+      "--video-dir",
+      "--document-dir",
+      "--font-dir",
+      "--no-image-dir",
+      "--no-video-dir",
+      "--no-document-dir",
+      "--no-font-dir",
+    ],
+    "uploads list": ["--today", "--days", "--limit", "--status"],
+    "upload-all": ["--integration-note", "--wait", "--no-wait", "--poll-interval", "--delete", "--dry-run"],
+    upload: ["--path", "--integration-note", "--note", "--wait", "--no-wait", "--poll-interval"],
+    reprocess: ["--environment", "--wait", "--no-wait", "--poll-interval"],
+    list: ["--class", "--kind", "--include", "--search", "--folder"],
+    show: [],
+    "outputs list": [],
+    "outputs add": ["--kind", "--key", "--width", "--height", "--format", "--quality", "--show-ai-label"],
+    "outputs set": ["--kind", "--key", "--width", "--height", "--format", "--quality", "--show-ai-label", "--file"],
+    "outputs remove": [],
+    "metadata set": ["--alt"],
+    "metadata unset": ["--alt"],
+    "settings read": ["--project", "--environment"],
+    "settings update": ["--project", "--environment", "--r2-bucket", "--r2-prefix", "--public-base-url"],
+    "settings migrate": [
+      "--project",
+      "--environment",
+      "--r2-bucket",
+      "--r2-prefix",
+      "--public-base-url",
+      "--create-bucket",
+      "--custom-domain",
+      "--zone-id",
+      "--wrangler-profile",
+      "--apply",
+      "--wait",
+      "--no-wait",
+      "--poll-interval",
+    ],
+    "catalogs rebuild": ["--project", "--environment"],
+    move: ["--to"],
+    delete: ["--wait", "--no-wait", "--poll-interval"],
+    lists: [
+      "--check",
+      "--write",
+      "--dir",
+      "--output-dir",
+      "--image-list",
+      "--video-list",
+      "--font-list",
+      "--document-list",
+    ],
+  } as Record<string, readonly string[]>,
+  // Backward compatibility alias for tests and clients expecting options
+  get options(): readonly string[] {
+    const set = new Set(this.globalOptions)
+    for (const flags of Object.values(this.subcommands)) {
+      for (const flag of flags) set.add(flag)
+    }
+    return Array.from(set)
+  },
   diff: {
     root: "Default: .",
     sourceDirectories: [
@@ -240,77 +333,6 @@ const commandHelp = {
     root: "Default: .",
     output: "Reports resolved local configuration and sources without displaying credentials or session secrets.",
   },
-  options: [
-    "--api-url",
-    "--organization",
-    "--project",
-    "--environment",
-    "--env-file",
-    "--config",
-    "--session",
-    "--json",
-    "--wait",
-    "--no-wait",
-    "--poll-interval",
-    "--dry-run",
-    "--today",
-    "--days",
-    "--delete",
-    "--token-stdin",
-    "--show-ai-label",
-    "--path",
-    "--note",
-    "--integration-note",
-    "--kind",
-    "--class",
-    "--include",
-    "--search",
-    "--folder",
-    "--to",
-    "--file",
-    "--width",
-    "--height",
-    "--format",
-    "--quality",
-    "--key",
-    "--alt",
-    "--dir",
-    "--output-dir",
-    "--image-list",
-    "--video-list",
-    "--font-list",
-    "--document-list",
-    "--image-dir",
-    "--video-dir",
-    "--document-dir",
-    "--font-dir",
-    "--no-image-dir",
-    "--no-video-dir",
-    "--no-document-dir",
-    "--no-font-dir",
-    "--check",
-    "--write",
-    "--version",
-    "--r2-bucket",
-    "--r2-prefix",
-    "--public-base-url",
-    "--default-environment",
-    "--development-r2-bucket",
-    "--development-r2-prefix",
-    "--development-public-base-url",
-    "--production-r2-bucket",
-    "--production-r2-prefix",
-    "--production-public-base-url",
-    "--service-project-id",
-    "--zitadel-project-id",
-    "--name",
-    "--slug",
-    "--create-bucket",
-    "--custom-domain",
-    "--zone-id",
-    "--wrangler-profile",
-    "--apply",
-  ],
   projectResolution:
     "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project; name, package name, and sole-project selection are scoped by the resolved organization, while explicit project IDs remain authoritative.",
   organizationResolution:
@@ -451,7 +473,9 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings", "projects"].includes(command)
+  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings", "projects", "uploads"].includes(
+    command,
+  )
     ? positionals.shift()
     : undefined
   return {
@@ -1908,6 +1932,89 @@ const uploadAllCommandRun = async (
   }
 }
 
+const uploadsListHumanOutputRead = (uploads: readonly Upload[]): string => {
+  if (uploads.length === 0) return "No uploads found.\n"
+  const lines: string[] = []
+  for (const upload of uploads) {
+    const folderPath = upload.folders.length > 0 ? `${upload.folders.join("/")}/` : ""
+    const path = `${folderPath}${upload.originalFilename}`
+    lines.push(`- ${upload.id} [${upload.status}] ${path} (${upload.byteSize} bytes, ${upload.createdAt})`)
+  }
+  return `${lines.join("\n")}\n`
+}
+
+const uploadsListCommandRun = async (
+  parsed: ParsedCommand,
+  client: AssetsApiClient,
+  projectId: string,
+): Promise<CommandOutput> => {
+  if (parsed.subcommand !== "list") {
+    return { result: resultFailure("assetsCliUploads", "Use uploads list") }
+  }
+  if (parsed.positionals.length !== 0) {
+    return { result: resultFailure("assetsCliUploadsList", "The uploads list command takes no positional arguments") }
+  }
+  const allowed = optionAllowed(parsed, ["today", "days", "limit", "status"])
+  if (!allowed.success) return { result: allowed }
+
+  if (flagRead(parsed, "today") && optionRead(parsed, "days") !== undefined) {
+    return { result: resultFailure("assetsCliUploadsList", "--today and --days cannot be used together") }
+  }
+
+  let limit: number | undefined
+  if (optionRead(parsed, "limit") !== undefined) {
+    const parsedLimit = numberRead(optionRead(parsed, "limit"), "limit", 1)
+    if (!parsedLimit.success) return { result: parsedLimit }
+    limit = parsedLimit.data
+  }
+
+  let statusFilter: UploadStatus | undefined
+  if (optionRead(parsed, "status") !== undefined) {
+    const parsedStatus = v.safeParse(uploadStatusSchema, optionRead(parsed, "status"))
+    if (!parsedStatus.success) {
+      return { result: resultFailure("assetsCliUploadsList", "Invalid --status option") }
+    }
+    statusFilter = parsedStatus.output
+  }
+
+  let minCreatedAt: Date | undefined
+  if (flagRead(parsed, "today")) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    minCreatedAt = today
+  } else if (optionRead(parsed, "days") !== undefined) {
+    const parsedDays = numberRead(optionRead(parsed, "days"), "days", 0)
+    if (!parsedDays.success) return { result: parsedDays }
+    const pastDate = new Date()
+    pastDate.setDate(pastDate.getDate() - parsedDays.data)
+    pastDate.setHours(0, 0, 0, 0)
+    minCreatedAt = pastDate
+  }
+
+  const uploadsResult = await client.uploadsReadAll(
+    projectId,
+    statusFilter === undefined ? {} : { status: statusFilter },
+  )
+  if (!uploadsResult.success) return { result: uploadsResult }
+
+  let filtered = [...uploadsResult.data]
+  if (minCreatedAt !== undefined) {
+    const minTime = minCreatedAt.getTime()
+    filtered = filtered.filter((u) => new Date(u.createdAt).getTime() >= minTime)
+  }
+
+  filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  if (limit !== undefined) {
+    filtered = filtered.slice(0, limit)
+  }
+
+  return {
+    result: { success: true, data: { uploads: filtered } },
+    humanOutput: uploadsListHumanOutputRead(filtered),
+  }
+}
+
 const assetReprocessCommandValidate = (parsed: ParsedCommand): Result<undefined> => {
   const op = "assetsCliReprocess"
   const positional = positionalRequire(parsed, 1)
@@ -2631,6 +2738,10 @@ const commandRun = async (
     }
   }
 
+  if (parsed.command === "uploads") {
+    return uploadsListCommandRun(parsed, client, projectId)
+  }
+
   if (parsed.command === "reprocess") {
     if (selected.data.environment === undefined)
       return { result: resultFailure("assetsCliReprocess", "Reprocess requires --environment") }
@@ -2878,6 +2989,27 @@ const humanValueRead = (data: unknown): string => {
     return `Open this URL to sign in:\n${data.authorizationUrl}\n`
   if (data && typeof data === "object" && "matches" in data && typeof data.matches === "boolean")
     return data.matches ? "Generated lists match.\n" : "Generated lists do not match.\n"
+  if (data && typeof data === "object" && "commands" in data && "globalOptions" in data) {
+    const help = data as typeof commandHelp
+    const lines: string[] = ["Usage:", "  assets <command> [options]\n", "Commands:"]
+    for (const cmd of help.commands) {
+      lines.push(`  ${cmd}`)
+    }
+    lines.push("\nGlobal Options:")
+    for (const opt of help.globalOptions) {
+      lines.push(`  ${opt}`)
+    }
+    lines.push("\nSubcommand Options:")
+    for (const [subcmd, opts] of Object.entries(help.subcommands)) {
+      if (opts.length > 0) {
+        lines.push(`  ${subcmd}:`)
+        for (const opt of opts) {
+          lines.push(`    ${opt}`)
+        }
+      }
+    }
+    return `${lines.join("\n")}\n`
+  }
   return `${JSON.stringify(data, null, 2)}\n`
 }
 
