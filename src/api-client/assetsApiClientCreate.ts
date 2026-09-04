@@ -19,6 +19,7 @@ import { assetStructureFolderMembershipSchema } from "../structure/assetStructur
 import { structureFolderCreateInputSchema } from "../structure/structureFolderCreateInputSchema.js"
 import { structureFolderSchema } from "../structure/structureFolderSchema.js"
 import { uploadSchema } from "../upload/uploadSchema.js"
+import { uploadStatusSchema } from "../upload/uploadStatusSchema.js"
 import { jobKindSchema } from "../workflow/jobKindSchema.js"
 import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
 import { workflowKindSchema } from "../workflow/workflowKindSchema.js"
@@ -108,6 +109,12 @@ const backupListInputSchema = v.strictObject({
   ...pageInputSchema.entries,
   assetId: v.optional(idSchema),
   sourceRevisionId: v.optional(idSchema),
+})
+
+const uploadListInputSchema = v.strictObject({
+  ...pageInputSchema.entries,
+  status: v.optional(uploadStatusSchema),
+  assetId: v.optional(idSchema),
 })
 
 const workflowListInputSchema = v.strictObject({
@@ -516,7 +523,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     query: { cursor?: number; limit?: number; status?: string; assetId?: string } = {},
   ) => {
     const valid = schemaParse(
-      uploadListQuerySchema,
+      uploadListInputSchema,
       query,
       "assetsApiClientUploadListRead",
       "The upload query was invalid",
@@ -530,10 +537,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     })
   }
 
-  const uploadsReadAll = (
-    projectId: string,
-    query: { status?: string; assetId?: string } = {},
-  ) =>
+  const uploadsReadAll = (projectId: string, query: { status?: string; assetId?: string } = {}) =>
     pageReadAll(async (pageQuery) => {
       const page = await uploadListRead(projectId, { ...query, ...pageQuery })
       if (!page.success) return page
