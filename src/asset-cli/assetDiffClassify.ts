@@ -9,6 +9,7 @@ export const assetDiffStatuses = [
   "new",
   "changed",
   "matching",
+  "needs-processing",
   "remote-only",
   "unsupported",
   "conflict",
@@ -63,6 +64,11 @@ const altFieldsCreate = (
     remoteAlt,
     altChanged: normalizedLocalAlt !== normalizedRemoteAlt,
   }
+}
+
+const processingRequired = (remote: RemoteAssetHistoryManifestEntry): boolean => {
+  const checks = remote.deletionEligibility?.checks
+  return checks !== undefined && (!checks.successfulWorkflow || !checks.currentCatalogInclusion)
 }
 
 const entrySort = (left: AssetDiffEntry, right: AssetDiffEntry): number => {
@@ -218,8 +224,14 @@ export const assetDiffClassify = (input: {
       remote.sha256 === local.fingerprint.sha256 &&
       remote.mediaType.trim().toLowerCase() === local.fingerprint.mediaType
     const altFields = altFieldsCreate(local, remote)
-    const matching = bytesMatching && !altFields.altChanged
-    const status = matching ? "matching" : bytesMatching ? "metadata" : "changed"
+    const matching = bytesMatching && !altFields.altChanged && !processingRequired(remote)
+    const status = matching
+      ? "matching"
+      : bytesMatching && processingRequired(remote)
+        ? "needs-processing"
+        : bytesMatching
+          ? "metadata"
+          : "changed"
     const deletionEligibility = deletionEligibilityCreate(remote)
     entries.push({
       status,
@@ -235,7 +247,9 @@ export const assetDiffClassify = (input: {
         ? {}
         : {
             reason: bytesMatching
-              ? "The local sidecar alt differs from remote metadata"
+              ? processingRequired(remote)
+                ? "The asset needs successful processing and current catalog inclusion in the selected environment"
+                : "The local sidecar alt differs from remote metadata"
               : "The source fingerprint differs",
           }),
     })

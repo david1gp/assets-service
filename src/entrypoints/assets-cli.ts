@@ -24,10 +24,7 @@ import {
 } from "../asset-cli/assetDiffClassify.js"
 import { type AssetFileFingerprint, assetFileFingerprint } from "../asset-cli/assetFileFingerprint.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
-import {
-  type RemoteAssetHistoryManifest,
-  remoteAssetHistoryManifestLoad,
-} from "../asset-cli/remoteAssetHistoryManifestLoad.js"
+import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
 import {
@@ -214,6 +211,7 @@ const commandHelp = {
     "diff [root]",
     "upload-all [root] --integration-note <text>",
     "upload <file> --path <folder/file> --integration-note <text>",
+    "reprocess <asset-key-or-id> --environment <development|production> [--wait]",
     "list",
     "show <asset-key>",
     "outputs list|add|remove|set <asset-key>",
@@ -656,6 +654,29 @@ const assetReferenceRead = async (
   return resultFailure("assetsCliAssetReferenceRead", `The asset ${reference} was not found`)
 }
 
+const assetReferenceUniqueRead = async (
+  client: AssetsApiClient,
+  projectId: string,
+  reference: string,
+): Promise<Result<string>> => {
+  const op = "assetsCliReprocess"
+  if (reference.length === 0) return resultFailure(op, "The asset key or id was missing")
+  const assets = await client.assetsReadAll(projectId, { include: "outputs,metadata,history" })
+  if (!assets.success) return assets
+  const matches = assets.data.filter((asset) => {
+    if (asset.projectId !== projectId) return false
+    if (asset.id === reference || asset.sourcePath === reference) return true
+    return (asset.outputHistory ?? []).some(
+      (output) => assetIdentifierCreate(asset.folders, asset.basename, output.definition.key) === reference,
+    )
+  })
+  if (matches.length === 0) return resultFailure(op, `The asset ${reference} was not found`)
+  if (matches.length > 1) return resultFailure(op, `More than one asset matched ${reference}; use an asset id`)
+  const asset = matches[0]
+  if (asset === undefined) return resultFailure(op, `The asset ${reference} was not found`)
+  return { success: true, data: asset.id }
+}
+
 const packageNameRead = async (projectRoot: string): Promise<Result<string | null>> => {
   const packagePath = join(resolve(projectRoot), "package.json")
   let content: string
@@ -1002,7 +1023,10 @@ const altUpdatesPendingRead = (diff: AssetDiff): number =>
     (entry) =>
       entry.local !== undefined &&
       entry.altChanged &&
-      (entry.status === "new" || entry.status === "changed" || entry.status === "metadata"),
+      (entry.status === "new" ||
+        entry.status === "changed" ||
+        entry.status === "metadata" ||
+        entry.status === "needs-processing"),
   ).length
 
 const diffOutputCreate = (root: string, environment: string, diff: AssetDiff): DiffOutput => ({
@@ -1060,6 +1084,9 @@ type UploadAllOutputEntry = {
   defaultReconciled?: boolean
   defaultReconciliationPlanned?: boolean
   defaultReconciliationFailed?: boolean
+  reprocessed?: boolean
+  reprocessPlanned?: boolean
+  reprocessFailed?: boolean
   error?: string
 }
 
@@ -1105,6 +1132,8 @@ const uploadAllHumanOutputRead = (output: UploadAllOutput): string => {
       entry.action,
       entry.defaultReconciled === true ? "default-reconciled" : "",
       entry.defaultReconciliationPlanned === true ? "default-reconciliation-planned" : "",
+      entry.reprocessed === true ? "reprocessed" : "",
+      entry.reprocessPlanned === true ? "reprocess-planned" : "",
       entry.deleted === true ? "deleted" : "",
       entry.error === undefined ? "" : entry.error,
     ]
@@ -1234,37 +1263,6 @@ const assetAltMetadataUpdate = async (
   return { success: true, data: undefined }
 }
 
-const diffDeletionEligibilityApply = async (
-  client: AssetsApiClient,
-  projectId: string,
-  environment: string,
-  local: Parameters<typeof assetDiffClassify>[0]["local"],
-  remoteManifest: RemoteAssetHistoryManifest,
-  initialDiff: AssetDiff,
-): Promise<Result<AssetDiff>> => {
-  const op = "assetsCliDiff"
-  const eligibilityByRevision = new Map<
-    string,
-    NonNullable<RemoteAssetHistoryManifest["entries"][number]["deletionEligibility"]>
-  >()
-  for (const entry of initialDiff.entries) {
-    if (entry.status !== "matching" || entry.remote === undefined) continue
-    const sourceRevisionId = entry.remote.currentSourceRevisionId
-    if (eligibilityByRevision.has(sourceRevisionId)) continue
-    const eligibility = await client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
-    if (!eligibility.success) return eligibility
-    if (eligibility.data.sourceRevisionId !== sourceRevisionId)
-      return resultFailure(op, "The deletion eligibility revision did not match")
-    eligibilityByRevision.set(sourceRevisionId, eligibility.data)
-  }
-  if (eligibilityByRevision.size === 0) return { success: true, data: initialDiff }
-  const remote = remoteManifest.entries.map((entry) => {
-    const eligibility = eligibilityByRevision.get(entry.currentSourceRevisionId)
-    return eligibility === undefined ? entry : { ...entry, deletionEligibility: eligibility }
-  })
-  return assetDiffClassify({ local, remote })
-}
-
 const uploadAllCommandRun = async (
   parsed: ParsedCommand,
   client: AssetsApiClient,
@@ -1300,18 +1298,18 @@ const uploadAllCommandRun = async (
   if (!configuration.success) return { result: configuration }
   const local = await localAssetManifestLoad(configuration.data.root, configuration.data.sourceDirectories)
   if (!local.success) return { result: local }
-  const remote = await remoteAssetHistoryManifestLoad({ client, projectId })
+  const remote = await remoteAssetHistoryManifestLoad({ client, projectId, environment })
   if (!remote.success) return { result: remote }
-  const classified = assetDiffClassify({
+  const diff = assetDiffClassify({
     local: local.data.entries,
     remote: remote.data.entries,
   })
-  if (!classified.success) return { result: classified }
+  if (!diff.success) return { result: diff }
 
   const wait = flagRead(parsed, "wait") || flagRead(parsed, "delete")
   const deleteLocal = flagRead(parsed, "delete")
   const dryRun = flagRead(parsed, "dry-run")
-  const localEntries = classified.data.entries.filter((entry) => entry.local !== undefined)
+  const localEntries = diff.data.entries.filter((entry) => entry.local !== undefined)
   const preflightFailures = localEntries.filter(
     (entry) => entry.status === "unsupported" || entry.status === "conflict",
   )
@@ -1342,13 +1340,14 @@ const uploadAllCommandRun = async (
     }
   }
 
-  const actionableEntries = classified.data.entries.filter(
+  const actionableEntries = diff.data.entries.filter(
     (entry) =>
       entry.local !== undefined &&
       (entry.status === "new" ||
         entry.status === "changed" ||
         entry.status === "matching" ||
-        entry.status === "metadata"),
+        entry.status === "metadata" ||
+        entry.status === "needs-processing"),
   )
   const entries: UploadAllOutputEntry[] = []
   const altUpdatesPending = actionableEntries.filter(altUpdateRequired).length
@@ -1356,6 +1355,25 @@ const uploadAllCommandRun = async (
   let altUpdated = 0
   let defaultReconciled = 0
   let failed = false
+  let targetEnvironmentId: string | undefined
+  const targetEnvironmentIdRead = async (): Promise<Result<string>> => {
+    if (targetEnvironmentId !== undefined) return { success: true, data: targetEnvironmentId }
+    const targetEnvironment = await client.environmentRead(projectId, environment)
+    if (!targetEnvironment.success) return targetEnvironment
+    if (targetEnvironment.data.projectId !== projectId || targetEnvironment.data.name !== environment)
+      return resultFailure(op, "The selected environment did not match the request")
+    targetEnvironmentId = targetEnvironment.data.id
+    return { success: true, data: targetEnvironmentId }
+  }
+  const deletionEligibilityRead = async (
+    entry: AssetDiffEntry,
+    sourceRevisionId: string,
+    refresh = false,
+  ): Promise<ReturnType<AssetsApiClient["sourceRevisionDeletionEligibilityRead"]>> => {
+    const cached = entry.remote?.deletionEligibility
+    if (!refresh && cached !== null && cached !== undefined) return { success: true, data: cached }
+    return client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
+  }
   for (const entry of actionableEntries) {
     const localEntry = entry.local
     if (localEntry === undefined || localEntry.mapping === undefined || localEntry.mediaType === undefined) {
@@ -1376,6 +1394,7 @@ const uploadAllCommandRun = async (
           {
             ...(altUpdateRequired(entry) ? altUpdateOutputDetailsCreate(entry, "planned") : {}),
             ...(defaultReconciliationRequired ? { defaultReconciliationPlanned: true } : {}),
+            ...(entry.status === "needs-processing" ? { reprocessPlanned: true } : {}),
           },
         ),
       )
@@ -1384,7 +1403,10 @@ const uploadAllCommandRun = async (
 
     let altDetails: Partial<Omit<UploadAllOutputEntry, "status" | "class" | "sourcePath" | "logicalPath" | "action">> =
       {}
-    if (altUpdateRequired(entry) && (entry.status === "metadata" || entry.status === "matching")) {
+    if (
+      altUpdateRequired(entry) &&
+      (entry.status === "metadata" || entry.status === "matching" || entry.status === "needs-processing")
+    ) {
       const assetId = entry.remote?.assetId
       if (assetId === undefined) {
         failed = true
@@ -1413,6 +1435,163 @@ const uploadAllCommandRun = async (
 
     if (entry.status === "metadata") {
       entries.push(uploadAllOutputEntryCreate(entry, "skipped", altDetails))
+      continue
+    }
+
+    if (entry.status === "needs-processing") {
+      const remoteAssetId = entry.remote?.assetId
+      if (remoteAssetId === undefined) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
+            reprocessFailed: true,
+            error: `The asset needs processing. Run assets reprocess ${entry.logicalPath} --environment ${environment}`,
+          }),
+        )
+        continue
+      }
+      const environmentId = await targetEnvironmentIdRead()
+      if (!environmentId.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
+            reprocessFailed: true,
+            error: `${environmentId.errorMessage}. Run assets reprocess ${entry.logicalPath} --environment ${environment}`,
+          }),
+        )
+        continue
+      }
+      const reprocessed = await client.assetReprocess(projectId, remoteAssetId, {
+        environmentId: environmentId.data,
+      })
+      if (!reprocessed.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
+            reprocessFailed: true,
+            error: `${reprocessed.errorMessage}. Run assets reprocess ${entry.logicalPath} --environment ${environment}`,
+          }),
+        )
+        continue
+      }
+      if (reprocessed.data.asset.id !== remoteAssetId || reprocessed.data.asset.projectId !== projectId) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...altDetails,
+            reprocessFailed: true,
+            error: `The reprocessed asset did not match the request. Run assets reprocess ${entry.logicalPath} --environment ${environment}`,
+          }),
+        )
+        continue
+      }
+      const reprocessDetails = {
+        ...altDetails,
+        workflowId: reprocessed.data.workflowId,
+        reprocessed: true,
+      }
+      let workflowStatus: string | undefined
+      if (wait) {
+        const workflow = await client.workflowWait(projectId, reprocessed.data.workflowId)
+        if (!workflow.success) {
+          failed = true
+          entries.push(
+            uploadAllOutputEntryCreate(entry, "failed", { ...reprocessDetails, error: workflow.errorMessage }),
+          )
+          continue
+        }
+        workflowStatus = workflow.data.status
+        if (workflow.data.status !== "succeeded") {
+          failed = true
+          entries.push(
+            uploadAllOutputEntryCreate(entry, "failed", {
+              ...reprocessDetails,
+              workflowStatus,
+              error: `The reprocess workflow ended with status ${workflow.data.status}`,
+            }),
+          )
+          continue
+        }
+      }
+      if (!deleteLocal) {
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "skipped", {
+            ...reprocessDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+          }),
+        )
+        continue
+      }
+      const sourceRevisionId = entry.remote?.currentSourceRevisionId
+      if (sourceRevisionId === undefined) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...reprocessDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: false,
+            error: "The asset needing processing had no source revision",
+          }),
+        )
+        continue
+      }
+      const eligibility = await deletionEligibilityRead(entry, sourceRevisionId, true)
+      if (!eligibility.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...reprocessDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            error: eligibility.errorMessage,
+          }),
+        )
+        continue
+      }
+      if (eligibility.data.sourceRevisionId !== sourceRevisionId || !eligibility.data.eligible) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...reprocessDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: false,
+            error:
+              eligibility.data.sourceRevisionId !== sourceRevisionId
+                ? "The deletion eligibility revision did not match"
+                : "The source revision was not eligible for local deletion",
+          }),
+        )
+        continue
+      }
+      const deleted = await localAssetUnlink({
+        filePath: localEntry.mapping.filePath,
+        mapping: localEntry.mapping,
+        mediaType: localEntry.mediaType,
+        fingerprint: localEntry.fingerprint!,
+      })
+      if (!deleted.success) {
+        failed = true
+        entries.push(
+          uploadAllOutputEntryCreate(entry, "failed", {
+            ...reprocessDetails,
+            ...(workflowStatus === undefined ? {} : { workflowStatus }),
+            eligible: true,
+            deleted: false,
+            error: deleted.errorMessage,
+          }),
+        )
+        continue
+      }
+      entries.push(
+        uploadAllOutputEntryCreate(entry, "skipped", {
+          ...reprocessDetails,
+          ...(workflowStatus === undefined ? {} : { workflowStatus }),
+          eligible: true,
+          deleted: true,
+        }),
+      )
       continue
     }
 
@@ -1449,7 +1628,7 @@ const uploadAllCommandRun = async (
         )
         continue
       }
-      const eligibility = await client.sourceRevisionDeletionEligibilityRead(projectId, environment, sourceRevisionId)
+      const eligibility = await deletionEligibilityRead(entry, sourceRevisionId)
       if (!eligibility.success) {
         failed = true
         entries.push(uploadAllOutputEntryCreate(entry, "failed", { ...altDetails, error: eligibility.errorMessage }))
@@ -1705,6 +1884,50 @@ const uploadAllCommandRun = async (
     result: { success: true, data: output },
     exitCode: failed ? 1 : 0,
     humanOutput: uploadAllHumanOutputRead(output),
+  }
+}
+
+const assetReprocessCommandValidate = (parsed: ParsedCommand): Result<undefined> => {
+  const op = "assetsCliReprocess"
+  const positional = positionalRequire(parsed, 1)
+  if (!positional.success) return positional
+  const allowed = optionAllowed(parsed, ["wait", "no-wait", "poll-interval"])
+  if (!allowed.success) return allowed
+  if (optionRead(parsed, "environment") === undefined) return resultFailure(op, "Reprocess requires --environment")
+  if (flagRead(parsed, "wait") && flagRead(parsed, "no-wait"))
+    return resultFailure(op, "--wait and --no-wait cannot be used together")
+  if (optionRead(parsed, "poll-interval") !== undefined && !flagRead(parsed, "wait"))
+    return resultFailure(op, "--poll-interval requires --wait")
+  return { success: true, data: undefined }
+}
+
+const assetReprocessCommandRun = async (
+  parsed: ParsedCommand,
+  client: AssetsApiClient,
+  projectId: string,
+  environment: string,
+): Promise<CommandOutput> => {
+  const reference = parsed.positionals[0] ?? ""
+  const targetEnvironment = await client.environmentRead(projectId, environment)
+  if (!targetEnvironment.success) return { result: targetEnvironment }
+  if (targetEnvironment.data.projectId !== projectId || targetEnvironment.data.name !== environment)
+    return { result: resultFailure("assetsCliReprocess", "The selected environment did not match the request") }
+
+  const assetId = await assetReferenceUniqueRead(client, projectId, reference)
+  if (!assetId.success) return { result: assetId }
+  const reprocessed = await client.assetReprocess(projectId, assetId.data, {
+    environmentId: targetEnvironment.data.id,
+  })
+  if (!reprocessed.success) return { result: reprocessed }
+  if (reprocessed.data.asset.id !== assetId.data || reprocessed.data.asset.projectId !== projectId)
+    return { result: resultFailure("assetsCliReprocess", "The reprocessed asset did not match the request") }
+  if (!flagRead(parsed, "wait") || flagRead(parsed, "no-wait")) return { result: reprocessed }
+
+  const workflow = await client.workflowWait(projectId, reprocessed.data.workflowId)
+  if (!workflow.success) return { result: workflow }
+  return {
+    result: { success: true, data: { ...reprocessed.data, workflow: workflow.data } },
+    exitCode: workflow.data.status === "succeeded" ? 0 : 1,
   }
 }
 
@@ -2280,6 +2503,7 @@ const commandRun = async (
       "diff",
       "upload-all",
       "upload",
+      "reprocess",
       "list",
       "lists",
       "show",
@@ -2295,6 +2519,10 @@ const commandRun = async (
     return { result: resultFailure("assetsCliDiff", "The diff command takes zero or one root argument") }
   if (parsed.command === "upload-all" && parsed.positionals.length > 1)
     return { result: resultFailure("assetsCliUploadAll", "The upload-all command takes zero or one root argument") }
+  if (parsed.command === "reprocess") {
+    const valid = assetReprocessCommandValidate(parsed)
+    if (!valid.success) return { result: valid }
+  }
 
   const projectRoot =
     parsed.command === "diff" || parsed.command === "upload-all" ? (parsed.positionals[0] ?? ".") : undefined
@@ -2331,21 +2559,9 @@ const commandRun = async (
     if (!configuration.success) return { result: configuration }
     const local = await localAssetManifestLoad(configuration.data.root, configuration.data.sourceDirectories)
     if (!local.success) return { result: local }
-    const remote = await remoteAssetHistoryManifestLoad({
-      client,
-      projectId,
-    })
+    const remote = await remoteAssetHistoryManifestLoad({ client, projectId, environment: selected.data.environment })
     if (!remote.success) return { result: remote }
-    const classified = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
-    if (!classified.success) return { result: classified }
-    const diff = await diffDeletionEligibilityApply(
-      client,
-      projectId,
-      selected.data.environment,
-      local.data.entries,
-      remote.data,
-      classified.data,
-    )
+    const diff = assetDiffClassify({ local: local.data.entries, remote: remote.data.entries })
     if (!diff.success) return { result: diff }
     const output = diffOutputCreate(configuration.data.root, selected.data.environment, diff.data)
     return {
@@ -2393,6 +2609,12 @@ const commandRun = async (
       result: { success: true, data: { ...uploadResult, workflow: workflow.data } },
       exitCode: workflow.data.status === "succeeded" ? 0 : 1,
     }
+  }
+
+  if (parsed.command === "reprocess") {
+    if (selected.data.environment === undefined)
+      return { result: resultFailure("assetsCliReprocess", "Reprocess requires --environment") }
+    return assetReprocessCommandRun(parsed, client, projectId, selected.data.environment)
   }
 
   if (parsed.command === "list") {

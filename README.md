@@ -120,6 +120,26 @@ bun run assets settings update [--project <id-or-name>] \
 role for the selected project. `--project` accepts a project ID or name; otherwise normal project resolution applies
 (`ASSETS_PROJECT`, saved CLI configuration, or the sole accessible project).
 
+### Reprocess an existing asset
+
+Reprocess an existing asset into a selected environment without uploading source bytes:
+
+```bash
+bun run assets reprocess <asset-key-or-id> \
+  --project <id-or-name> \
+  --environment <development|production> \
+  [--wait] \
+  [--json]
+```
+
+The environment is required explicitly; this command never uses `ASSETS_ENVIRONMENT`, saved configuration, or the
+project default as a fallback. The asset argument may be an asset ID, source path, or generated asset key. The CLI
+resolves it against the selected project and rejects missing or ambiguous matches before starting work. Reprocessing
+calls the authenticated service directly and never uploads local bytes. Without `--wait`, the accepted asset and
+workflow ID are returned. With `--wait`, the workflow result is included; succeeded workflows exit 0, while failed or
+cancelled workflows are reported in the successful JSON data envelope and exit nonzero. Use `--json` for the
+newline-terminated deterministic JSON envelope.
+
 ### Remote project registration
 
 Organization administrators and authorized automation can register a project and its complete initial service
@@ -270,9 +290,12 @@ bun run assets upload-all . --integration-note "bulk upload" --dry-run --json
 bun run assets upload-all . --integration-note "bulk upload" --wait
 ```
 
-`diff` is read-only and reports `new`, `changed`, `matching`, `remote-only`, `unsupported`, and `conflict` entries.
-`upload-all` uploads source bytes only for `new` and `changed` entries; matching entries are skipped for upload and may
-reconcile a stale canonical service-managed image default. `--integration-note` is required and must contain 1 to 10,000
+`diff` is read-only and reports `new`, `changed`, `matching`, `needs-processing`, `remote-only`, `unsupported`, and
+`conflict` entries. `needs-processing` means the source bytes match but the selected environment does not yet have a
+successful processing workflow and current catalog inclusion. `upload-all` uploads source bytes only for `new` and
+`changed` entries; matching entries are skipped for upload and may reconcile a stale canonical service-managed image
+default. Entries needing processing are reprocessed without uploading source bytes; use `assets reprocess` directly if
+that operation fails. `--integration-note` is required and must contain 1 to 10,000
 characters. `--delete` implies `--wait` and removes a local file only after the service
 proves that the exact source revision is backed up, processed successfully, published, and in the current catalog.
 The bulk commands recheck the file immediately before unlinking it, never delete directories, and never delete remote

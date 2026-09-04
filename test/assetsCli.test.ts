@@ -276,6 +276,7 @@ test("diff help documents its root and all source directory controls", async () 
         "config show [root]",
         "diff [root]",
         "upload-all [root] --integration-note <text>",
+        "reprocess <asset-key-or-id> --environment <development|production> [--wait]",
         expect.stringContaining("projects create") as string,
       ]),
       options: expect.arrayContaining(["--dry-run", "--delete", "--organization", "--env-file"]),
@@ -2330,6 +2331,204 @@ test("catalogs rebuild calls the synchronous production admin endpoint", async (
   expect(stdout.join("")).toContain('"generationId":"generation-1"')
 })
 
+test("reprocess targets an explicit environment without uploading bytes and reports a waited workflow", async () => {
+  const listedAsset = assetCreate({
+    id: "asset-reprocess",
+    filename: "hero.jpg",
+    sourcePath: "home/hero.jpg",
+    sha256: "a".repeat(64),
+    byteSize: 10,
+    folders: ["home"],
+  })
+  const { outputCount: _outputCount, ...listedAssetDetail } = listedAsset
+  const asset = { ...listedAssetDetail, metadata: null }
+  const workflow = {
+    id: "workflow-reprocess",
+    projectId: "project-1",
+    assetId: "asset-reprocess",
+    sourceRevisionId: listedAsset.currentSourceRevisionId,
+    kind: "asset_processing" as const,
+    status: "succeeded" as const,
+    createdAt: "2026-08-18T00:00:00.000Z",
+    updatedAt: "2026-08-18T00:00:01.000Z",
+  }
+  const requests: Request[] = []
+  const fetcher = async (input: string | URL, init?: RequestInit) => {
+    const request = new Request(String(input), init)
+    requests.push(request)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith("/environments/production"))
+      return envelopeResponseCreate({
+        id: "environment-production",
+        projectId: "project-1",
+        name: "production",
+        r2Bucket: "assets-production",
+        r2Prefix: "production",
+        publicBaseUrl: "https://assets.example.test",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+    if (url.pathname.endsWith("/assets"))
+      return envelopeResponseCreate({ assets: [listedAsset], page: { limit: 100, nextCursor: null } })
+    if (url.pathname.endsWith("/assets/asset-reprocess/reprocess"))
+      return envelopeResponseCreate({ asset, workflowId: workflow.id }, 202)
+    if (url.pathname.endsWith("/workflows/workflow-reprocess/status")) return envelopeResponseCreate(workflow)
+    throw new Error(`Unexpected request ${request.url}`)
+  }
+  const output: string[] = []
+  const exitCode = await assetsCliMain(
+    ["reprocess", "home/hero.jpg", "--project", "project-1", "--environment", "production", "--wait", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "POST", "GET"])
+  expect(
+    requests.some(
+      (request) => request.url.includes("/uploads") || new URL(request.url).hostname === "upload.example.test",
+    ),
+  ).toBe(false)
+  expect(requests[2]?.url).toBe(
+    "https://assets.example.test/api/v1/projects/project-1/assets/asset-reprocess/reprocess",
+  )
+  expect(await requests[2]?.clone().json()).toEqual({ environmentId: "environment-production" })
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: true,
+    data: { asset: { id: "asset-reprocess" }, workflowId: "workflow-reprocess", workflow: { status: "succeeded" } },
+  })
+})
+
+test("reprocess reports a failed waited workflow and rejects ambiguous assets without starting work", async () => {
+  const assetOne = assetCreate({
+    id: "asset-reprocess-one",
+    filename: "hero.jpg",
+    sourcePath: "home/hero.jpg",
+    sha256: "a".repeat(64),
+    byteSize: 10,
+    folders: ["home"],
+  })
+  const assetTwo = assetCreate({
+    id: "asset-reprocess-two",
+    filename: "hero-copy.jpg",
+    sourcePath: "home/hero.jpg",
+    sha256: "b".repeat(64),
+    byteSize: 10,
+    folders: ["home"],
+  })
+  const { outputCount: _assetOneOutputCount, ...assetOneDetailWithoutMetadata } = assetOne
+  const assetOneDetail = { ...assetOneDetailWithoutMetadata, metadata: null }
+  const requests: Request[] = []
+  const workflow = {
+    id: "workflow-reprocess-failed",
+    projectId: "project-1",
+    assetId: "asset-reprocess-one",
+    sourceRevisionId: assetOne.currentSourceRevisionId,
+    kind: "asset_processing" as const,
+    status: "failed" as const,
+    createdAt: "2026-08-18T00:00:00.000Z",
+    updatedAt: "2026-08-18T00:00:01.000Z",
+  }
+  const fetcher = async (input: string | URL, init?: RequestInit) => {
+    const request = new Request(String(input), init)
+    requests.push(request)
+    const url = new URL(request.url)
+    if (url.pathname.endsWith("/environments/production"))
+      return envelopeResponseCreate({
+        id: "environment-production",
+        projectId: "project-1",
+        name: "production",
+        r2Bucket: "assets-production",
+        r2Prefix: "production",
+        publicBaseUrl: "https://assets.example.test",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+    if (url.pathname.endsWith("/assets"))
+      return envelopeResponseCreate({ assets: [assetOne, assetTwo], page: { limit: 100, nextCursor: null } })
+    if (url.pathname.endsWith("/assets/asset-reprocess-one/reprocess"))
+      return envelopeResponseCreate({ asset: assetOneDetail, workflowId: workflow.id }, 202)
+    if (url.pathname.endsWith("/workflows/workflow-reprocess-failed/status")) return envelopeResponseCreate(workflow)
+    throw new Error(`Unexpected request ${request.url}`)
+  }
+
+  const ambiguousOutput: string[] = []
+  const ambiguousExitCode = await assetsCliMain(
+    ["reprocess", "home/hero.jpg", "--project", "project-1", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => ambiguousOutput.push(text),
+      stderr: () => undefined,
+    },
+  )
+  expect(ambiguousExitCode).toBe(1)
+  expect(JSON.parse(ambiguousOutput[0] ?? "")).toMatchObject({
+    ok: false,
+    error: { message: "More than one asset matched home/hero.jpg; use an asset id" },
+  })
+  expect(requests.map((request) => request.method)).toEqual(["GET", "GET"])
+
+  const missingOutput: string[] = []
+  const missingExitCode = await assetsCliMain(
+    ["reprocess", "missing-asset", "--project", "project-1", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => missingOutput.push(text),
+      stderr: () => undefined,
+    },
+  )
+  expect(missingExitCode).toBe(1)
+  expect(JSON.parse(missingOutput[0] ?? "")).toMatchObject({
+    ok: false,
+    error: { message: "The asset missing-asset was not found" },
+  })
+  expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "GET"])
+
+  const failedOutput: string[] = []
+  const failedExitCode = await assetsCliMain(
+    ["reprocess", "asset-reprocess-one", "--project", "project-1", "--environment", "production", "--wait", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => failedOutput.push(text),
+      stderr: () => undefined,
+    },
+  )
+  expect(failedExitCode).toBe(1)
+  expect(JSON.parse(failedOutput[0] ?? "")).toMatchObject({
+    ok: true,
+    data: { workflowId: "workflow-reprocess-failed", workflow: { status: "failed" } },
+  })
+  expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "GET", "GET", "GET", "POST", "GET"])
+})
+
+test("reprocess requires an explicit environment instead of using the configured default", async () => {
+  const requests: Request[] = []
+  const output: string[] = []
+  const exitCode = await assetsCliMain(["reprocess", "asset-1", "--project", "project-1", "--json"], {
+    env: cliEnvironment,
+    fetcher: async (input, init) => {
+      requests.push(new Request(String(input), init))
+      return envelopeResponseCreate({})
+    },
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(exitCode).toBe(1)
+  expect(requests).toHaveLength(0)
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: false,
+    error: { message: "Reprocess requires --environment" },
+  })
+})
+
 test("remote upload sends an intent, the exact bytes, and completion without local fallback", async () => {
   const directory = await mkdtemp(join(tmpdir(), "assets-cli-upload-"))
   try {
@@ -2425,6 +2624,10 @@ test("upload-all uploads only new and changed files in stable order and skips ma
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [matching, changed], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility")) {
+        const sourceRevisionId = url.pathname.split("/").at(-2) ?? ""
+        return envelopeResponseCreate(deletionEligibilityCreate(sourceRevisionId))
+      }
       if (url.pathname.endsWith("/uploads/intent")) {
         uploadNumber += 1
         const uploadId = `upload-${uploadNumber}`
@@ -2468,14 +2671,24 @@ test("upload-all uploads only new and changed files in stable order and skips ma
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET", "POST", "PUT", "POST", "POST", "PUT", "POST"])
+    expect(requests.map((request) => request.method)).toEqual([
+      "GET",
+      "GET",
+      "GET",
+      "POST",
+      "PUT",
+      "POST",
+      "POST",
+      "PUT",
+      "POST",
+    ])
     expect(
       requests
         .filter((request) => request.url.includes("upload.example.test"))
         .every((request) => request.headers.get("authorization") === null),
     ).toBe(true)
-    expect(new Uint8Array(await requests[2]!.arrayBuffer())).toEqual(changedBytes)
-    expect(new Uint8Array(await requests[5]!.arrayBuffer())).toEqual(newBytes)
+    expect(new Uint8Array(await requests[4]!.arrayBuffer())).toEqual(changedBytes)
+    expect(new Uint8Array(await requests[7]!.arrayBuffer())).toEqual(newBytes)
     expect(JSON.parse(output[0] ?? "")).toEqual({
       ok: true,
       data: {
@@ -2578,6 +2791,8 @@ test("upload-all repairs a stale canonical image default without uploading bytes
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate("asset-default-repair"))
       if (url.pathname.endsWith("/outputs")) {
         const body = await request.json()
         outputBodies.push(body)
@@ -2601,7 +2816,7 @@ test("upload-all repairs a stale canonical image default without uploading bytes
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET", "PUT"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "PUT"])
     expect(
       requests.some((request) => request.url.includes("/uploads/") || request.url.includes("upload.example.test")),
     ).toBe(false)
@@ -2708,6 +2923,10 @@ test("upload-all skips current and noncanonical image defaults", async () => {
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [current, noncanonical], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility")) {
+        const sourceRevisionId = url.pathname.split("/").at(-2) ?? ""
+        return envelopeResponseCreate(deletionEligibilityCreate(sourceRevisionId))
+      }
       throw new Error(`Unexpected request ${request.url}`)
     }
     const output: string[] = []
@@ -2719,7 +2938,7 @@ test("upload-all skips current and noncanonical image defaults", async () => {
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET"])
     expect(JSON.parse(output[0] ?? "")).toMatchObject({
       ok: true,
       data: {
@@ -2777,6 +2996,8 @@ test("upload-all dry-run reports stale canonical default reconciliation without 
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate("asset-default-dry-run"))
       throw new Error(`Unexpected request ${request.url}`)
     }
     const output: string[] = []
@@ -2788,7 +3009,7 @@ test("upload-all dry-run reports stale canonical default reconciliation without 
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET"])
     expect(JSON.parse(output[0] ?? "")).toMatchObject({
       ok: true,
       data: {
@@ -2922,6 +3143,8 @@ test("upload-all updates metadata-only drift without uploading matching bytes", 
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate("asset-metadata"))
       if (url.pathname.endsWith("/assets/asset-metadata/metadata")) {
         metadataBodies.push(await request.json())
         const { outputCount: _outputCount, ...assetDetail } = remote
@@ -2941,7 +3164,7 @@ test("upload-all updates metadata-only drift without uploading matching bytes", 
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET", "PATCH"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "PATCH"])
     expect(metadataBodies).toEqual([{ alt: "Local alt" }])
     expect(JSON.parse(output[0] ?? "")).toMatchObject({
       ok: true,
@@ -2986,6 +3209,8 @@ test("upload-all does not update metadata when the sidecar alt already matches",
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate("asset-matching-alt"))
       throw new Error(`Unexpected request ${request.url}`)
     }
     const output: string[] = []
@@ -2997,7 +3222,7 @@ test("upload-all does not update metadata when the sidecar alt already matches",
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET"])
     expect(JSON.parse(output[0] ?? "")).toMatchObject({
       ok: true,
       data: {
@@ -3032,6 +3257,8 @@ test("upload-all dry-run reports pending alt metadata without mutating the servi
       const url = new URL(request.url)
       if (url.pathname.endsWith("/assets"))
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate("asset-dry-run-alt"))
       throw new Error(`Unexpected request ${request.url}`)
     }
     const output: string[] = []
@@ -3043,7 +3270,7 @@ test("upload-all dry-run reports pending alt metadata without mutating the servi
     })
 
     expect(exitCode).toBe(0)
-    expect(requests.map((request) => request.method)).toEqual(["GET"])
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET"])
     expect(JSON.parse(output[0] ?? "")).toMatchObject({
       ok: true,
       data: {
@@ -4102,8 +4329,10 @@ test("diff integrates authenticated paginated history, categories, exact eligibi
             : { assets: [changed, matching], page: { limit: 100, nextCursor: "1" } },
         )
       }
-      if (url.pathname.endsWith("/source-revisions/asset-matching/deletion-eligibility"))
-        return envelopeResponseCreate(deletionEligibilityCreate("asset-matching"))
+      if (url.pathname.includes("/deletion-eligibility")) {
+        const sourceRevisionId = url.pathname.split("/").at(-2) ?? ""
+        return envelopeResponseCreate(deletionEligibilityCreate(sourceRevisionId))
+      }
       throw new Error(`Unexpected request ${request.url}`)
     }
     const environment = { ...cliEnvironment, ASSETS_ENVIRONMENT: "development" }
@@ -4173,8 +4402,12 @@ test("diff integrates authenticated paginated history, categories, exact eligibi
       "?cursor=1&include=history%2Cmetadata&limit=100",
     ])
     const eligibilityRequests = requests.filter((request) => request.url.includes("deletion-eligibility"))
-    expect(eligibilityRequests).toHaveLength(1)
-    expect(new URL(eligibilityRequests[0]!.url).search).toBe("?environment=production")
+    expect(eligibilityRequests).toHaveLength(3)
+    expect(eligibilityRequests.map((request) => new URL(request.url).search)).toEqual([
+      "?environment=production",
+      "?environment=production",
+      "?environment=production",
+    ])
     expect(requests.every((request) => request.headers.get("authorization") === "Bearer service-token")).toBe(true)
 
     const secondOutput: string[] = []
@@ -4209,8 +4442,12 @@ test("diff reports local sidecar alt drift separately from byte changes", async 
     const exitCode = await assetsCliMain(["diff", root, "--json"], {
       env: cliEnvironment,
       fetcher: async (input) => {
-        if (!new URL(input).pathname.endsWith("/assets")) throw new Error(`Unexpected request ${input}`)
-        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+        const url = new URL(input)
+        if (url.pathname.endsWith("/assets"))
+          return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+        if (url.pathname.includes("/deletion-eligibility"))
+          return envelopeResponseCreate(deletionEligibilityCreate("asset-hero"))
+        throw new Error(`Unexpected request ${input}`)
       },
       stdout: (text) => output.push(text),
       stderr: () => undefined,
@@ -4238,6 +4475,235 @@ test("diff reports local sidecar alt drift separately from byte changes", async 
         root,
       },
     })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("diff uses the selected environment when workflow or catalog inclusion is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-diff-environment-processing-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const workflowBytes = new TextEncoder().encode("workflow")
+    const catalogBytes = new TextEncoder().encode("catalog")
+    await writeFile(join(root, "images", "workflow-missing.jpg"), workflowBytes)
+    await writeFile(join(root, "images", "catalog-missing.jpg"), catalogBytes)
+    const workflowAsset = assetCreate({
+      id: "asset-workflow-missing",
+      filename: "workflow-missing.jpg",
+      sha256: contentSha256Create(workflowBytes),
+      byteSize: workflowBytes.byteLength,
+    })
+    const catalogAsset = assetCreate({
+      id: "asset-catalog-missing",
+      filename: "catalog-missing.jpg",
+      sha256: contentSha256Create(catalogBytes),
+      byteSize: catalogBytes.byteLength,
+    })
+    const eligibilityRequests: Array<{ environment: string; sourceRevisionId: string }> = []
+    const fetcher = async (input: string | URL) => {
+      const url = new URL(input)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({
+          assets: [workflowAsset, catalogAsset],
+          page: { limit: 100, nextCursor: null },
+        })
+      if (url.pathname.includes("/deletion-eligibility")) {
+        const sourceRevisionId = url.pathname.split("/").at(-2) ?? ""
+        const environment = url.searchParams.get("environment") ?? ""
+        eligibilityRequests.push({ environment, sourceRevisionId })
+        const base = deletionEligibilityCreate(sourceRevisionId, environment === "development")
+        return envelopeResponseCreate({
+          ...base,
+          checks: {
+            ...base.checks,
+            successfulWorkflow: sourceRevisionId !== "asset-workflow-missing" || environment === "development",
+            currentCatalogInclusion: sourceRevisionId !== "asset-catalog-missing" || environment === "development",
+          },
+        })
+      }
+      throw new Error(`Unexpected request ${input}`)
+    }
+    const run = async (environment: "development" | "production") => {
+      const output: string[] = []
+      const exitCode = await assetsCliMain(["diff", root, "--environment", environment, "--json"], {
+        env: cliEnvironment,
+        fetcher,
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      })
+      return { exitCode, value: JSON.parse(output[0] ?? "{}") as { data?: { entries?: unknown[] } } }
+    }
+
+    const development = await run("development")
+    const production = await run("production")
+
+    expect(development.exitCode).toBe(0)
+    expect(development.value.data?.entries).toMatchObject([
+      { sourcePath: "images/catalog-missing.jpg", status: "matching" },
+      { sourcePath: "images/workflow-missing.jpg", status: "matching" },
+    ])
+    expect(production.exitCode).toBe(1)
+    expect(production.value.data?.entries).toMatchObject([
+      {
+        reason: "The asset needs successful processing and current catalog inclusion in the selected environment",
+        sourcePath: "images/catalog-missing.jpg",
+        status: "needs-processing",
+      },
+      {
+        reason: "The asset needs successful processing and current catalog inclusion in the selected environment",
+        sourcePath: "images/workflow-missing.jpg",
+        status: "needs-processing",
+      },
+    ])
+    expect(eligibilityRequests).toEqual([
+      { environment: "development", sourceRevisionId: "asset-workflow-missing" },
+      { environment: "development", sourceRevisionId: "asset-catalog-missing" },
+      { environment: "production", sourceRevisionId: "asset-workflow-missing" },
+      { environment: "production", sourceRevisionId: "asset-catalog-missing" },
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("upload-all reprocesses without uploading bytes, waits optionally, and matches after processing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-cli-upload-all-reprocess-"))
+  try {
+    await mkdir(join(root, "images"), { recursive: true })
+    const bytes = new TextEncoder().encode("needs processing")
+    await writeFile(join(root, "images", "hero.jpg"), bytes)
+    const remote = assetCreate({
+      id: "asset-reprocess-bulk",
+      filename: "hero.jpg",
+      sha256: contentSha256Create(bytes),
+      byteSize: bytes.byteLength,
+    })
+    const { outputCount: _outputCount, ...assetDetail } = remote
+    const workflow = {
+      id: "workflow-reprocess-bulk",
+      projectId: "project-1",
+      assetId: remote.id,
+      sourceRevisionId: remote.currentSourceRevisionId,
+      kind: "asset_processing" as const,
+      status: "succeeded" as const,
+      createdAt: "2026-08-18T00:00:00.000Z",
+      updatedAt: "2026-08-18T00:00:01.000Z",
+    }
+    let processed = false
+    const requests: Request[] = []
+    const reprocessBodies: unknown[] = []
+    const uploadRequests: Request[] = []
+    const fetcher = async (input: string | URL, init?: RequestInit) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      const url = new URL(request.url)
+      if (url.pathname.endsWith("/assets"))
+        return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
+      if (url.pathname.includes("/deletion-eligibility"))
+        return envelopeResponseCreate(deletionEligibilityCreate(remote.currentSourceRevisionId, processed))
+      if (url.pathname.endsWith("/environments/production"))
+        return envelopeResponseCreate({
+          id: "environment-production",
+          projectId: "project-1",
+          name: "production",
+          r2Bucket: "assets-production",
+          r2Prefix: "production",
+          publicBaseUrl: "https://assets.example.test",
+          createdAt: "2026-08-17T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+        })
+      if (url.pathname.endsWith("/assets/asset-reprocess-bulk/reprocess")) {
+        reprocessBodies.push(await request.json())
+        return envelopeResponseCreate({ asset: { ...assetDetail, metadata: null }, workflowId: workflow.id }, 202)
+      }
+      if (url.pathname.endsWith("/workflows/workflow-reprocess-bulk/status")) {
+        processed = true
+        return envelopeResponseCreate(workflow)
+      }
+      if (url.hostname === "upload.example.test" || url.pathname.includes("/uploads/")) {
+        uploadRequests.push(request)
+        return failureResponseCreate("upload should not be called", 500)
+      }
+      throw new Error(`Unexpected request ${request.url}`)
+    }
+    const uploadAllRun = async (wait: boolean, deleteLocal = false) => {
+      const output: string[] = []
+      const args = ["upload-all", root, "--integration-note", "bulk", "--environment", "production"]
+      if (deleteLocal) args.push("--delete")
+      if (wait) args.push("--wait")
+      args.push("--json")
+      const exitCode = await assetsCliMain(args, {
+        env: cliEnvironment,
+        fetcher,
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      })
+      return { exitCode, value: JSON.parse(output[0] ?? "{}") as { data?: { entries?: unknown[] } } }
+    }
+
+    const withoutWait = await uploadAllRun(false)
+    expect(withoutWait.exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "POST"])
+    expect(withoutWait.value.data?.entries).toMatchObject([
+      { action: "skipped", reprocessed: true, status: "needs-processing", workflowId: workflow.id },
+    ])
+    expect(reprocessBodies).toEqual([{ environmentId: "environment-production" }])
+    expect(requests.some((request) => request.url.includes("/workflows/"))).toBe(false)
+
+    requests.length = 0
+    const withWait = await uploadAllRun(true)
+    expect(withWait.exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "POST", "GET"])
+    expect(withWait.value.data?.entries).toMatchObject([
+      {
+        action: "skipped",
+        reprocessed: true,
+        status: "needs-processing",
+        workflowId: workflow.id,
+        workflowStatus: "succeeded",
+      },
+    ])
+    expect(reprocessBodies).toEqual([
+      { environmentId: "environment-production" },
+      { environmentId: "environment-production" },
+    ])
+    expect(requests.some((request) => request.url.includes("/workflows/"))).toBe(true)
+    expect(uploadRequests).toHaveLength(0)
+
+    requests.length = 0
+    const diffOutput: string[] = []
+    const diffExitCode = await assetsCliMain(["diff", root, "--environment", "production", "--json"], {
+      env: cliEnvironment,
+      fetcher,
+      stdout: (text) => diffOutput.push(text),
+      stderr: () => undefined,
+    })
+    expect(diffExitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET"])
+    expect(JSON.parse(diffOutput[0] ?? "{}")).toMatchObject({
+      data: { entries: [{ sourcePath: "images/hero.jpg", status: "matching" }] },
+      ok: true,
+    })
+
+    processed = false
+    requests.length = 0
+    const deleteRun = await uploadAllRun(false, true)
+    expect(deleteRun.exitCode).toBe(0)
+    expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "POST", "GET", "GET"])
+    expect(deleteRun.value.data?.entries).toMatchObject([
+      {
+        action: "skipped",
+        deleted: true,
+        eligible: true,
+        reprocessed: true,
+        status: "needs-processing",
+        workflowStatus: "succeeded",
+      },
+    ])
+    expect(await Bun.file(join(root, "images", "hero.jpg")).exists()).toBe(false)
+    expect(reprocessBodies).toHaveLength(3)
+    expect(uploadRequests).toHaveLength(0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -4432,7 +4898,7 @@ test("diff returns deterministic human output and succeeds for matching and empt
     })
     expect(exitCode).toBe(0)
     expect(output[0]).toBe(
-      `Root: ${root}\nEnvironment: development\nmatching image images/matching.jpg deletion-eligible\nSummary: new=0 changed=0 matching=1 remote-only=0 unsupported=0 conflict=0 metadata=0 alt-updates-pending=0\n`,
+      `Root: ${root}\nEnvironment: development\nmatching image images/matching.jpg deletion-eligible\nSummary: new=0 changed=0 matching=1 needs-processing=0 remote-only=0 unsupported=0 conflict=0 metadata=0 alt-updates-pending=0\n`,
     )
 
     const emptyOutput: string[] = []
@@ -4493,8 +4959,16 @@ test("diff human output reports changed, conflict, unsupported, and remote-only 
     const output: string[] = []
     const exitCode = await assetsCliMain(["diff", root], {
       env: cliEnvironment,
-      fetcher: async () =>
-        envelopeResponseCreate({ assets: [remoteChanged, remoteOnly], page: { limit: 100, nextCursor: null } }),
+      fetcher: async (input) => {
+        const url = new URL(input)
+        if (url.pathname.endsWith("/assets"))
+          return envelopeResponseCreate({ assets: [remoteChanged, remoteOnly], page: { limit: 100, nextCursor: null } })
+        if (url.pathname.includes("/deletion-eligibility")) {
+          const sourceRevisionId = url.pathname.split("/").at(-2) ?? ""
+          return envelopeResponseCreate(deletionEligibilityCreate(sourceRevisionId))
+        }
+        throw new Error(`Unexpected request ${input}`)
+      },
       stdout: (text) => output.push(text),
       stderr: () => undefined,
     })
@@ -4508,7 +4982,7 @@ conflict font fonts/same.woff Multiple local files target the same normalized as
 conflict font fonts/same.woff2 Multiple local files target the same normalized asset
 changed image images/changed.jpg The source fingerprint differs
 remote-only video remote.mp4
-Summary: new=0 changed=1 matching=0 remote-only=1 unsupported=1 conflict=2 metadata=0 alt-updates-pending=0
+Summary: new=0 changed=1 matching=0 needs-processing=0 remote-only=1 unsupported=1 conflict=2 metadata=0 alt-updates-pending=0
 `,
     )
   } finally {
