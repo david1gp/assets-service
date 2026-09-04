@@ -25,7 +25,7 @@ export const manifestTable = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (table) => [
-    uniqueIndex("manifests_object_key_unique").on(table.objectKey),
+    uniqueIndex("manifests_project_object_key_unique").on(table.projectId, table.objectKey),
     uniqueIndex("manifests_sha256_unique").on(table.sha256),
     index("manifests_project_index").on(table.projectId),
     index("manifests_asset_index").on(table.assetId),

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
 import type { AnySQLiteTable } from "drizzle-orm/sqlite-core"
 import { rcloneBackupAdapterFake } from "../src/backup/rcloneBackupAdapterFake.js"
+import { canonicalJsonDigest } from "../src/catalog/canonicalJsonDigest.js"
 import { deletionApiRepositoryCreate } from "../src/deletion/deletionApiRepositoryCreate.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
@@ -320,6 +321,66 @@ const setup = async (r2Prefix = "projects/project-delete") => {
   return { opened: opened.data, db, storageBase, backup, binding }
 }
 
+const otherProjectCatalogSeed = async (fixture: Awaited<ReturnType<typeof setup>>) => {
+  const digest = canonicalJsonDigest([])
+  const manifestObjectKey = `catalogs/development/${digest}.json`
+  expect(
+    databaseRecordInsert(fixture.db, catalogGenerationTable, {
+      id: "generation-delete-other",
+      projectId: "project-delete-other",
+      environment: "development",
+      digest,
+      manifestObjectKey,
+      rendererVersion: "assets-service.catalog.v1",
+      createdAt: now,
+    }),
+  ).toMatchObject({ success: true })
+  expect(
+    databaseRecordInsert(fixture.db, catalogTable, {
+      id: "catalog-project-delete-other-development",
+      projectId: "project-delete-other",
+      environment: "development",
+      generationId: "generation-delete-other",
+      schema: "assets.catalog.v1",
+      digest,
+      rendererVersion: "assets-service.catalog.v1",
+      generatedAt: now,
+      updatedAt: now,
+    }),
+  ).toMatchObject({ success: true })
+  expect(
+    databaseRecordInsert(fixture.db, manifestTable, {
+      id: "manifest-generation-delete-other",
+      projectId: "project-delete-other",
+      assetId: null,
+      catalogGenerationId: "generation-delete-other",
+      kind: "catalog",
+      schema: "assets.catalog.v1",
+      objectKey: manifestObjectKey,
+      byteSize: 1,
+      sha256: "e".repeat(64),
+      createdAt: now,
+    }),
+  ).toMatchObject({ success: true })
+  expect(
+    databaseRecordInsert(fixture.db, blobTable, {
+      id: "blob-manifest-delete-other-current",
+      projectId: "project-delete-other",
+      assetId: null,
+      sourceRevisionId: null,
+      outputVersionId: null,
+      storage: "private",
+      environment: "development",
+      kind: "manifest",
+      objectKey: manifestObjectKey,
+      byteSize: 1,
+      sha256: "e".repeat(64),
+      mediaType: "application/json",
+      createdAt: now,
+    }),
+  ).toMatchObject({ success: true })
+}
+
 const runDeletion = async (
   fixture: Awaited<ReturnType<typeof setup>>,
   storage: StorageAdapter = fixture.storageBase,
@@ -349,6 +410,99 @@ const runDeletion = async (
   await engine.runOnce()
   return { engine, requested }
 }
+
+test("retries deletion without duplicating a cross-project catalog manifest", async () => {
+  const fixture = await setup()
+  await otherProjectCatalogSeed(fixture)
+  let catalogPutFailed = false
+  const storage: StorageAdapter = {
+    ...fixture.storageBase,
+    putImmutable: async (input) => {
+      if (
+        !catalogPutFailed &&
+        input.location.namespace === "private-source" &&
+        input.location.key.startsWith("catalogs/")
+      ) {
+        catalogPutFailed = true
+        return { success: false, op: "testPut", errorMessage: "temporary R2 failure" }
+      }
+      return fixture.storageBase.putImmutable(input)
+    },
+  }
+  try {
+    const first = await runDeletion(fixture, storage)
+    expect(catalogPutFailed).toBe(true)
+    expect(deletionApiRepositoryCreate(fixture.db).deletionStateRead?.("project-delete", "asset-delete")).toMatchObject(
+      {
+        success: true,
+        data: { status: "retryable", pendingRemoteObjects: [] },
+      },
+    )
+
+    expect(await first.engine.runOnce()).toMatchObject({ success: true, data: 1 })
+    const stateAfterRetry = deletionApiRepositoryCreate(fixture.db).deletionStateRead?.(
+      "project-delete",
+      "asset-delete",
+    )
+    expect(stateAfterRetry).toMatchObject({
+      success: true,
+      data: { status: "succeeded", pendingRemoteObjects: [] },
+    })
+
+    const projectGenerations = fixture.db
+      .select()
+      .from(catalogGenerationTable)
+      .where(eq(catalogGenerationTable.projectId, "project-delete"))
+      .all()
+    expect(projectGenerations).toHaveLength(1)
+    const replacementGeneration = projectGenerations[0]
+    if (replacementGeneration === undefined) throw new Error("replacement generation missing")
+    expect(replacementGeneration.digest).toBe(canonicalJsonDigest([]))
+
+    expect(fixture.db.select().from(assetTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(sourceRevisionTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(outputVersionTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(catalogOutputTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(assetMetadataTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(backupReceiptTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(uploadTable).all()).toHaveLength(0)
+    expect(fixture.db.select().from(catalogTable).all()).toMatchObject([
+      { projectId: "project-delete", generationId: replacementGeneration.id },
+      { id: "catalog-project-delete-other-development", generationId: "generation-delete-other" },
+    ])
+
+    const manifests = fixture.db.select().from(manifestTable).all()
+    expect(manifests).toHaveLength(2)
+    expect(manifests.map(({ projectId, objectKey }) => ({ projectId, objectKey }))).toEqual(
+      expect.arrayContaining([
+        { projectId: "project-delete", objectKey: replacementGeneration.manifestObjectKey },
+        { projectId: "project-delete-other", objectKey: replacementGeneration.manifestObjectKey },
+      ]),
+    )
+
+    const blobs = fixture.db.select().from(blobTable).all()
+    expect(blobs).toHaveLength(3)
+    expect(blobs.map(({ projectId, objectKey }) => ({ projectId, objectKey }))).toEqual(
+      expect.arrayContaining([
+        { projectId: "project-delete", objectKey: replacementGeneration.manifestObjectKey },
+        { projectId: "project-delete-other", objectKey: replacementGeneration.manifestObjectKey },
+        { projectId: "project-delete-other", objectKey: "catalogs/development/old.json" },
+      ]),
+    )
+
+    const objects = await fixture.storageBase.listObjects?.({ bucket: fixture.binding.data.bucket })
+    if (objects === undefined || !objects.success) throw new Error("storage inventory missing")
+    const replacementLocation = storageObjectLocationCreate(
+      fixture.binding.data,
+      "private-source",
+      replacementGeneration.manifestObjectKey,
+    )
+    if (!replacementLocation.success) throw new Error(replacementLocation.errorMessage)
+    expect(objects.data.objects.map((object) => object.key)).toEqual([replacementLocation.data.objectKey])
+  } finally {
+    databaseClose(fixture.opened)
+  }
+})
 
 describe("complete asset deletion", () => {
   test("deletes every remote and relational record before preserving status and audit evidence", async () => {

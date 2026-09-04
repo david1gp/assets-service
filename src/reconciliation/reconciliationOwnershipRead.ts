@@ -154,7 +154,11 @@ function blobOwnershipRead(
       return { success: true, data: { referenceId: version.id, kind: "output" } }
   }
   if (blob.kind === "manifest") {
-    const manifest = db.select().from(manifestTable).where(eq(manifestTable.objectKey, blob.objectKey)).get()
+    const manifest = db
+      .select()
+      .from(manifestTable)
+      .where(and(eq(manifestTable.projectId, blob.projectId), eq(manifestTable.objectKey, blob.objectKey)))
+      .get()
     if (manifest?.projectId === blob.projectId && manifest.objectKey === blob.objectKey) {
       if (manifest.assetId === null || manifest.assetId === asset?.id)
         return { success: true, data: { referenceId: manifest.id, kind: "manifest" } }

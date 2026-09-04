@@ -134,6 +134,13 @@
       "when": 1788333294133,
       "tag": "0018_authentication_session_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788486567195,
+      "tag": "0019_project_scoped_manifest_object_keys",
+      "breakpoints": true
     }
   ]
 }
