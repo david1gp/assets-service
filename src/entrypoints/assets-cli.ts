@@ -677,6 +677,27 @@ const assetReferenceUniqueRead = async (
   return { success: true, data: asset.id }
 }
 
+const projectEnvironmentIdRead = async (
+  client: AssetsApiClient,
+  projectId: string,
+  environmentName: string,
+  op: string,
+): Promise<Result<string>> => {
+  const environments = await client.environmentsRead(projectId)
+  if (!environments.success) return environments
+  const matches = environments.data.environments.filter(
+    (environment) => environment.projectId === projectId && environment.name === environmentName,
+  )
+  if (matches.length === 0)
+    return resultFailure(op, `The ${environmentName} environment is not configured for this project`)
+  if (matches.length > 1)
+    return resultFailure(op, `The ${environmentName} environment is configured more than once for this project`)
+  const environment = matches[0]
+  if (environment === undefined)
+    return resultFailure(op, `The ${environmentName} environment is not configured for this project`)
+  return { success: true, data: environment.id }
+}
+
 const packageNameRead = async (projectRoot: string): Promise<Result<string | null>> => {
   const packagePath = join(resolve(projectRoot), "package.json")
   let content: string
@@ -1358,12 +1379,10 @@ const uploadAllCommandRun = async (
   let targetEnvironmentId: string | undefined
   const targetEnvironmentIdRead = async (): Promise<Result<string>> => {
     if (targetEnvironmentId !== undefined) return { success: true, data: targetEnvironmentId }
-    const targetEnvironment = await client.environmentRead(projectId, environment)
+    const targetEnvironment = await projectEnvironmentIdRead(client, projectId, environment, op)
     if (!targetEnvironment.success) return targetEnvironment
-    if (targetEnvironment.data.projectId !== projectId || targetEnvironment.data.name !== environment)
-      return resultFailure(op, "The selected environment did not match the request")
-    targetEnvironmentId = targetEnvironment.data.id
-    return { success: true, data: targetEnvironmentId }
+    targetEnvironmentId = targetEnvironment.data
+    return { success: true, data: targetEnvironment.data }
   }
   const deletionEligibilityRead = async (
     entry: AssetDiffEntry,
@@ -1908,15 +1927,13 @@ const assetReprocessCommandRun = async (
   environment: string,
 ): Promise<CommandOutput> => {
   const reference = parsed.positionals[0] ?? ""
-  const targetEnvironment = await client.environmentRead(projectId, environment)
+  const targetEnvironment = await projectEnvironmentIdRead(client, projectId, environment, "assetsCliReprocess")
   if (!targetEnvironment.success) return { result: targetEnvironment }
-  if (targetEnvironment.data.projectId !== projectId || targetEnvironment.data.name !== environment)
-    return { result: resultFailure("assetsCliReprocess", "The selected environment did not match the request") }
 
   const assetId = await assetReferenceUniqueRead(client, projectId, reference)
   if (!assetId.success) return { result: assetId }
   const reprocessed = await client.assetReprocess(projectId, assetId.data, {
-    environmentId: targetEnvironment.data.id,
+    environmentId: targetEnvironment.data,
   })
   if (!reprocessed.success) return { result: reprocessed }
   if (reprocessed.data.asset.id !== assetId.data || reprocessed.data.asset.projectId !== projectId)

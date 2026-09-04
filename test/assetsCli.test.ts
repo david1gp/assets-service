@@ -2357,16 +2357,20 @@ test("reprocess targets an explicit environment without uploading bytes and repo
     const request = new Request(String(input), init)
     requests.push(request)
     const url = new URL(request.url)
-    if (url.pathname.endsWith("/environments/production"))
+    if (url.pathname.endsWith("/environments"))
       return envelopeResponseCreate({
-        id: "environment-production",
-        projectId: "project-1",
-        name: "production",
-        r2Bucket: "assets-production",
-        r2Prefix: "production",
-        publicBaseUrl: "https://assets.example.test",
-        createdAt: "2026-08-17T00:00:00.000Z",
-        updatedAt: "2026-08-17T00:00:00.000Z",
+        environments: [
+          {
+            id: "environment-production",
+            projectId: "project-1",
+            name: "production",
+            r2Bucket: "assets-production",
+            r2Prefix: "production",
+            publicBaseUrl: "https://assets.example.test",
+            createdAt: "2026-08-17T00:00:00.000Z",
+            updatedAt: "2026-08-17T00:00:00.000Z",
+          },
+        ],
       })
     if (url.pathname.endsWith("/assets"))
       return envelopeResponseCreate({ assets: [listedAsset], page: { limit: 100, nextCursor: null } })
@@ -2388,6 +2392,7 @@ test("reprocess targets an explicit environment without uploading bytes and repo
 
   expect(exitCode).toBe(0)
   expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "POST", "GET"])
+  expect(requests[0]?.url).toBe("https://assets.example.test/api/v1/projects/project-1/environments")
   expect(
     requests.some(
       (request) => request.url.includes("/uploads") || new URL(request.url).hostname === "upload.example.test",
@@ -2401,6 +2406,55 @@ test("reprocess targets an explicit environment without uploading bytes and repo
     ok: true,
     data: { asset: { id: "asset-reprocess" }, workflowId: "workflow-reprocess", workflow: { status: "succeeded" } },
   })
+})
+
+test("reprocess rejects missing and duplicate selected environments before reading assets", async () => {
+  const productionEnvironment = {
+    id: "environment-production",
+    projectId: "project-1",
+    name: "production" as const,
+    r2Bucket: "assets-production",
+    r2Prefix: "production",
+    publicBaseUrl: "https://assets.example.test",
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  }
+  const run = async (environments: readonly unknown[]) => {
+    const requests: Request[] = []
+    const output: string[] = []
+    const exitCode = await assetsCliMain(
+      ["reprocess", "asset-reprocess", "--project", "project-1", "--environment", "production", "--json"],
+      {
+        env: cliEnvironment,
+        fetcher: async (input, init) => {
+          const request = new Request(String(input), init)
+          requests.push(request)
+          if (new URL(request.url).pathname.endsWith("/environments")) return envelopeResponseCreate({ environments })
+          throw new Error(`Unexpected request ${request.url}`)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+    return { exitCode, output: JSON.parse(output[0] ?? "{}"), requests }
+  }
+
+  const missing = await run([])
+  expect(missing.exitCode).toBe(1)
+  expect(missing.output).toMatchObject({
+    ok: false,
+    error: { message: "The production environment is not configured for this project" },
+  })
+  expect(missing.requests).toHaveLength(1)
+  expect(missing.requests[0]?.url).toBe("https://assets.example.test/api/v1/projects/project-1/environments")
+
+  const duplicate = await run([productionEnvironment, { ...productionEnvironment, id: "environment-production-copy" }])
+  expect(duplicate.exitCode).toBe(1)
+  expect(duplicate.output).toMatchObject({
+    ok: false,
+    error: { message: "The production environment is configured more than once for this project" },
+  })
+  expect(duplicate.requests).toHaveLength(1)
 })
 
 test("reprocess reports a failed waited workflow and rejects ambiguous assets without starting work", async () => {
@@ -2437,16 +2491,20 @@ test("reprocess reports a failed waited workflow and rejects ambiguous assets wi
     const request = new Request(String(input), init)
     requests.push(request)
     const url = new URL(request.url)
-    if (url.pathname.endsWith("/environments/production"))
+    if (url.pathname.endsWith("/environments"))
       return envelopeResponseCreate({
-        id: "environment-production",
-        projectId: "project-1",
-        name: "production",
-        r2Bucket: "assets-production",
-        r2Prefix: "production",
-        publicBaseUrl: "https://assets.example.test",
-        createdAt: "2026-08-17T00:00:00.000Z",
-        updatedAt: "2026-08-17T00:00:00.000Z",
+        environments: [
+          {
+            id: "environment-production",
+            projectId: "project-1",
+            name: "production",
+            r2Bucket: "assets-production",
+            r2Prefix: "production",
+            publicBaseUrl: "https://assets.example.test",
+            createdAt: "2026-08-17T00:00:00.000Z",
+            updatedAt: "2026-08-17T00:00:00.000Z",
+          },
+        ],
       })
     if (url.pathname.endsWith("/assets"))
       return envelopeResponseCreate({ assets: [assetOne, assetTwo], page: { limit: 100, nextCursor: null } })
@@ -4602,16 +4660,20 @@ test("upload-all reprocesses without uploading bytes, waits optionally, and matc
         return envelopeResponseCreate({ assets: [remote], page: { limit: 100, nextCursor: null } })
       if (url.pathname.includes("/deletion-eligibility"))
         return envelopeResponseCreate(deletionEligibilityCreate(remote.currentSourceRevisionId, processed))
-      if (url.pathname.endsWith("/environments/production"))
+      if (url.pathname.endsWith("/environments"))
         return envelopeResponseCreate({
-          id: "environment-production",
-          projectId: "project-1",
-          name: "production",
-          r2Bucket: "assets-production",
-          r2Prefix: "production",
-          publicBaseUrl: "https://assets.example.test",
-          createdAt: "2026-08-17T00:00:00.000Z",
-          updatedAt: "2026-08-17T00:00:00.000Z",
+          environments: [
+            {
+              id: "environment-production",
+              projectId: "project-1",
+              name: "production",
+              r2Bucket: "assets-production",
+              r2Prefix: "production",
+              publicBaseUrl: "https://assets.example.test",
+              createdAt: "2026-08-17T00:00:00.000Z",
+              updatedAt: "2026-08-17T00:00:00.000Z",
+            },
+          ],
         })
       if (url.pathname.endsWith("/assets/asset-reprocess-bulk/reprocess")) {
         reprocessBodies.push(await request.json())
@@ -4645,6 +4707,7 @@ test("upload-all reprocesses without uploading bytes, waits optionally, and matc
     const withoutWait = await uploadAllRun(false)
     expect(withoutWait.exitCode).toBe(0)
     expect(requests.map((request) => request.method)).toEqual(["GET", "GET", "GET", "POST"])
+    expect(requests[2]?.url).toBe("https://assets.example.test/api/v1/projects/project-1/environments")
     expect(withoutWait.value.data?.entries).toMatchObject([
       { action: "skipped", reprocessed: true, status: "needs-processing", workflowId: workflow.id },
     ])
