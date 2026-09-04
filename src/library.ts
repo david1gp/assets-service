@@ -292,6 +292,10 @@ export type { EnvironmentFilePathResolveOptions } from "./config/environmentFile
 export { environmentFilePathResolve } from "./config/environmentFilePathResolve.js"
 export type { EnvironmentFileReadOptions } from "./config/environmentFileRead.js"
 export { environmentFileRead } from "./config/environmentFileRead.js"
+export type { ProjectCreateEnvironmentFilePathResolveOptions } from "./config/projectCreateEnvironmentFilePathResolve.js"
+export { projectCreateEnvironmentFilePathResolve } from "./config/projectCreateEnvironmentFilePathResolve.js"
+export type { ProjectCreateEnvironmentFileReadOptions } from "./config/projectCreateEnvironmentFileRead.js"
+export { projectCreateEnvironmentFileRead } from "./config/projectCreateEnvironmentFileRead.js"
 export type {
   OrganizationConfiguration,
   OrganizationConfigurationResolveOptions,
