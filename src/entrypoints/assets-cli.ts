@@ -685,9 +685,7 @@ const projectEnvironmentIdRead = async (
 ): Promise<Result<string>> => {
   const environments = await client.environmentsRead(projectId)
   if (!environments.success) return environments
-  const matches = environments.data.environments.filter(
-    (environment) => environment.projectId === projectId && environment.name === environmentName,
-  )
+  const matches = environments.data.environments.filter((environment) => environment.name === environmentName)
   if (matches.length === 0)
     return resultFailure(op, `The ${environmentName} environment is not configured for this project`)
   if (matches.length > 1)
