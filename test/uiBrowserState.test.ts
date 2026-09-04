@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { createRoot } from "solid-js"
+import { createMemo, createRoot } from "solid-js"
 import * as v from "valibot"
 
+import { languageSignal } from "../src/ui/localization/languageSignal.js"
+import { ttc } from "../src/ui/localization/ttc.js"
 import { uiAssetPreviewPreferencePersistenceCreate } from "../src/ui/pages/uiAssetPreviewPreferencePersistenceCreate.js"
 import { uiAssetViewPreferencePersistenceCreate } from "../src/ui/pages/uiAssetViewPreferencePersistenceCreate.js"
 import { uiQueryCreate } from "../src/ui/query/uiQueryCreate.js"
@@ -13,6 +15,7 @@ import { uiLocalStorageRead } from "../src/ui/storage/uiLocalStorageRead.js"
 import { uiLocalStorageWrite } from "../src/ui/storage/uiLocalStorageWrite.js"
 
 const browserStateSchema = v.strictObject({ value: v.string() })
+const languagePreferenceKey = "assets-service:ui:language"
 
 const storageCreate = () => {
   const values = new Map<string, string>()
@@ -54,6 +57,53 @@ describe("uiLocalStorageWrite", () => {
 
     expect((await uiLocalStorageWrite("draft", null, { storage, debounceMilliseconds: 0 })).success).toBe(true)
     expect(values.has("draft")).toBe(false)
+  })
+})
+
+describe("languageSignal", () => {
+  test("uses a valid stored language before the browser default and falls back safely", () => {
+    const { storage, values } = storageCreate()
+    values.set(languagePreferenceKey, JSON.stringify("de"))
+
+    expect(languageSignal.initialize({ browserLanguage: "en-US", storage })).toBe("de")
+    expect(languageSignal.get()).toBe("de")
+
+    values.set(languagePreferenceKey, JSON.stringify("fr"))
+    expect(languageSignal.initialize({ browserLanguage: "de-DE", storage })).toBe("de")
+    expect(languageSignal.initialize({ storage: storageCreate().storage })).toBe("en")
+  })
+
+  test("persists validated changes asynchronously", async () => {
+    const { storage, values } = storageCreate()
+    languageSignal.initialize({ browserLanguage: "en-US", debounceMilliseconds: 5, storage })
+
+    languageSignal.set("de")
+    expect(values.has(languagePreferenceKey)).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(values.get(languagePreferenceKey)).toBe(JSON.stringify("de"))
+
+    languageSignal.set("en")
+    languageSignal.set("invalid" as never)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(values.get(languagePreferenceKey)).toBe(JSON.stringify("en"))
+  })
+})
+
+describe("ttc", () => {
+  test("reacts to language changes inside Solid computations", async () => {
+    const { storage } = storageCreate()
+    languageSignal.initialize({ browserLanguage: "en-US", debounceMilliseconds: 0, storage })
+
+    const state = createRoot((dispose) => {
+      const text = createMemo(() => ttc("English", "Deutsch"))
+      return { dispose, text }
+    })
+
+    expect(state.text()).toBe("English")
+    languageSignal.set("de")
+    expect(state.text()).toBe("Deutsch")
+    state.dispose()
+    await new Promise((resolve) => setTimeout(resolve, 5))
   })
 })
 
@@ -100,6 +150,7 @@ describe("uiFormDraft", () => {
         principal: {
           subjectId: "subject/1",
           organizationId: "organization/1",
+          mode: "contributor",
           organizationAdmin: false,
           method: "human_session",
           grants: [{ projectId: "project-1", roles: ["admin"] }],
