@@ -23,6 +23,8 @@ import {
   assetDiffStatuses,
 } from "../asset-cli/assetDiffClassify.js"
 import { type AssetFileFingerprint, assetFileFingerprint } from "../asset-cli/assetFileFingerprint.js"
+import { cliCommandHelp } from "../asset-cli/cliCommandHelp.js"
+import { cliHelpFormat } from "../asset-cli/cliHelpFormat.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
 import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
@@ -46,6 +48,7 @@ import { projectSourceConfigurationRead } from "../config/projectSourceConfigura
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
 import { uploadStatusSchema, type UploadStatus } from "../upload/uploadStatusSchema.js"
 import { type Upload } from "../upload/uploadSchema.js"
+import { uploadsListRun } from "../upload/uploadsListRun.js"
 import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectCreate } from "../project/projectCreateSchema.js"
@@ -206,140 +209,7 @@ const diffSourceDirectoryOptionNames = new Set([
   "video-dir",
 ])
 
-const commandHelp = {
-  commands: [
-    "auth login",
-    "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> --zitadel-project-id <id> --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url>",
-    "config show [root]",
-    "doctor --environment <development|production>",
-    "diff [root]",
-    "uploads list [--today] [--days <number>] [--limit <number>] [--status <status>]",
-    "upload-all [root] --integration-note <text>",
-    "upload <file> --path <folder/file> --integration-note <text>",
-    "reprocess <asset-key-or-id> --environment <development|production> [--wait]",
-    "list",
-    "show <asset-key>",
-    "outputs list|add|remove|set <asset-key>",
-    "metadata set|unset <asset-key>",
-    "settings read [--project <id-or-name>] [--environment <development|production>]",
-    "settings update [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>]",
-    "settings migrate [--project <id-or-name>] --environment <development|production> [--r2-bucket <bucket>] [--r2-prefix <prefix>] [--public-base-url <url>] [--create-bucket] [--custom-domain <hostname>] [--zone-id <id>] [--wrangler-profile <name>] [--apply] [--wait] [--no-wait] [--poll-interval <milliseconds>]",
-    "catalogs rebuild --project <id-or-name> --environment production",
-    "move <asset-key> --to <path>",
-    "delete <asset-key>",
-    "lists [--check] [--dir <directory>]",
-  ],
-  globalOptions: [
-    "--api-url",
-    "--organization",
-    "--project",
-    "--environment",
-    "--env-file",
-    "--config",
-    "--session",
-    "--json",
-    "--help",
-    "--version",
-  ],
-  subcommands: {
-    "auth login": ["--token-stdin", "--token"],
-    "projects create": [
-      "--organization",
-      "--name",
-      "--slug",
-      "--default-environment",
-      "--service-project-id",
-      "--zitadel-project-id",
-      "--development-r2-bucket",
-      "--development-r2-prefix",
-      "--development-public-base-url",
-      "--production-r2-bucket",
-      "--production-r2-prefix",
-      "--production-public-base-url",
-    ],
-    "config show": [],
-    doctor: ["--environment"],
-    diff: [
-      "--image-dir",
-      "--video-dir",
-      "--document-dir",
-      "--font-dir",
-      "--no-image-dir",
-      "--no-video-dir",
-      "--no-document-dir",
-      "--no-font-dir",
-    ],
-    "uploads list": ["--today", "--days", "--limit", "--status"],
-    "upload-all": ["--integration-note", "--wait", "--no-wait", "--poll-interval", "--delete", "--dry-run"],
-    upload: ["--path", "--integration-note", "--note", "--wait", "--no-wait", "--poll-interval"],
-    reprocess: ["--environment", "--wait", "--no-wait", "--poll-interval"],
-    list: ["--class", "--kind", "--include", "--search", "--folder"],
-    show: [],
-    "outputs list": [],
-    "outputs add": ["--kind", "--key", "--width", "--height", "--format", "--quality", "--show-ai-label"],
-    "outputs set": ["--kind", "--key", "--width", "--height", "--format", "--quality", "--show-ai-label", "--file"],
-    "outputs remove": [],
-    "metadata set": ["--alt"],
-    "metadata unset": ["--alt"],
-    "settings read": ["--project", "--environment"],
-    "settings update": ["--project", "--environment", "--r2-bucket", "--r2-prefix", "--public-base-url"],
-    "settings migrate": [
-      "--project",
-      "--environment",
-      "--r2-bucket",
-      "--r2-prefix",
-      "--public-base-url",
-      "--create-bucket",
-      "--custom-domain",
-      "--zone-id",
-      "--wrangler-profile",
-      "--apply",
-      "--wait",
-      "--no-wait",
-      "--poll-interval",
-    ],
-    "catalogs rebuild": ["--project", "--environment"],
-    move: ["--to"],
-    delete: ["--wait", "--no-wait", "--poll-interval"],
-    lists: [
-      "--check",
-      "--write",
-      "--dir",
-      "--output-dir",
-      "--image-list",
-      "--video-list",
-      "--font-list",
-      "--document-list",
-    ],
-  } as Record<string, readonly string[]>,
-  // Backward compatibility alias for tests and clients expecting options
-  get options(): readonly string[] {
-    const set = new Set(this.globalOptions)
-    for (const flags of Object.values(this.subcommands)) {
-      for (const flag of flags) set.add(flag)
-    }
-    return Array.from(set)
-  },
-  diff: {
-    root: "Default: .",
-    sourceDirectories: [
-      "image: ./images, --image-dir <directory>, --no-image-dir",
-      "video: ./videos, --video-dir <directory>, --no-video-dir",
-      "document: ./documents, --document-dir <directory>, --no-document-dir",
-      "font: ./fonts, --font-dir <directory>, --no-font-dir",
-    ],
-  },
-  config: {
-    root: "Default: .",
-    output: "Reports resolved local configuration and sources without displaying credentials or session secrets.",
-  },
-  projectResolution:
-    "Project selection: --project, ASSETS_PROJECT (or ASSETS_PROJECT_ID), saved CLI config, package.json.name for bulk roots, or the sole accessible project; name, package name, and sole-project selection are scoped by the resolved organization, while explicit project IDs remain authoritative.",
-  organizationResolution:
-    "Organization selection: --organization, selected .env ASSETS_ORGANIZATION, process ASSETS_ORGANIZATION, global directory mapping, or unrestricted resolution.",
-  environmentFile:
-    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched. For projects create only, ~/.config/assets-service/project-create.env is loaded automatically when neither --env-file nor ASSETS_ENV_FILE is set, taking precedence over project and working directory .env discovery.",
-}
+const commandHelp = cliCommandHelp
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
   resultErrorCreate(op, message, rawData)
@@ -1932,17 +1802,6 @@ const uploadAllCommandRun = async (
   }
 }
 
-const uploadsListHumanOutputRead = (uploads: readonly Upload[]): string => {
-  if (uploads.length === 0) return "No uploads found.\n"
-  const lines: string[] = []
-  for (const upload of uploads) {
-    const folderPath = upload.folders.length > 0 ? `${upload.folders.join("/")}/` : ""
-    const path = `${folderPath}${upload.originalFilename}`
-    lines.push(`- ${upload.id} [${upload.status}] ${path} (${upload.byteSize} bytes, ${upload.createdAt})`)
-  }
-  return `${lines.join("\n")}\n`
-}
-
 const uploadsListCommandRun = async (
   parsed: ParsedCommand,
   client: AssetsApiClient,
@@ -1968,50 +1827,33 @@ const uploadsListCommandRun = async (
     limit = parsedLimit.data
   }
 
-  let statusFilter: UploadStatus | undefined
+  let days: number | undefined
+  if (optionRead(parsed, "days") !== undefined) {
+    const parsedDays = numberRead(optionRead(parsed, "days"), "days", 0)
+    if (!parsedDays.success) return { result: parsedDays }
+    days = parsedDays.data
+  }
+
+  let status: UploadStatus | undefined
   if (optionRead(parsed, "status") !== undefined) {
     const parsedStatus = v.safeParse(uploadStatusSchema, optionRead(parsed, "status"))
     if (!parsedStatus.success) {
       return { result: resultFailure("assetsCliUploadsList", "Invalid --status option") }
     }
-    statusFilter = parsedStatus.output
+    status = parsedStatus.output
   }
 
-  let minCreatedAt: Date | undefined
-  if (flagRead(parsed, "today")) {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    minCreatedAt = today
-  } else if (optionRead(parsed, "days") !== undefined) {
-    const parsedDays = numberRead(optionRead(parsed, "days"), "days", 0)
-    if (!parsedDays.success) return { result: parsedDays }
-    const pastDate = new Date()
-    pastDate.setDate(pastDate.getDate() - parsedDays.data)
-    pastDate.setHours(0, 0, 0, 0)
-    minCreatedAt = pastDate
-  }
-
-  const uploadsResult = await client.uploadsReadAll(
-    projectId,
-    statusFilter === undefined ? {} : { status: statusFilter },
-  )
-  if (!uploadsResult.success) return { result: uploadsResult }
-
-  let filtered = [...uploadsResult.data]
-  if (minCreatedAt !== undefined) {
-    const minTime = minCreatedAt.getTime()
-    filtered = filtered.filter((u) => new Date(u.createdAt).getTime() >= minTime)
-  }
-
-  filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-
-  if (limit !== undefined) {
-    filtered = filtered.slice(0, limit)
-  }
+  const runResult = await uploadsListRun(client, projectId, {
+    today: flagRead(parsed, "today"),
+    ...(days === undefined ? {} : { days }),
+    ...(limit === undefined ? {} : { limit }),
+    ...(status === undefined ? {} : { status }),
+  })
+  if (!runResult.success) return { result: runResult }
 
   return {
-    result: { success: true, data: { uploads: filtered } },
-    humanOutput: uploadsListHumanOutputRead(filtered),
+    result: { success: true, data: { uploads: runResult.data.uploads } },
+    humanOutput: runResult.data.humanOutput,
   }
 }
 
@@ -2990,25 +2832,7 @@ const humanValueRead = (data: unknown): string => {
   if (data && typeof data === "object" && "matches" in data && typeof data.matches === "boolean")
     return data.matches ? "Generated lists match.\n" : "Generated lists do not match.\n"
   if (data && typeof data === "object" && "commands" in data && "globalOptions" in data) {
-    const help = data as typeof commandHelp
-    const lines: string[] = ["Usage:", "  assets <command> [options]\n", "Commands:"]
-    for (const cmd of help.commands) {
-      lines.push(`  ${cmd}`)
-    }
-    lines.push("\nGlobal Options:")
-    for (const opt of help.globalOptions) {
-      lines.push(`  ${opt}`)
-    }
-    lines.push("\nSubcommand Options:")
-    for (const [subcmd, opts] of Object.entries(help.subcommands)) {
-      if (opts.length > 0) {
-        lines.push(`  ${subcmd}:`)
-        for (const opt of opts) {
-          lines.push(`    ${opt}`)
-        }
-      }
-    }
-    return `${lines.join("\n")}\n`
+    return cliHelpFormat(data as typeof cliCommandHelp)
   }
   return `${JSON.stringify(data, null, 2)}\n`
 }
