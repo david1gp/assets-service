@@ -101,6 +101,8 @@
   },
   "dependencies": {
     "@adaptive-ds/mdi": "^0.1.2",
+    "@adaptive-ds/result": "^0.6.0",
+    "@adaptive-ds/zitadel-cli": "^0.1.0",
     "@corvu/dialog": "^0.2.4",
     "@formkit/drag-and-drop": "^0.6.1",
     "@solid-primitives/keyed": "^1.5.3",
