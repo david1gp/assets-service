@@ -367,10 +367,16 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       },
     )
     if (!callback.success) {
-      console.error(
-        `[auth/callback failed] [${requestIdRead(context)}] [${callback.op}] ${callback.errorMessage}`,
-        callback.rawData,
-      )
+      const errorMessage =
+        callback.errorMessage === "The exact organization membership was missing"
+          ? callback.errorMessage
+          : "The login callback failed"
+      console.error("[auth/callback failed]", {
+        requestId: requestIdRead(context),
+        op: callback.op,
+        errorMessage,
+        ...(callback.diagnostics === undefined ? {} : { diagnostics: callback.diagnostics }),
+      })
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 401,

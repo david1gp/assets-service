@@ -154,7 +154,6 @@ export const jwtPrincipalValidate = async (
   const organizationClaimValues = [
     claims["urn:zitadel:iam:org:id"],
     claims["urn:zitadel:iam:user:resourceowner:id"],
-    claims["urn:zitadel:iam:user:resourceowner"],
     claims.organization_id,
     claims.org_id,
     claims.organizationId,
@@ -181,6 +180,18 @@ export const jwtPrincipalValidate = async (
       return resultErrorCreate(op, "The JWT organization was invalid", {
         foundOrganizationId: presentOrganizationClaimValues,
         expectedOrganizationId: allowedOrganizationIds,
+        claims,
+      })
+    }
+    // ZITADEL's resourceowner:id claim identifies the user's organization; context aliases alone do not establish
+    // Contentoren membership.
+    if (
+      claimedOrganization === options.organizationId &&
+      stringRead(claims["urn:zitadel:iam:user:resourceowner:id"]) !== options.organizationId
+    ) {
+      return resultErrorCreate(op, "The JWT organization was invalid", {
+        foundOrganizationId: presentOrganizationClaimValues,
+        expectedOrganizationId: options.organizationId,
         claims,
       })
     }

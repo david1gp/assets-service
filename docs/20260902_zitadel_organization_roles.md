@@ -12,7 +12,7 @@ Authorize every verified member of the Zitadel `Contentoren` organization as an 
 - Enforce contributor scope through existing Assets Service project bindings and matching Zitadel project grants.
 - Do not create, reconcile, or delete customer project grants from Assets Service deployment scripts; Zitadel project grants are managed independently.
 - Accept human identities only from the configured Contentoren and Contentoren-Customers organizations; keep service identities restricted to Contentoren.
-- Require successful exact-organization membership verification and never infer admin status from an organization claim alone.
+- Require a signed matching `resourceowner:id` claim for Contentoren admins; require successful exact-organization membership verification for customers and never infer customer access from an organization claim alone.
 - Keep binding ownership with Contentoren and filter customer access/listing by exact granted Zitadel project IDs.
 - Keep service-account/PAT authorization grant-based.
 - Remove the temporary individual Tim uploader grant after organization-based access is live.

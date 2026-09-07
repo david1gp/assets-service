@@ -133,17 +133,23 @@ export const humanLoginCallback = async (
     displayName = oidcIdTokenDisplayNameExtract(verifiedIdTokenPayload)
   }
 
-  const membership = await options.oidcClient.organizationMembershipRead(
-    token.data.access_token,
-    principal.data.organizationId,
-  )
-  if (!membership.success) return membership
-  if (!membership.data.isExactMember) return resultErrorCreate(op, "The exact organization membership was missing")
-
   const isContentorenOrganization = principal.data.organizationId === options.config.organizationId
   const isCustomerOrganization = principal.data.organizationId === options.config.customerOrganizationId
   if (!isContentorenOrganization && !isCustomerOrganization)
     return resultErrorCreate(op, "The JWT organization was invalid")
+
+  if (isCustomerOrganization) {
+    const membership = await options.oidcClient.organizationMembershipRead(
+      token.data.access_token,
+      principal.data.organizationId,
+    )
+    if (!membership.success) return membership
+    if (!membership.data.isExactMember) {
+      return resultErrorCreate(op, "The exact organization membership was missing", undefined, {
+        diagnostics: membership.data.diagnostics,
+      })
+    }
+  }
 
   const grants = isCustomerOrganization
     ? principal.data.grants

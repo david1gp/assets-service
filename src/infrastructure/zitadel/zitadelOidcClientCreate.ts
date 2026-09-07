@@ -156,12 +156,32 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     const parsed = v.safeParse(zitadelMembershipSearchResponseSchema, body.data)
     if (!parsed.success) return resultErrorCreate(op, "The Zitadel membership response was invalid", parsed.issues)
     const exactMemberships = parsed.output.result.filter((membership) => membership.orgId === organizationId)
+    const scopeCounts = {
+      iam: parsed.output.result.filter((membership) => membership.iam !== undefined).length,
+      orgId: parsed.output.result.filter((membership) => membership.orgId !== undefined).length,
+      projectId: parsed.output.result.filter((membership) => membership.projectId !== undefined).length,
+      projectGrantId: parsed.output.result.filter((membership) => membership.projectGrantId !== undefined).length,
+    }
     const isOrganizationAdmin = exactMemberships.some((membership) =>
       membership.roles.some((role) => organizationAdministratorRoles.has(role)),
     )
     return {
       success: true,
-      data: { isExactMember: exactMemberships.length > 0, isOrganizationAdmin },
+      data: {
+        isExactMember: exactMemberships.length > 0,
+        isOrganizationAdmin,
+        ...(exactMemberships.length === 0
+          ? {
+              diagnostics: {
+                requestedOrganizationId: organizationId,
+                httpStatus: response.status,
+                resultCount: parsed.output.result.length,
+                scopeCounts,
+                exactMatchCount: exactMemberships.length,
+              },
+            }
+          : {}),
+      },
     }
   }
 
