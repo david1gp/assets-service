@@ -143,15 +143,16 @@ newline-terminated deterministic JSON envelope.
 ### Remote project registration
 
 Organization administrators and authorized automation can register a project and its complete initial service
-configuration through the authenticated remote CLI. The command requires one explicit binding and both environment
-bindings. It requires either an authenticated human session whose principal has organization-admin authority for the
+configuration through the authenticated remote CLI. The command requires one explicit service binding and both
+environment bindings. It requires either an authenticated human session whose principal has organization-admin authority for the
 selected organization, or a bearer token corresponding to the exact machine identity configured as the Assets
 Service project provisioner (via `ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID`) in the same organization. Ordinary
 service credentials without the dedicated provisioner subject are rejected. When registered by a human session,
 the administrator is recorded as an initial `project_grants` database row for the new project; machine provisioners
 record the provisioner subject ID. Runtime authorization remains based on the authenticated Zitadel claims, not that
-database row. The `--zitadel-project-id` value records the existing binding only; this command does not provision
-anything in Zitadel.
+database row. The `--zitadel-project-id` value records an existing binding. When omitted, the CLI creates exactly one
+Zitadel project with the resolved organization ID and project name, then submits the returned ID through the same
+registration request. It does not create applications or roles.
 
 For human interactive sessions, use `ASSETS_SESSION_COOKIE`. For automated machine provisioning, authenticate via
 protected token sources: `ASSETS_TOKEN` or `ASSETS_ACCESS_TOKEN` in the environment or an environment file. For
@@ -166,6 +167,17 @@ accepted as command-line arguments. It creates a missing configured database org
 the matching existing organization. Repeating the exact request returns the existing registration; different values for
 an existing registration are rejected.
 
+When `--zitadel-project-id` is omitted, add the Zitadel project-management credentials to the protected
+`~/.config/assets-service/project-create.env` file (or an explicit `--env-file`):
+
+```dotenv
+ZITADEL_BASE_URL=https://zitadel.example.com
+ZITADEL_TOKEN=<project-management-token>
+```
+
+The CLI validates the complete Assets Service project input before contacting Zitadel. Zitadel project creation
+failures are reported without printing the token.
+
 ```bash
 bun run assets projects create \
   --organization <key|id|slug> \
@@ -173,7 +185,7 @@ bun run assets projects create \
   --slug <slug> \
   --default-environment <development|production> \
   --service-project-id <id> \
-  --zitadel-project-id <id> \
+  [--zitadel-project-id <id>] \
   --development-r2-bucket <bucket> \
   --development-r2-prefix <prefix> \
   --development-public-base-url <url> \
