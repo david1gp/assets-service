@@ -462,7 +462,7 @@ export function UiAssetListPage() {
                     </Show>
                   </div>
 
-                  <CardWrapper class="overflow-hidden border border-slate-200 bg-white p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                  <CardWrapper class="overflow-x-auto border border-slate-200 bg-white p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                     <Table1R
                       rows={[...(data?.assets ?? [])]}
                       columns={columns()}
