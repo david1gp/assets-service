@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { type ProjectServiceCreateProjectOptions, projectServiceCreateProject } from "@adaptive-ds/zitadel-cli/v2"
 import * as v from "valibot"
 
 import { apiFailureEnvelopeCreate } from "../api/apiFailureEnvelopeCreate.js"
@@ -46,9 +47,6 @@ import { projectCreateEnvironmentFileRead } from "../config/projectCreateEnviron
 import { projectSourceConfigurationOverridesParse } from "../config/projectSourceConfigurationOverridesParse.js"
 import { projectSourceConfigurationRead } from "../config/projectSourceConfigurationRead.js"
 import type { ProjectSourceConfiguration } from "../config/projectSourceConfigurationSchema.js"
-import { uploadStatusSchema, type UploadStatus } from "../upload/uploadStatusSchema.js"
-import { type Upload } from "../upload/uploadSchema.js"
-import { uploadsListRun } from "../upload/uploadsListRun.js"
 import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectCreate } from "../project/projectCreateSchema.js"
@@ -58,9 +56,12 @@ import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../proj
 import { r2PrefixSchema } from "../project/r2PrefixSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
+import { idSchema } from "../schemas/idSchema.js"
 import { mediaTypeSchema } from "../schemas/mediaTypeSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { type UploadStatus, uploadStatusSchema } from "../upload/uploadStatusSchema.js"
+import { uploadsListRun } from "../upload/uploadsListRun.js"
 import type { WranglerCommandRunner } from "../wrangler/wranglerCommandRunner.js"
 import { wranglerCommandRunnerProduction } from "../wrangler/wranglerCommandRunnerProduction.js"
 import { wranglerProvisioningRun } from "../wrangler/wranglerProvisioningRun.js"
@@ -70,6 +71,7 @@ type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>
 export type AssetsCliOptions = {
   env?: NodeJS.ProcessEnv
   fetcher?: Fetcher
+  zitadelProjectCreate?: ZitadelProjectCreate
   sleep?: (milliseconds: number) => Promise<void>
   stdout?: (text: string) => void
   stderr?: (text: string) => void
@@ -106,6 +108,21 @@ type CommandOutput = {
 }
 
 type AssetsApiClient = Extract<ReturnType<typeof assetsApiClientCreate>, { success: true }>["data"]
+
+type ProjectCreateCliInput = Omit<ProjectCreate, "binding"> & {
+  binding: Omit<ProjectCreate["binding"], "zitadelProjectId"> & { zitadelProjectId?: string }
+}
+
+type ZitadelProjectCreateOptions = {
+  config: NonNullable<ProjectServiceCreateProjectOptions["config"]>
+  request: NonNullable<ProjectServiceCreateProjectOptions["request"]>
+}
+
+type ZitadelProjectCreateResult =
+  | { success: true; data: { projectId: string } }
+  | { success: false; errorMessage?: string }
+
+type ZitadelProjectCreate = (options: ZitadelProjectCreateOptions) => Promise<ZitadelProjectCreateResult>
 
 const configSchema = v.strictObject({
   apiUrl: v.optional(v.pipe(v.string(), v.url())),
@@ -213,6 +230,55 @@ const commandHelp = cliCommandHelp
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
   resultErrorCreate(op, message, rawData)
+
+const zitadelProjectCreateDefault: ZitadelProjectCreate = async (options) => {
+  const result = await projectServiceCreateProject({ config: options.config, request: options.request })
+  if (!result.success || typeof result.data.projectId !== "string") return { success: false }
+  return { success: true, data: { projectId: result.data.projectId } }
+}
+
+const zitadelProjectIdCreate = async (
+  input: ProjectCreateCliInput,
+  env: NodeJS.ProcessEnv,
+  projectCreate: ZitadelProjectCreate,
+): Promise<Result<string>> => {
+  const op = "assetsCliZitadelProjectCreate"
+  const baseUrl = env.ZITADEL_BASE_URL?.trim()
+  const token = env.ZITADEL_TOKEN
+  if (baseUrl === undefined || baseUrl.length === 0)
+    return resultFailure(op, "Automatic Zitadel project creation requires ZITADEL_BASE_URL")
+  if (token === undefined || token.trim().length === 0)
+    return resultFailure(op, "Automatic Zitadel project creation requires ZITADEL_TOKEN")
+
+  let url: URL
+  try {
+    url = new URL(baseUrl)
+  } catch {
+    return resultFailure(op, "ZITADEL_BASE_URL must be an absolute HTTP or HTTPS URL")
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  )
+    return resultFailure(op, "ZITADEL_BASE_URL must be an absolute HTTP or HTTPS URL without credentials")
+
+  let result: ZitadelProjectCreateResult
+  try {
+    result = await projectCreate({
+      config: { baseUrl, token },
+      request: { organizationId: input.organization.id, name: input.name },
+    })
+  } catch {
+    return resultFailure(op, "Automatic Zitadel project creation failed", { code: "upstream_failure" })
+  }
+  const parsedProjectId = result.success ? v.safeParse(idSchema, result.data.projectId) : undefined
+  if (!result.success || parsedProjectId === undefined || !parsedProjectId.success)
+    return resultFailure(op, "Automatic Zitadel project creation failed", { code: "upstream_failure" })
+  return { success: true, data: parsedProjectId.output }
+}
 
 const pathRead = (env: NodeJS.ProcessEnv, option: string, fallbackDirectory: string, filename: string): string => {
   const configured = env[option]
@@ -2227,7 +2293,7 @@ const projectCreateOptionRead = (parsed: ParsedCommand, name: string): Result<st
 const projectCreateInputRead = (
   parsed: ParsedCommand,
   organization: OrganizationDefinition | undefined,
-): Result<ProjectCreate> => {
+): Result<ProjectCreateCliInput> => {
   const op = "assetsCliProjectCreate"
   if (optionRead(parsed, "token") !== undefined)
     return resultFailure(op, "Tokens are not accepted as command arguments")
@@ -2259,7 +2325,6 @@ const projectCreateInputRead = (
     "slug",
     "default-environment",
     "service-project-id",
-    "zitadel-project-id",
     "development-r2-bucket",
     "development-r2-prefix",
     "development-public-base-url",
@@ -2281,7 +2346,7 @@ const projectCreateInputRead = (
     defaultEnvironment: valueRead("default-environment"),
     binding: {
       serviceProjectId: valueRead("service-project-id"),
-      zitadelProjectId: valueRead("zitadel-project-id"),
+      zitadelProjectId: optionRead(parsed, "zitadel-project-id"),
     },
     environments: [
       {
@@ -2298,10 +2363,25 @@ const projectCreateInputRead = (
       },
     ],
   }
-  const parsedInput = v.safeParse(projectCreateSchema, input)
+  const parsedInput = v.safeParse(projectCreateSchema, {
+    ...input,
+    binding: {
+      ...input.binding,
+      zitadelProjectId: input.binding.zitadelProjectId ?? "zitadel-project-pending",
+    },
+  })
   if (!parsedInput.success)
     return resultFailure(op, "The project creation input was invalid", v.summarize(parsedInput.issues))
-  return { success: true, data: parsedInput.output }
+  return {
+    success: true,
+    data: {
+      ...parsedInput.output,
+      binding: {
+        ...parsedInput.output.binding,
+        ...(input.binding.zitadelProjectId === undefined ? { zitadelProjectId: undefined } : {}),
+      },
+    },
+  }
 }
 
 const commandRun = async (
@@ -2311,6 +2391,7 @@ const commandRun = async (
   env: NodeJS.ProcessEnv,
   stdin: () => Promise<string>,
   organization?: OrganizationDefinition,
+  zitadelProjectCreate: ZitadelProjectCreate = zitadelProjectCreateDefault,
   wranglerRunner: WranglerCommandRunner = wranglerCommandRunnerProduction,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
@@ -2462,7 +2543,16 @@ const commandRun = async (
     if (parsed.subcommand !== "create") return { result: resultFailure("assetsCliProjects", "Use projects create") }
     const input = projectCreateInputRead(parsed, organization)
     if (!input.success) return { result: input }
-    return { result: await client.projectCreate(input.data) }
+    let projectInput = input.data
+    if (projectInput.binding.zitadelProjectId === undefined) {
+      const created = await zitadelProjectIdCreate(projectInput, env, zitadelProjectCreate)
+      if (!created.success) return { result: created }
+      projectInput = {
+        ...projectInput,
+        binding: { ...projectInput.binding, zitadelProjectId: created.data },
+      }
+    }
+    return { result: await client.projectCreate(projectInput as ProjectCreate) }
   }
 
   if (
@@ -2992,6 +3082,7 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     env,
     options.stdinRead ?? stdinRead,
     organizationResult.data.organization ?? undefined,
+    options.zitadelProjectCreate ?? zitadelProjectCreateDefault,
     options.wranglerRunner ?? wranglerCommandRunnerProduction,
     sleep,
     parsedPollInterval?.data,

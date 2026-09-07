@@ -7,7 +7,7 @@ export type CliProjectsCreateFlags = AssetsCliGlobalFlags & {
   slug: string
   defaultEnvironment: string
   serviceProjectId: string
-  zitadelProjectId: string
+  zitadelProjectId?: string
   developmentR2Bucket: string
   developmentR2Prefix: string
   developmentPublicBaseUrl: string
@@ -19,9 +19,9 @@ export type CliProjectsCreateFlags = AssetsCliGlobalFlags & {
 
 export const cliProjectsCreateCommand = buildCommand({
   docs: {
-    brief: "Register a new project in the asset service",
+    brief: "Register a new project in the asset service, optionally creating its Zitadel project",
     fullDescription:
-      "Registers a new project including Zitadel project bindings and R2 storage bucket settings for development and production environments.",
+      "Registers a new project including Zitadel project bindings and R2 storage bucket settings. When --zitadel-project-id is omitted, the CLI creates a Zitadel project using ZITADEL_BASE_URL and ZITADEL_TOKEN from the project-create environment.",
   },
   parameters: {
     flags: {
@@ -49,7 +49,8 @@ export const cliProjectsCreateCommand = buildCommand({
       zitadelProjectId: {
         kind: "parsed",
         parse: String,
-        brief: "Zitadel project ID",
+        brief: "Existing Zitadel project ID; creates one when omitted",
+        optional: true,
       },
       developmentR2Bucket: {
         kind: "parsed",

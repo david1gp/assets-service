@@ -18,7 +18,7 @@ export type CliCommandHelp = {
 
 const commands: readonly string[] = [
   "auth login",
-  "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> --zitadel-project-id <id> --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url>",
+  "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> [--zitadel-project-id <id>] --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url>",
   "config show [root]",
   "doctor --environment <development|production>",
   "diff [root]",
@@ -157,5 +157,5 @@ export const cliCommandHelp: CliCommandHelp = {
   organizationResolution:
     "Organization selection: --organization, selected .env ASSETS_ORGANIZATION, process ASSETS_ORGANIZATION, global directory mapping, or unrestricted resolution.",
   environmentFile:
-    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched. For projects create only, ~/.config/assets-service/project-create.env is loaded automatically when neither --env-file nor ASSETS_ENV_FILE is set, taking precedence over project and working directory .env discovery.",
+    "Environment file selection: --env-file, ASSETS_ENV_FILE, <command-root>/.env, or $PWD/.env; ancestor directories are not searched. For projects create only, ~/.config/assets-service/project-create.env is loaded automatically when neither --env-file nor ASSETS_ENV_FILE is set, taking precedence over project and working directory .env discovery. When --zitadel-project-id is omitted, ZITADEL_BASE_URL and ZITADEL_TOKEN from the selected environment create the Zitadel project.",
 }
