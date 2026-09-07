@@ -64,6 +64,7 @@ test("command definitions have parameters, documentation, and camelCase flags", 
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("defaultEnvironment")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("serviceProjectId")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("zitadelProjectId")
+  expect(cliProjectsCreateCommand.parameters.flags).toMatchObject({ zitadelProjectId: { optional: true } })
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("developmentR2Bucket")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("developmentR2Prefix")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("developmentPublicBaseUrl")

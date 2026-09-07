@@ -261,6 +261,35 @@ const projectResolutionDiffRun = async (
   return { exitCode, output: JSON.parse(output[0] ?? ""), requests: transport.requests }
 }
 
+const projectCreateArguments = (zitadelProjectId?: string, slug = "allgroups-chat"): string[] => [
+  "projects",
+  "create",
+  "--organization",
+  "contentoren",
+  "--name",
+  "Allgroups Chat",
+  "--slug",
+  slug,
+  "--default-environment",
+  "development",
+  "--service-project-id",
+  "allgroups-chat",
+  ...(zitadelProjectId === undefined ? [] : ["--zitadel-project-id", zitadelProjectId]),
+  "--development-r2-bucket",
+  "allgroups-chat",
+  "--development-r2-prefix",
+  "allgroups-chat",
+  "--development-public-base-url",
+  "https://dev.assets.example.test",
+  "--production-r2-bucket",
+  "allgroups-chat",
+  "--production-r2-prefix",
+  "allgroups-chat",
+  "--production-public-base-url",
+  "https://assets.example.test",
+  "--json",
+]
+
 test("diff help documents its root and all source directory controls", async () => {
   const output: string[] = []
   const exitCode = await assetsCliMain(["diff", "--help", "--json"], {
@@ -366,6 +395,242 @@ test("projects create sends the complete registration to the service", async () 
       environments: [{ name: "development" }, { name: "production" }],
     })
     expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create creates a Zitadel project when its ID is omitted", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-home-"))
+  const output: string[] = []
+  const requests: Request[] = []
+  let zitadelOptions: unknown
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      [
+        "ASSETS_TOKEN=service-token",
+        "ASSETS_API_URL=https://assets.example.test",
+        "ZITADEL_BASE_URL=https://zitadel.example.test",
+        "ZITADEL_TOKEN=zitadel-project-token",
+      ].join("\n"),
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments(), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async (options) => {
+        zitadelOptions = options
+        return { success: true, data: { projectId: "zitadel-created" } }
+      },
+      fetcher: async (input, init) => {
+        requests.push(new Request(String(input), init))
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(zitadelOptions).toEqual({
+      config: { baseUrl: "https://zitadel.example.test", token: "zitadel-project-token" },
+      request: { organizationId: "organization-contentoren", name: "Allgroups Chat" },
+    })
+    expect(await requests[0]?.clone().json()).toMatchObject({ binding: { zitadelProjectId: "zitadel-created" } })
+    expect(output[0]).not.toContain("zitadel-project-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create preserves a supplied Zitadel project ID without provisioning", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-existing-home-"))
+  const requests: Request[] = []
+  let zitadelCallCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=service-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments("zitadel-existing"), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async () => {
+        zitadelCallCount += 1
+        return { success: true, data: { projectId: "unexpected" } }
+      },
+      fetcher: async (input, init) => {
+        requests.push(new Request(String(input), init))
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: () => undefined,
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(zitadelCallCount).toBe(0)
+    expect(await requests[0]?.clone().json()).toMatchObject({ binding: { zitadelProjectId: "zitadel-existing" } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create rejects an invalid supplied Zitadel project ID before contacting either service", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-invalid-id-home-"))
+  const output: string[] = []
+  let zitadelCallCount = 0
+  let serviceCallCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=service-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments("not a valid id"), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async () => {
+        zitadelCallCount += 1
+        return { success: true, data: { projectId: "unexpected" } }
+      },
+      fetcher: async () => {
+        serviceCallCount += 1
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(zitadelCallCount).toBe(0)
+    expect(serviceCallCount).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: false, error: { code: "validation_failed" } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create validates omitted-ID inputs before Zitadel provisioning", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-invalid-home-"))
+  const output: string[] = []
+  let zitadelCallCount = 0
+  let serviceCallCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=service-token\nASSETS_API_URL=https://assets.example.test\nZITADEL_BASE_URL=https://zitadel.example.test\nZITADEL_TOKEN=zitadel-project-token\n",
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments(undefined, "not a slug"), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async () => {
+        zitadelCallCount += 1
+        return { success: true, data: { projectId: "unexpected" } }
+      },
+      fetcher: async () => {
+        serviceCallCount += 1
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(zitadelCallCount).toBe(0)
+    expect(serviceCallCount).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: false, error: { code: "validation_failed" } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create reports missing Zitadel credentials without contacting either service", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-missing-home-"))
+  const output: string[] = []
+  let zitadelCallCount = 0
+  let serviceCallCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=service-token\nASSETS_API_URL=https://assets.example.test\n",
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments(), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async () => {
+        zitadelCallCount += 1
+        return { success: true, data: { projectId: "unexpected" } }
+      },
+      fetcher: async () => {
+        serviceCallCount += 1
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(zitadelCallCount).toBe(0)
+    expect(serviceCallCount).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: false,
+      error: { message: "Automatic Zitadel project creation requires ZITADEL_BASE_URL" },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create hides Zitadel provisioning failures", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-failure-home-"))
+  const output: string[] = []
+  let serviceCallCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      "ASSETS_TOKEN=service-token\nASSETS_API_URL=https://assets.example.test\nZITADEL_BASE_URL=https://zitadel.example.test\nZITADEL_TOKEN=super-secret-zitadel-token\n",
+    )
+    const exitCode = await assetsCliMain(projectCreateArguments(), {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      zitadelProjectCreate: async () => ({ success: false, errorMessage: "token=super-secret-zitadel-token" }),
+      fetcher: async () => {
+        serviceCallCount += 1
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(serviceCallCount).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: false,
+      error: { code: "upstream_failure", message: "Automatic Zitadel project creation failed" },
+    })
+    expect(output[0]).not.toContain("super-secret-zitadel-token")
   } finally {
     await rm(homeDirectory, { recursive: true, force: true })
   }
