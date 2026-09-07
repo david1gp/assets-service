@@ -50,6 +50,7 @@ const tokenClaimsCreate = (overrides: Record<string, unknown> = {}): Record<stri
   iat: nowSeconds - 60,
   exp: nowSeconds + 600,
   "urn:zitadel:iam:org:id": "org-1",
+  "urn:zitadel:iam:user:resourceowner:id": "org-1",
   client_id: "machine-client-1",
   assets_project_grants: { "zitadel-project-1": ["assets.uploader"] },
   ...overrides,
@@ -420,19 +421,59 @@ describe("Zitadel authentication contracts", () => {
     })
     expect(await membershipRead({ iam: true, roles: ["ORG_OWNER"] })).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 1,
+          scopeCounts: { iam: 1, orgId: 0, projectId: 0, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
     expect(await membershipRead({ projectId: "project-1", roles: ["ORG_OWNER"] })).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 1,
+          scopeCounts: { iam: 0, orgId: 0, projectId: 1, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
     expect(await membershipRead({ projectGrantId: "grant-1", roles: ["ORG_OWNER"] })).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 1,
+          scopeCounts: { iam: 0, orgId: 0, projectId: 0, projectGrantId: 1 },
+          exactMatchCount: 0,
+        },
+      },
     })
     expect(await membershipRead({ orgId: "org-2", roles: ["ORG_OWNER"] })).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 1,
+          scopeCounts: { iam: 0, orgId: 1, projectId: 0, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
 
     const mixedClient = zitadelOidcClientCreate({
@@ -469,7 +510,17 @@ describe("Zitadel authentication contracts", () => {
     const emptyResponse = await emptyResponseClient.organizationMembershipRead("human-access-token", "org-1")
     expect(emptyResponse).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 0,
+          scopeCounts: { iam: 0, orgId: 0, projectId: 0, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
 
     const nonOkClient = zitadelOidcClientCreate({
@@ -493,7 +544,17 @@ describe("Zitadel authentication contracts", () => {
     const omittedResult = await omittedResultClient.organizationMembershipRead("human-access-token", "org-1")
     expect(omittedResult).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 0,
+          scopeCounts: { iam: 0, orgId: 0, projectId: 0, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
 
     const nullResultClient = zitadelOidcClientCreate({
@@ -503,7 +564,17 @@ describe("Zitadel authentication contracts", () => {
     const nullResult = await nullResultClient.organizationMembershipRead("human-access-token", "org-1")
     expect(nullResult).toEqual({
       success: true,
-      data: { isExactMember: false, isOrganizationAdmin: false },
+      data: {
+        isExactMember: false,
+        isOrganizationAdmin: false,
+        diagnostics: {
+          requestedOrganizationId: "org-1",
+          httpStatus: 200,
+          resultCount: 0,
+          scopeCounts: { iam: 0, orgId: 0, projectId: 0, projectGrantId: 0 },
+          exactMatchCount: 0,
+        },
+      },
     })
 
     const malformedEnvelopeClient = zitadelOidcClientCreate({
@@ -627,7 +698,6 @@ describe("Zitadel authentication contracts", () => {
       })(),
     })
     let idToken: string | undefined
-    let membershipFailure = false
     const oidcClient = {
       discoveryRead: async () => ({
         success: true as const,
@@ -657,10 +727,10 @@ describe("Zitadel authentication contracts", () => {
         success: true as const,
         data: { access_token: token, token_type: "Bearer", expires_in: 600, id_token: idToken },
       }),
-      organizationMembershipRead: async () =>
-        membershipFailure
-          ? { success: false as const, op: "testMembershipFailure", errorMessage: "membership lookup failed" }
-          : { success: true as const, data: { isExactMember: true, isOrganizationAdmin: true } },
+      organizationMembershipRead: async () => ({
+        success: true as const,
+        data: { isExactMember: true, isOrganizationAdmin: true },
+      }),
     }
     const deepLink = "/projects/service-project-1/assets/asset-hero?dialog=outputs&cursor=40"
     const initiation = await humanLoginInitiate(
@@ -747,37 +817,9 @@ describe("Zitadel authentication contracts", () => {
       },
     )
     expect(oldSession.success).toBe(false)
-
-    membershipFailure = true
-    const failedInitiation = await humanLoginInitiate(
-      { returnTo: "/projects" },
-      {
-        config,
-        stateStore,
-        oidcClient,
-        now: () => now * 1000,
-        randomBytes: (size) => new Uint8Array(size).fill(7),
-      },
-    )
-    expect(failedInitiation.success).toBe(true)
-    if (!failedInitiation.success) return
-    const failedCallback = await humanLoginCallback(
-      { code: "one-time-code", state: failedInitiation.data.state },
-      failedInitiation.data.state,
-      {
-        config,
-        stateStore,
-        sessionStore,
-        oidcClient,
-        jwksClient: zitadelJwksClientMemoryCreate([jwk]),
-        jwksUri: "https://zitadel.example.test/oauth/keys",
-        now: () => now * 1000,
-      },
-    )
-    expect(failedCallback.success).toBe(false)
   })
 
-  test("requires exact human organization claims and verified membership", async () => {
+  test("requires authoritative human organization claims and exact customer membership", async () => {
     const keys = await keyPairCreate()
     const jwk = await jwkCreate(keys.publicKey)
     const config = configCreate()
@@ -841,6 +883,17 @@ describe("Zitadel authentication contracts", () => {
               isOrganizationAdmin:
                 membershipOrganizationId === organizationId &&
                 membershipRoles.some((role) => administratorRoles.has(role)),
+              ...(membershipOrganizationId === organizationId
+                ? {}
+                : {
+                    diagnostics: {
+                      requestedOrganizationId: organizationId,
+                      httpStatus: 200,
+                      resultCount: 1,
+                      scopeCounts: { iam: 0, orgId: 1, projectId: 0, projectGrantId: 0 },
+                      exactMatchCount: 0,
+                    },
+                  }),
             },
           }
         },
@@ -880,10 +933,14 @@ describe("Zitadel authentication contracts", () => {
       success: true,
       data: { principal: { mode: "admin", organizationAdmin: true } },
     })
-    expect(claimedOwner.membershipCalls).toBe(1)
+    expect(claimedOwner.membershipCalls).toBe(0)
 
     const ordinaryContentorenMember = await callbackRun(
-      { assets_project_grants: {}, "urn:zitadel:iam:org:id": config.organizationId },
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": config.organizationId,
+        "urn:zitadel:iam:user:resourceowner:id": config.organizationId,
+      },
       ["ORG_PROJECT_CREATOR"],
     )
     expect(ordinaryContentorenMember.result).toMatchObject({
@@ -892,27 +949,69 @@ describe("Zitadel authentication contracts", () => {
         principal: { organizationId: config.organizationId, mode: "admin", organizationAdmin: true, grants: [] },
       },
     })
-    expect(ordinaryContentorenMember.membershipCalls).toBe(1)
+    expect(ordinaryContentorenMember.membershipCalls).toBe(0)
 
-    const claimlessOwner = await callbackRun({ assets_project_grants: {}, "urn:zitadel:iam:org:id": undefined }, [
-      "ORG_OWNER",
-    ])
+    const contentorenContextWithoutResourceOwner = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": config.organizationId,
+        "urn:zitadel:iam:user:resourceowner:id": undefined,
+      },
+      ["ORG_OWNER"],
+    )
+    expect(contentorenContextWithoutResourceOwner.result.success).toBe(false)
+    expect(contentorenContextWithoutResourceOwner.membershipCalls).toBe(0)
+
+    const claimlessOwner = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": undefined,
+        "urn:zitadel:iam:user:resourceowner:id": undefined,
+      },
+      ["ORG_OWNER"],
+    )
     expect(claimlessOwner.result.success).toBe(false)
     expect(claimlessOwner.membershipCalls).toBe(0)
 
-    const regularUser = await callbackRun({ assets_project_grants: {}, "urn:zitadel:iam:org:id": undefined }, [])
+    const regularUser = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": undefined,
+        "urn:zitadel:iam:user:resourceowner:id": undefined,
+      },
+      [],
+    )
     expect(regularUser.result.success).toBe(false)
     expect(regularUser.membershipCalls).toBe(0)
 
-    const claimlessGrantUser = await callbackRun({ "urn:zitadel:iam:org:id": undefined }, [])
+    const claimlessGrantUser = await callbackRun(
+      { "urn:zitadel:iam:org:id": undefined, "urn:zitadel:iam:user:resourceowner:id": undefined },
+      [],
+    )
     expect(claimlessGrantUser.result.success).toBe(false)
     expect(claimlessGrantUser.membershipCalls).toBe(0)
 
-    const wrongOrganization = await callbackRun({ assets_project_grants: {}, "urn:zitadel:iam:org:id": "org-2" }, [
-      "ORG_OWNER",
-    ])
+    const wrongOrganization = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": "org-2",
+        "urn:zitadel:iam:user:resourceowner:id": "org-2",
+      },
+      ["ORG_OWNER"],
+    )
     expect(wrongOrganization.result.success).toBe(false)
     expect(wrongOrganization.membershipCalls).toBe(0)
+
+    const spoofedOrganizationContext = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": config.organizationId,
+        "urn:zitadel:iam:user:resourceowner:id": "org-2",
+      },
+      ["ORG_OWNER"],
+    )
+    expect(spoofedOrganizationContext.result.success).toBe(false)
+    expect(spoofedOrganizationContext.membershipCalls).toBe(0)
 
     const ambiguousOrganization = await callbackRun(
       { "urn:zitadel:iam:org:id": config.organizationId, organization_id: config.customerOrganizationId },
@@ -922,22 +1021,42 @@ describe("Zitadel authentication contracts", () => {
     expect(ambiguousOrganization.membershipCalls).toBe(0)
 
     const wrongMembershipOrganization = await callbackRun(
-      { assets_project_grants: {}, "urn:zitadel:iam:org:id": config.organizationId },
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": config.customerOrganizationId,
+        "urn:zitadel:iam:user:resourceowner:id": config.customerOrganizationId,
+      },
       ["ORG_OWNER"],
       "org-2",
     )
-    expect(wrongMembershipOrganization.result.success).toBe(false)
+    expect(wrongMembershipOrganization.result).toEqual({
+      success: false,
+      op: "humanLoginCallback",
+      errorMessage: "The exact organization membership was missing",
+      diagnostics: {
+        requestedOrganizationId: config.customerOrganizationId,
+        httpStatus: 200,
+        resultCount: 1,
+        scopeCounts: { iam: 0, orgId: 1, projectId: 0, projectGrantId: 0 },
+        exactMatchCount: 0,
+      },
+    })
     expect(wrongMembershipOrganization.membershipCalls).toBe(1)
 
-    const unrelatedRole = await callbackRun({ assets_project_grants: {}, "urn:zitadel:iam:org:id": undefined }, [
-      "ORG_PROJECT_CREATOR",
-    ])
+    const unrelatedRole = await callbackRun(
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": undefined,
+        "urn:zitadel:iam:user:resourceowner:id": undefined,
+      },
+      ["ORG_PROJECT_CREATOR"],
+    )
     expect(unrelatedRole.result.success).toBe(false)
     expect(unrelatedRole.membershipCalls).toBe(0)
 
     const existingGrant = await callbackRun({}, [])
     expect(existingGrant.result).toMatchObject({ success: true, data: { principal: { organizationAdmin: true } } })
-    expect(existingGrant.membershipCalls).toBe(1)
+    expect(existingGrant.membershipCalls).toBe(0)
 
     const accessTokenName = await callbackRun({ name: "Access token name" }, [])
     expect(accessTokenName.result).toMatchObject({ success: true, data: { principal: { organizationAdmin: true } } })
@@ -965,11 +1084,14 @@ describe("Zitadel authentication contracts", () => {
     })
 
     const unavailableRegularUser = await callbackRun({}, [], config.organizationId, (token) => token, true)
-    expect(unavailableRegularUser.result.success).toBe(false)
-    expect(unavailableRegularUser.membershipCalls).toBe(1)
+    expect(unavailableRegularUser.result).toMatchObject({
+      success: true,
+      data: { principal: { organizationId: config.organizationId, organizationAdmin: true } },
+    })
+    expect(unavailableRegularUser.membershipCalls).toBe(0)
 
     const unavailableClaimlessUser = await callbackRun(
-      { "urn:zitadel:iam:org:id": undefined },
+      { "urn:zitadel:iam:org:id": undefined, "urn:zitadel:iam:user:resourceowner:id": undefined },
       [],
       config.organizationId,
       (token) => token,
@@ -979,17 +1101,25 @@ describe("Zitadel authentication contracts", () => {
     expect(unavailableClaimlessUser.membershipCalls).toBe(0)
 
     const unavailableGrantlessUser = await callbackRun(
-      { assets_project_grants: {}, "urn:zitadel:iam:org:id": "org-1" },
+      {
+        assets_project_grants: {},
+        "urn:zitadel:iam:org:id": "org-1",
+        "urn:zitadel:iam:user:resourceowner:id": "org-1",
+      },
       [],
       config.organizationId,
       (token) => token,
       true,
     )
-    expect(unavailableGrantlessUser.result.success).toBe(false)
-    expect(unavailableGrantlessUser.membershipCalls).toBe(1)
+    expect(unavailableGrantlessUser.result).toMatchObject({
+      success: true,
+      data: { principal: { organizationId: config.organizationId, organizationAdmin: true } },
+    })
+    expect(unavailableGrantlessUser.membershipCalls).toBe(0)
 
     const customerClaims = {
       "urn:zitadel:iam:org:id": config.customerOrganizationId,
+      "urn:zitadel:iam:user:resourceowner:id": config.customerOrganizationId,
       assets_project_grants: { "non-default-bound-project": ["assets.uploader"], "other-project": ["assets.admin"] },
     }
     const customerContributor = await callbackRun(customerClaims, [], config.customerOrganizationId)
