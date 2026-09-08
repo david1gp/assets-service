@@ -1,3 +1,8 @@
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { ButtonIconOnly } from "#ui/interactive/button/ButtonIconOnly.jsx"
+import { ThemeButton } from "#ui/interactive/theme/ThemeButton.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
+import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
 import { mdiAccount } from "@adaptive-ds/mdi/mdiAccount.js"
 import { mdiArrowLeft } from "@adaptive-ds/mdi/mdiArrowLeft.js"
 import { mdiChevronRight } from "@adaptive-ds/mdi/mdiChevronRight.js"
@@ -8,13 +13,9 @@ import { mdiMenu } from "@adaptive-ds/mdi/mdiMenu.js"
 import type { RouteSectionProps } from "@solidjs/router"
 import { A } from "@solidjs/router"
 import { For, Match, Show, Switch } from "solid-js"
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { ButtonIconOnly } from "#ui/interactive/button/ButtonIconOnly.jsx"
-import { ThemeButton } from "#ui/interactive/theme/ThemeButton.jsx"
-import { Badge } from "#ui/static/badge/Badge.jsx"
-import { Icon } from "#ui/static/icon/Icon.jsx"
-import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
 import { classArr } from "#ui/utils/classArr.js"
+import { UiLanguageToggle } from "../localization/UiLanguageToggle.jsx"
+import { ttc } from "../localization/ttc.js"
 import { UiLoginPage } from "../pages/UiLoginPage.jsx"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiShellStateCreate } from "./uiShellStateCreate.js"
@@ -29,85 +30,73 @@ export function UiShell(p: RouteSectionProps) {
         href="#main"
         class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-slate-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:bg-slate-100 dark:focus:text-slate-900"
       >
-        Skip to content
+        {ttc("Skip to content", "Zum Inhalt springen")}
       </a>
 
       <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div class="flex items-center gap-3 min-w-0">
-            <A
-              href={uiPaths.projects}
-              aria-label="Assets service"
-              class="group flex items-center gap-2.5 rounded-lg text-sm font-semibold tracking-tight transition-colors hover:text-slate-700 dark:hover:text-slate-200 shrink-0"
-            >
-              <div class="flex size-7 items-center justify-center rounded-md bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900">
-                <Icon path={mdiFolderMultipleOutline} class="size-4" />
-              </div>
-              <span class="font-bold hidden sm:inline">Assets service</span>
-            </A>
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6 sm:py-3 lg:px-8 md:flex-nowrap md:gap-4">
+          <A
+            href={uiPaths.projects}
+            aria-label={ttc("Assets service", "Asset-Service")}
+            class="group flex items-center gap-2.5 rounded-lg text-sm font-semibold tracking-tight transition-colors hover:text-slate-700 dark:hover:text-slate-200 shrink-0"
+          >
+            <div class="flex size-7 items-center justify-center rounded-md bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900">
+              <Icon path={mdiFolderMultipleOutline} class="size-4" />
+            </div>
+            <span class="font-bold hidden sm:inline">{ttc("Assets service", "Asset-Service")}</span>
+          </A>
 
-            <Show when={state.projectId()}>
-              <div class="flex items-center gap-1.5 min-w-0 text-sm">
-                <Icon path={mdiChevronRight} class="size-4 text-muted-foreground shrink-0" />
-                <Badge
-                  variant="subtle"
-                  class="flex max-w-[140px] min-w-0 flex-col items-start gap-0 leading-tight sm:max-w-[240px]"
+          <Show when={state.projectId()}>
+            <div class="order-3 flex w-full items-center gap-1.5 text-sm min-w-0 md:order-none md:w-auto">
+              <Icon path={mdiChevronRight} class="size-4 text-muted-foreground shrink-0" />
+              <div class="flex flex-col items-start leading-tight min-w-0">
+                <Show when={state.projectName() !== ""}>
+                  <span class="font-medium break-words">{state.projectName()}</span>
+                </Show>
+                <span
+                  class={`font-mono break-all ${
+                    state.projectName() === "" ? "font-medium" : "text-xs text-muted-foreground"
+                  }`}
                 >
-                  <Show when={state.projectName() !== ""}>
-                    <span class="w-full truncate font-medium">{state.projectName()}</span>
-                  </Show>
-                  <span
-                    class={classArr(
-                      "w-full truncate font-mono",
-                      state.projectName() === "" ? "font-medium" : "text-[11px] font-normal text-muted-foreground",
-                    )}
-                  >
-                    {state.projectId()}
-                  </span>
-                </Badge>
+                  {state.projectId()}
+                </span>
               </div>
-            </Show>
-          </div>
+            </div>
+          </Show>
 
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="order-2 flex items-center gap-2 shrink-0 ml-auto md:order-none">
             <Show when={state.session().status === "authenticated"}>
               <Show when={state.accountId() !== ""}>
                 <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
                   <Icon path={mdiAccount} class="size-3.5 text-muted-foreground" />
                   <span class="flex max-w-[120px] min-w-0 flex-col leading-tight lg:max-w-[180px]">
-                    <Show when={state.accountName() !== ""}>
-                      <span class="truncate font-medium">{state.accountName()}</span>
-                    </Show>
-                    <span
-                      class={classArr(
-                        "truncate",
-                        state.accountName() === "" ? "" : "text-[11px]",
-                        "text-muted-foreground",
-                      )}
-                    >
-                      {state.accountId()}
-                    </span>
+                    <span class="truncate font-medium">{state.accountLabel()}</span>
                   </span>
                 </div>
               </Show>
 
               <ThemeButton />
+              <UiLanguageToggle />
 
               <ButtonIcon
                 icon={mdiLogout}
-                aria-label="Sign out"
+                aria-label={ttc("Sign out", "Abmelden")}
                 variant="outline"
                 size="sm"
                 isLoading={state.isLoggingOut()}
                 onClick={() => void state.logout()}
               >
-                <span class="hidden sm:inline">Sign out</span>
+                <span class="hidden sm:inline">{ttc("Sign out", "Abmelden")}</span>
               </ButtonIcon>
             </Show>
 
             <Show when={state.links().length > 0}>
               <ButtonIconOnly
-                title={state.menuOpen.get() ? "Close navigation" : "Open navigation"}
+                title={
+                  state.menuOpen.get()
+                    ? ttc("Close navigation", "Navigation schließen")
+                    : ttc("Open navigation", "Navigation öffnen")
+                }
                 icon={state.menuOpen.get() ? mdiClose : mdiMenu}
                 variant="ghost"
                 size="sm"
@@ -123,7 +112,12 @@ export function UiShell(p: RouteSectionProps) {
 
       {/* Mobile Drawer Navigation */}
       <Show when={state.menuOpen.get() && state.links().length > 0}>
-        <div class="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Project navigation">
+        <div
+          class="fixed inset-0 z-50 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label={ttc("Project navigation", "Projektnavigation")}
+        >
           <div
             class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
             onClick={state.closeMenu}
@@ -134,22 +128,12 @@ export function UiShell(p: RouteSectionProps) {
               <div class="flex items-center gap-2 min-w-0">
                 <Icon path={mdiFolderMultipleOutline} class="size-5 text-slate-700 dark:text-slate-300 shrink-0" />
                 <span class="flex min-w-0 flex-col leading-tight">
-                  <Show when={state.projectName() !== ""}>
-                    <span class="truncate text-sm font-semibold">{state.projectName()}</span>
-                  </Show>
-                  <span
-                    class={classArr(
-                      "truncate font-mono",
-                      state.projectName() === "" ? "text-sm font-semibold" : "text-xs text-muted-foreground",
-                    )}
-                  >
-                    {state.projectId()}
-                  </span>
+                  <span class="truncate text-sm font-semibold">{state.projectLabel()}</span>
                 </span>
               </div>
               <ButtonIconOnly
                 icon={mdiClose}
-                title="Close navigation"
+                title={ttc("Close navigation", "Navigation schließen")}
                 variant="ghost"
                 size="sm"
                 onClick={state.closeMenu}
@@ -160,23 +144,39 @@ export function UiShell(p: RouteSectionProps) {
               <div class="flex min-w-0 items-center gap-2 border-b border-slate-200 pb-4 dark:border-slate-800">
                 <Icon path={mdiAccount} class="size-4 shrink-0 text-muted-foreground" />
                 <span class="flex min-w-0 flex-col leading-tight">
-                  <Show when={state.accountName() !== ""}>
-                    <span class="truncate text-sm font-medium">{state.accountName()}</span>
-                  </Show>
-                  <span
-                    class={classArr(
-                      "truncate",
-                      state.accountName() === "" ? "text-sm" : "text-xs",
-                      "text-muted-foreground",
-                    )}
-                  >
-                    {state.accountId()}
-                  </span>
+                  <span class="truncate text-sm font-medium">{state.accountLabel()}</span>
                 </span>
               </div>
             </Show>
 
-            <nav id="mobile-project-navigation" aria-label="Mobile project sections">
+            <Show when={state.canSwitchView()}>
+              <div class="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold dark:bg-slate-800">
+                <A
+                  href={state.contributorViewPath()}
+                  onClick={state.closeMenu}
+                  class={`rounded-md px-2 py-2 text-center ${
+                    state.routeMode() === "contributor"
+                      ? "bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {ttc("Contributor view", "Mitwirkendenansicht")}
+                </A>
+                <A
+                  href={state.adminViewPath()}
+                  onClick={state.closeMenu}
+                  class={`rounded-md px-2 py-2 text-center ${
+                    state.routeMode() === "admin"
+                      ? "bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {ttc("Admin view", "Adminansicht")}
+                </A>
+              </div>
+            </Show>
+
+            <nav id="mobile-project-navigation" aria-label={ttc("Mobile project sections", "Mobile Projektbereiche")}>
               <ul class="flex flex-col gap-1">
                 <For each={state.links()}>
                   {(link) => {
@@ -217,7 +217,7 @@ export function UiShell(p: RouteSectionProps) {
                 class="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-slate-900 dark:hover:text-slate-100"
               >
                 <Icon path={mdiArrowLeft} class="size-4" />
-                Back to all projects
+                {ttc("Back to all projects", "Zurück zu allen Projekten")}
               </A>
             </div>
           </div>
@@ -230,13 +230,41 @@ export function UiShell(p: RouteSectionProps) {
           <aside class="hidden md:block md:w-56 md:shrink-0">
             <div class="sticky top-20 flex flex-col gap-4">
               <div class="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <span>Navigation</span>
+                <span>{ttc("Navigation", "Navigation")}</span>
                 <A href={uiPaths.projects} class="text-xs font-normal normal-case hover:underline">
-                  All projects
+                  {ttc("All projects", "Alle Projekte")}
                 </A>
               </div>
 
-              <nav id="desktop-project-navigation" aria-label="Project sections">
+              <Show when={state.canSwitchView()}>
+                <div
+                  class="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold dark:bg-slate-900"
+                  aria-label={ttc("Active view", "Aktive Ansicht")}
+                >
+                  <A
+                    href={state.contributorViewPath()}
+                    class={`rounded-md px-2 py-2 text-center ${
+                      state.routeMode() === "contributor"
+                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {ttc("Contributor view", "Mitwirkendenansicht")}
+                  </A>
+                  <A
+                    href={state.adminViewPath()}
+                    class={`rounded-md px-2 py-2 text-center ${
+                      state.routeMode() === "admin"
+                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {ttc("Admin view", "Adminansicht")}
+                  </A>
+                </div>
+              </Show>
+
+              <nav id="desktop-project-navigation" aria-label={ttc("Project sections", "Projektbereiche")}>
                 <ul class="flex flex-col gap-1">
                   <For each={state.links()}>
                     {(link) => {
@@ -283,7 +311,7 @@ export function UiShell(p: RouteSectionProps) {
             </Match>
             <Match when={true}>
               <div aria-busy="true" aria-live="polite">
-                <LoadingPage loadingItem="session" />
+                <LoadingPage loadingItem={ttc("session", "Sitzung")} />
               </div>
             </Match>
           </Switch>

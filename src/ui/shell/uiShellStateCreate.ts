@@ -1,14 +1,16 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { createMemo, onCleanup, onMount } from "solid-js"
 import * as v from "valibot"
-import { projectSchema, type Project } from "../../project/projectSchema.js"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { type Project, projectSchema } from "../../project/projectSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
-import { uiPaths } from "../routing/uiPaths.js"
-import { uiRouteIsKnown } from "../routing/uiRouteIsKnown.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
+import { uiRouteIsKnown } from "../routing/uiRouteIsKnown.js"
 import { uiSessionLogout } from "../session/uiSessionLogout.js"
 import { uiSessionRefresh } from "../session/uiSessionRefresh.js"
 import { uiSessionStore } from "../session/uiSessionStore.js"
@@ -57,7 +59,8 @@ export const uiShellStateCreate = () => {
   const projectName = createMemo(() => projectQuery.data()?.name ?? "")
   const accountName = createMemo(() => session().principal?.displayName ?? "")
   const accountId = createMemo(() => session().principal?.subjectId ?? "")
-  const links = createMemo(() => (projectId() === "" ? [] : uiNavigationLinksRead(projectId())))
+  const routeMode = createMemo(() => uiProjectRouteModeRead(location.pathname) ?? session().principal?.mode ?? "admin")
+  const links = createMemo(() => (projectId() === "" ? [] : uiNavigationLinksRead(projectId(), routeMode())))
   const isCurrent = (href: string) => uiNavigationActiveCheck(location.pathname, href)
   const isKnownRoute = createMemo(() => uiRouteIsKnown(location.pathname))
 
@@ -66,7 +69,11 @@ export const uiShellStateCreate = () => {
     const result = await uiSessionLogout()
     loggingOut.set(false)
     if (!result.success) {
-      uiToastAdd({ tone: "negative", title: "Sign out failed", description: result.errorMessage })
+      uiToastAdd({
+        tone: "negative",
+        title: ttc("Sign out failed", "Abmelden fehlgeschlagen"),
+        description: result.errorMessage,
+      })
       return
     }
     navigate(uiPaths.login, { replace: true })
@@ -79,6 +86,12 @@ export const uiShellStateCreate = () => {
     projectName,
     accountName,
     accountId,
+    accountLabel: () => accountName() || accountId(),
+    projectLabel: () => projectName() || projectId(),
+    routeMode,
+    canSwitchView: () => projectId() !== "" && session().principal?.mode === "admin",
+    adminViewPath: () => uiPaths.admin.project(projectId()),
+    contributorViewPath: () => uiPaths.contributor.project(projectId()),
     links,
     isCurrent,
     isKnownRoute,

@@ -8,6 +8,7 @@ import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
+import { ttc } from "../localization/ttc.js"
 import { UiProjectCard } from "./UiProjectCard.jsx"
 import { uiProjectListPageStateCreate } from "./uiProjectListPageStateCreate.js"
 import { uiProjectListTotalsRead } from "./uiProjectListTotalsRead.js"
@@ -18,7 +19,10 @@ export function UiProjectListPage() {
 
   return (
     <>
-      <UiPageHeading title="Projects" subtitle="Pick a project to manage its assets." />
+      <UiPageHeading
+        title={ttc("Projects", "Projekte")}
+        subtitle={ttc("Pick a project to manage its assets.", "Wähle ein Projekt, um seine Assets zu verwalten.")}
+      />
 
       <form
         class="mb-6 flex flex-wrap items-end gap-3"
@@ -28,17 +32,17 @@ export function UiProjectListPage() {
         }}
       >
         <div class="min-w-60 flex-1">
-          <Label for="project-search">Search projects</Label>
+          <Label for="project-search">{ttc("Search projects", "Projekte suchen")}</Label>
           <InputS
             id="project-search"
             type="search"
             maxLength={255}
             valueSignal={state.searchDraft}
-            placeholder="Project name"
+            placeholder={ttc("Project name", "Projektname")}
           />
         </div>
         <ButtonIcon type="submit" icon={mdiMagnify}>
-          Search
+          {ttc("Search", "Suchen")}
         </ButtonIcon>
         <ButtonIcon
           type="button"
@@ -47,14 +51,14 @@ export function UiProjectListPage() {
           disabled={!state.hasSearch()}
           onClick={state.clearSearch}
         >
-          Clear
+          {ttc("Clear", "Leeren")}
         </ButtonIcon>
       </form>
 
       <UiQueryView
         query={state.query}
-        loadingItem="projects"
-        emptyMessage="No projects matched this search."
+        loadingItem={ttc("projects", "Projekte")}
+        emptyMessage={ttc("No projects matched this search.", "Keine Projekte entsprechen dieser Suche.")}
         isEmpty={(data) => data.projects.length === 0}
       >
         {(data) => (
@@ -63,8 +67,9 @@ export function UiProjectListPage() {
               <For each={data.projects}>{(project) => <UiProjectCard project={project} />}</For>
             </div>
             <p class="text-muted-foreground text-sm" data-testid="project-list-totals">
-              {uiProjectListTotalsRead(data.projects).assetCount.toLocaleString("en-US")} assets ·{" "}
-              {uiByteSizeFormat(uiProjectListTotalsRead(data.projects).totalFileSize)} space used
+              {uiProjectListTotalsRead(data.projects).assetCount.toLocaleString("en-US")} {ttc("assets", "Assets")} ·{" "}
+              {uiByteSizeFormat(uiProjectListTotalsRead(data.projects).totalFileSize)}{" "}
+              {ttc("space used", "Speicher verwendet")}
             </p>
             <UiPager
               isFirstPage={state.isFirstPage()}

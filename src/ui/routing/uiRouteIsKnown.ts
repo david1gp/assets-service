@@ -1,4 +1,5 @@
-const projectSections = ["settings", "assets", "upload", "jobs", "backups", "catalog", "audit"]
+const adminProjectSections = ["settings", "assets", "upload", "jobs", "backups", "catalog", "audit"]
+const contributorProjectSections = ["assets", "upload"]
 
 /**
  * Tells whether a pathname matches a route of this SPA. Unknown paths render the
@@ -11,8 +12,22 @@ export const uiRouteIsKnown = (pathname: string): boolean => {
   if (segments.length === 1 && segments[0] === "login") return true
   if (segments[0] !== "projects") return false
   if (segments.length === 2) return true
-  const section = segments[2] ?? ""
-  if (!projectSections.includes(section)) return false
+
+  const mode = segments[2]
+  if (mode === "admin" || mode === "contributor") {
+    if (segments.length === 3) return true
+    return projectRouteIsKnown(segments, mode === "admin" ? adminProjectSections : contributorProjectSections)
+  }
+
+  const legacySection = mode ?? ""
+  if (!adminProjectSections.includes(legacySection)) return false
   if (segments.length === 3) return true
-  return segments.length === 4 && section === "assets"
+  return segments.length === 4 && legacySection === "assets"
+}
+
+const projectRouteIsKnown = (segments: string[], sections: readonly string[]): boolean => {
+  const section = segments[3] ?? ""
+  if (!sections.includes(section)) return false
+  if (segments.length === 4) return true
+  return segments.length === 5 && section === "assets"
 }
