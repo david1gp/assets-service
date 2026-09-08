@@ -751,7 +751,7 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     }
     return successResponseCreate(context, {
       assets: selectedAssets,
-      page: { limit, nextCursor: selected.length > limit ? String(offset + limit) : null },
+      page: { limit, nextCursor: selected.length > limit ? String(offset + limit) : null, total: filtered.length },
     })
   })
 

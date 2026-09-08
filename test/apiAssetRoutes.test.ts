@@ -398,6 +398,12 @@ describe("asset API routes", () => {
       outputHistory: [],
       metadata: null,
     })
+    // The filtered total lets the UI render "Showing X of Y assets · Page N/M".
+    expect(((await list.json()) as { data: { page: unknown } }).data.page).toEqual({
+      limit: 50,
+      nextCursor: null,
+      total: 1,
+    })
   })
 
   test("persists an administrator upload actor without enabling customer notifications", async () => {

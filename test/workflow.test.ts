@@ -6,9 +6,12 @@ import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
+import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
+import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
 import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
+import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import type { Result } from "../src/schemas/resultSchema.js"
 import { jobDependencyRepositoryCreate } from "../src/workflow/jobDependencyRepositoryCreate.js"
@@ -447,6 +450,84 @@ describe("durable workflow execution", () => {
       expect(repository.workflowRead(database.projectId, "workflow-storage-migration")).toMatchObject({
         success: true,
         data: { workflow: { assetId: null, kind: "storage_migration" }, jobs: [] },
+      })
+    } finally {
+      await databaseDestroy(database.databasePath, database.connection)
+    }
+  })
+
+  test("includes parent workflow asset ids in job list reads", async () => {
+    const database = await databaseCreate()
+    try {
+      const asset = databaseTransactionRun(database.connection.db, (transaction) => {
+        const insertedAsset = databaseRecordInsert(transaction, assetTable, {
+          id: "asset-1",
+          projectId: database.projectId,
+          class: "image",
+          folder1: null,
+          folder2: null,
+          folder3: null,
+          filename: "hero.jpg",
+          basename: "hero",
+          currentSourceRevisionId: "source-1",
+          integrationNote: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        if (!insertedAsset.success) return insertedAsset
+        return databaseRecordInsert(transaction, sourceRevisionTable, {
+          id: "source-1",
+          assetId: "asset-1",
+          revision: 1,
+          class: "image",
+          originalFilename: "hero.jpg",
+          mediaType: "image/jpeg",
+          byteSize: 10,
+          sha256: "a".repeat(64),
+          objectKey: "sources/asset-1/hero.jpg",
+          createdAt: now,
+        })
+      })
+      const assetWorkflow = databaseRecordInsert(database.connection.db, workflowTable, {
+        id: "workflow-asset",
+        projectId: database.projectId,
+        assetId: "asset-1",
+        kind: "asset_processing",
+        status: "queued",
+        createdAt: now,
+        updatedAt: now,
+      })
+      const migrationWorkflow = databaseRecordInsert(database.connection.db, workflowTable, {
+        id: "workflow-no-asset",
+        projectId: database.projectId,
+        assetId: null,
+        kind: "storage_migration",
+        status: "queued",
+        createdAt: now,
+        updatedAt: now,
+      })
+      expect(asset.success).toBe(true)
+      expect(assetWorkflow.success).toBe(true)
+      expect(migrationWorkflow.success).toBe(true)
+
+      const assetJob = databaseRecordInsert(database.connection.db, jobTable, jobCreate("job-asset", "workflow-asset"))
+      const migrationJob = databaseRecordInsert(
+        database.connection.db,
+        jobTable,
+        jobCreate("job-no-asset", "workflow-no-asset"),
+      )
+      expect(assetJob.success).toBe(true)
+      expect(migrationJob.success).toBe(true)
+
+      const repository = workflowApiRepositoryCreate(database.connection.db)
+      expect(repository.jobsRead(database.projectId, {})).toMatchObject({
+        success: true,
+        data: {
+          items: [
+            { id: "job-asset", workflowId: "workflow-asset", assetId: "asset-1" },
+            { id: "job-no-asset", workflowId: "workflow-no-asset", assetId: null },
+          ],
+        },
       })
     } finally {
       await databaseDestroy(database.databasePath, database.connection)

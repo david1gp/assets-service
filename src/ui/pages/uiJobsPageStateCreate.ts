@@ -10,6 +10,7 @@ import type { Result } from "../../schemas/resultSchema.js"
 import { jobStatusSchema } from "../../workflow/jobStatusSchema.js"
 import { workflowStatusSchema } from "../../workflow/workflowStatusSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
@@ -19,6 +20,13 @@ import { uiJobsTabs } from "./uiJobsTabs.js"
 
 const uiJobsTabSchema = v.picklist(uiJobsTabs)
 type UiJobsTab = v.InferOutput<typeof uiJobsTabSchema>
+
+const uiJobActionLabelRead = (label: string): string => {
+  if (label === "Workflow retry") return ttc("Workflow retry", "Workflow wiederholen")
+  if (label === "Workflow cancel") return ttc("Workflow cancel", "Workflow abbrechen")
+  if (label === "Job retry") return ttc("Job retry", "Job wiederholen")
+  return ttc("Job cancel", "Job abbrechen")
+}
 
 /** Drives the workflow and job tabs including retry and cancel actions. */
 export const uiJobsPageStateCreate = () => {
@@ -46,7 +54,11 @@ export const uiJobsPageStateCreate = () => {
     async () => {
       if (tabSignal.get() !== "workflows") return { success: true, data: null }
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiJobsPageWorkflowsRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiJobsPageWorkflowsRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.workflowListRead(projectId(), {
         limit: 25,
         ...(workflowStatus() === undefined ? {} : { status: workflowStatus() }),
@@ -66,7 +78,11 @@ export const uiJobsPageStateCreate = () => {
     async () => {
       if (tabSignal.get() !== "jobs") return { success: true, data: null }
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiJobsPageJobsRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiJobsPageJobsRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.jobListRead(projectId(), {
         limit: 25,
         ...(jobStatus() === undefined ? {} : { status: jobStatus() }),
@@ -87,10 +103,17 @@ export const uiJobsPageStateCreate = () => {
     const result = await action()
     pending.set(null)
     if (!result.success) {
-      uiToastAdd({ tone: "negative", title: `${label} failed`, description: result.errorMessage })
+      uiToastAdd({
+        tone: "negative",
+        title: ttc(`${label} failed`, `${uiJobActionLabelRead(label)} fehlgeschlagen`),
+        description: result.errorMessage,
+      })
       return
     }
-    uiToastAdd({ tone: "positive", title: `${label} accepted` })
+    uiToastAdd({
+      tone: "positive",
+      title: ttc(`${label} accepted`, `${uiJobActionLabelRead(label)} angenommen`),
+    })
     workflows.reload()
     jobs.reload()
   }
@@ -116,25 +139,41 @@ export const uiJobsPageStateCreate = () => {
     workflowRetry: (id: string) =>
       void run(id, "Workflow retry", async () => {
         const client = clientRead()
-        if (!client) return resultErrorCreate("uiJobsPageWorkflowRetry", "The API client is unavailable")
+        if (!client)
+          return resultErrorCreate(
+            "uiJobsPageWorkflowRetry",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
         return client.workflowRetry(projectId(), id)
       }),
     workflowCancel: (id: string) =>
       void run(id, "Workflow cancel", async () => {
         const client = clientRead()
-        if (!client) return resultErrorCreate("uiJobsPageWorkflowCancel", "The API client is unavailable")
+        if (!client)
+          return resultErrorCreate(
+            "uiJobsPageWorkflowCancel",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
         return client.workflowCancel(projectId(), id)
       }),
     jobRetry: (id: string) =>
       void run(id, "Job retry", async () => {
         const client = clientRead()
-        if (!client) return resultErrorCreate("uiJobsPageJobRetry", "The API client is unavailable")
+        if (!client)
+          return resultErrorCreate(
+            "uiJobsPageJobRetry",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
         return client.jobRetry(projectId(), id)
       }),
     jobCancel: (id: string) =>
       void run(id, "Job cancel", async () => {
         const client = clientRead()
-        if (!client) return resultErrorCreate("uiJobsPageJobCancel", "The API client is unavailable")
+        if (!client)
+          return resultErrorCreate(
+            "uiJobsPageJobCancel",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
         return client.jobCancel(projectId(), id)
       }),
   }

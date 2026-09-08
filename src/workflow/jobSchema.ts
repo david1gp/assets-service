@@ -10,6 +10,7 @@ import { jobStatusSchema } from "./jobStatusSchema.js"
 export const jobSchema = v.strictObject({
   id: idSchema,
   workflowId: idSchema,
+  assetId: v.optional(v.nullable(idSchema)),
   kind: jobKindSchema,
   status: jobStatusSchema,
   availableAt: isoDateSchema,

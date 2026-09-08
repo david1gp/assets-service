@@ -127,7 +127,7 @@ export const workflowApiRepositoryCreate = (db: AssetDatabase): WorkflowApiRepos
       if (options.kind !== undefined) conditions.push(eq(jobTable.kind, options.kind))
       if (options.workflowId !== undefined) conditions.push(eq(jobTable.workflowId, options.workflowId))
       const records = db
-        .select({ job: jobTable })
+        .select({ job: jobTable, workflowAssetId: workflowTable.assetId })
         .from(jobTable)
         .innerJoin(workflowTable, eq(workflowTable.id, jobTable.workflowId))
         .where(and(...conditions))
@@ -140,7 +140,7 @@ export const workflowApiRepositoryCreate = (db: AssetDatabase): WorkflowApiRepos
       for (const record of selected.slice(0, limit)) {
         const job = jobRead(record.job)
         if (!job.success) return job
-        items.push(job.data)
+        items.push({ ...job.data, assetId: record.workflowAssetId })
       }
       return { success: true, data: { items, nextCursor: selected.length > limit ? offset + limit : null } }
     } catch (error) {
