@@ -14,6 +14,8 @@ import { storageMigrationWorkflowEnqueue } from "../migration/storageMigrationWo
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
 import { workflowApiRepositoryCreate } from "../workflow/workflowApiRepositoryCreate.js"
+import type { AuthenticationMode } from "../authentication/authenticationModeSchema.js"
+import type { FixtureAccessibleProjectCount } from "./fixtureAccessibleProjectCount.js"
 import { fixtureAuthenticationCreate } from "./fixtureAuthenticationCreate.js"
 import { type FixtureSeed, fixtureDatabaseSeed } from "./fixtureDatabaseSeed.js"
 import { fixtureStorageObjectsCreate } from "./fixtureStorageObjectsCreate.js"
@@ -31,7 +33,12 @@ export type FixtureServer = {
  * session adapter, so the SPA can be driven end to end without Zitadel, R2, or
  * rclone. Only the fixture entrypoint and its tests use this.
  */
-export const fixtureServerCreate = (options: { databasePath: string; origin: string }): Result<FixtureServer> => {
+export const fixtureServerCreate = (options: {
+  databasePath: string
+  origin: string
+  sessionMode?: AuthenticationMode
+  accessibleProjectCount?: FixtureAccessibleProjectCount
+}): Result<FixtureServer> => {
   const connection = databaseOpen(options.databasePath)
   if (!connection.success) return connection
   const migrated = databaseMigrate(connection.data)
@@ -39,7 +46,10 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     databaseClose(connection.data)
     return migrated
   }
-  const seeded = fixtureDatabaseSeed(connection.data.db, { publicBaseUrl: options.origin })
+  const seeded = fixtureDatabaseSeed(connection.data.db, {
+    publicBaseUrl: options.origin,
+    accessibleProjectCount: options.accessibleProjectCount,
+  })
   if (!seeded.success) {
     databaseClose(connection.data)
     return seeded
@@ -49,6 +59,8 @@ export const fixtureServerCreate = (options: { databasePath: string; origin: str
     origin: options.origin,
     subjectId: seeded.data.subjectId,
     projectId: seeded.data.zitadelProjectId,
+    sessionMode: options.sessionMode,
+    accessibleZitadelProjectIds: seeded.data.accessibleZitadelProjectIds,
   })
 
   const storageObjects = fixtureStorageObjectsCreate(seeded.data, options.origin)

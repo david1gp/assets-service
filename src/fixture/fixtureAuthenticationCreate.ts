@@ -1,5 +1,6 @@
 import { memoryPkceStateStoreCreate } from "../authentication/memoryPkceStateStoreCreate.js"
 import { memorySessionStoreCreate } from "../authentication/memorySessionStoreCreate.js"
+import type { AuthenticationMode } from "../authentication/authenticationModeSchema.js"
 import type { AuthenticationSession } from "../authentication/sessionSchema.js"
 import type { ZitadelAuthConfig } from "../authentication/zitadelAuthConfigSchema.js"
 import type { ApiAuthenticationOptions } from "../api/apiAuthenticationOptions.js"
@@ -30,29 +31,36 @@ const configCreate = (origin: string): ZitadelAuthConfig => ({
 
 /**
  * Authentication wiring for the seeded fixture server. It never talks to an
- * identity provider: the login route hands out a local session for the seeded
- * admin. Production composition keeps using the Zitadel adapters, so this file
- * is only reachable from the fixture entrypoint and its tests.
+ * identity provider: the login route hands out a local session for the configured
+ * fixture mode. Production composition keeps using the Zitadel adapters, so this
+ * file is only reachable from the fixture entrypoint and its tests.
  */
 export const fixtureAuthenticationCreate = (options: {
   origin: string
   subjectId: string
   projectId: string
+  sessionMode?: AuthenticationMode
+  accessibleZitadelProjectIds?: readonly string[]
 }): FixtureAuthentication => {
   const config = configCreate(options.origin)
   const sessionStore = memorySessionStoreCreate()
   const stateStore = memoryPkceStateStoreCreate()
+  const sessionMode = options.sessionMode ?? "admin"
+  const accessibleZitadelProjectIds = options.accessibleZitadelProjectIds ?? [options.projectId]
 
   const sessionCreate = async (): Promise<Result<string>> => {
     const issuedAt = Math.floor(Date.now() / 1000)
     const session: AuthenticationSession = {
       principal: {
         subjectId: options.subjectId,
-        organizationId: config.organizationId,
-        mode: "admin",
+        organizationId: sessionMode === "contributor" ? config.customerOrganizationId : config.organizationId,
+        mode: sessionMode,
         organizationAdmin: false,
         method: "human_session",
-        grants: [{ projectId: options.projectId, roles: ["contributor", "admin"] }],
+        grants: accessibleZitadelProjectIds.map((projectId) => ({
+          projectId,
+          roles: sessionMode === "contributor" ? ["contributor"] : ["contributor", "admin"],
+        })),
         issuedAt,
         expiresAt: issuedAt + config.sessionTtlSeconds,
       },

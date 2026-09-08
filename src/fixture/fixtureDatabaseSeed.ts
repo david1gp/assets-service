@@ -21,12 +21,14 @@ import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionT
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
 import type { Result } from "../schemas/resultSchema.js"
+import type { FixtureAccessibleProjectCount } from "./fixtureAccessibleProjectCount.js"
 
 export type FixtureSeed = {
   organizationId: string
   projectId: string
   serviceProjectId: string
   zitadelProjectId: string
+  accessibleZitadelProjectIds: readonly string[]
   subjectId: string
   sourceImageObjectKey: string
   sourceObjectKeys: { intro: string; inter: string; guide: string }
@@ -50,13 +52,20 @@ const hash = (seed: string) => seed.repeat(64).slice(0, 64)
  */
 export const fixtureDatabaseSeed = (
   db: AssetDatabase,
-  options: { publicBaseUrl?: string } = {},
+  options: { publicBaseUrl?: string; accessibleProjectCount?: FixtureAccessibleProjectCount } = {},
 ): Result<FixtureSeed> => {
+  const accessibleProjectCount = options.accessibleProjectCount ?? "one"
   const seed: FixtureSeed = {
     organizationId: "org-fixture",
     projectId: "project-fixture",
     serviceProjectId: "contentoren",
     zitadelProjectId: "zitadel-fixture",
+    accessibleZitadelProjectIds:
+      accessibleProjectCount === "zero"
+        ? []
+        : accessibleProjectCount === "multiple"
+          ? ["zitadel-fixture", "zitadel-fixture-secondary"]
+          : ["zitadel-fixture"],
     subjectId: "fixture-admin",
     sourceImageObjectKey: "sources/asset-hero/1/hero.png",
     sourceObjectKeys: {
@@ -799,6 +808,47 @@ export const fixtureDatabaseSeed = (
           createdAt: at(index + 1),
         })
         .run()
+    }
+
+    if (accessibleProjectCount === "multiple") {
+      transaction
+        .insert(projectTable)
+        .values({
+          id: "project-fixture-secondary",
+          organizationId: seed.organizationId,
+          name: "Contentoren secondary",
+          slug: "contentoren-secondary",
+          defaultEnvironment: "development",
+          createdAt: at(0),
+          updatedAt: at(0),
+        })
+        .run()
+      transaction
+        .insert(projectBindingTable)
+        .values({
+          id: "binding-fixture-secondary",
+          projectId: "project-fixture-secondary",
+          organizationId: seed.organizationId,
+          zitadelProjectId: "zitadel-fixture-secondary",
+          serviceProjectId: "contentoren-secondary",
+          createdAt: at(0),
+          updatedAt: at(0),
+        })
+        .run()
+      for (const environment of ["development", "production"] as const)
+        transaction
+          .insert(environmentTable)
+          .values({
+            id: `environment-secondary-${environment}`,
+            projectId: "project-fixture-secondary",
+            name: environment,
+            r2Bucket: `assets-secondary-${environment}`,
+            r2Prefix: "contentoren-secondary",
+            publicBaseUrl: options.publicBaseUrl ?? `https://assets-secondary-${environment}.fixture.invalid`,
+            createdAt: at(0),
+            updatedAt: at(0),
+          })
+          .run()
     }
 
     return { success: true, data: null } as const
