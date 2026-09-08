@@ -1,5 +1,6 @@
 import { For } from "solid-js"
 import { Badge } from "#ui/static/badge/Badge.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import type { OutputDefinition } from "../../output/outputDefinitionSchema.js"
 import { uiOutputTargetLabelRead } from "./uiOutputTargetLabelRead.js"
 
@@ -16,7 +17,7 @@ export function UiOutputTargetBadges(p: UiOutputTargetBadgesProps) {
         <Badge
           variant="outline"
           title={target.key}
-          class={`shrink-0 font-mono text-2xs whitespace-nowrap ${p.class ?? ""}`}
+          class={classArr("shrink-0 font-mono text-2xs whitespace-nowrap", p.class)}
         >
           {uiOutputTargetLabelRead(target)}
         </Badge>

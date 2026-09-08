@@ -22,6 +22,7 @@ import { Icon } from "#ui/static/icon/Icon.jsx"
 import { Img } from "#ui/static/img/Img.jsx"
 import type { TableColumnDef } from "#ui/table/shared/TableColumnDef.js"
 import { Table1R } from "#ui/table/table1/Table1R.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { UiLinkButton } from "../common/UiLinkButton.jsx"
@@ -217,11 +218,12 @@ export function UiAssetListPage() {
                     size="none"
                     icon={uiAssetViewTabIconRead(value)}
                     iconClass="size-4 mr-0"
-                    class={`flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-all ${
+                    class={classArr(
+                      "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-all",
                       active()
                         ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100"
-                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-                    }`}
+                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
+                    )}
                     onClick={() => state.tabSignal.set(value)}
                   >
                     <span>{value}</span>

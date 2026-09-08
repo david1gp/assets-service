@@ -1,18 +1,19 @@
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
+import { mdiRestart } from "@adaptive-ds/mdi/mdiRestart.js"
+import { Show } from "solid-js"
 import { Input } from "#ui/input/input/Input.jsx"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
-import { mdiCloudUpload } from "@adaptive-ds/mdi/mdiCloudUpload.js"
-import { mdiRestart } from "@adaptive-ds/mdi/mdiRestart.js"
-import { Show } from "solid-js"
-import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
+import { classArr } from "#ui/utils/classArr.js"
 import { UiLinkButton } from "../common/UiLinkButton.jsx"
+import { UiNotice } from "../common/UiNotice.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
+import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiUploadPageStateCreate } from "./uiUploadPageStateCreate.js"
-import { UiNotice } from "../common/UiNotice.jsx"
 
 /** Uploads one file straight to object storage and registers it as an asset. */
 export function UiUploadPage() {
@@ -107,7 +108,7 @@ export function UiUploadPage() {
               class="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
             >
               <div
-                class={`h-full ${state.stage() === "failed" ? "bg-red-700" : "bg-blue-700"}`}
+                class={classArr("h-full", state.stage() === "failed" ? "bg-red-700" : "bg-blue-700")}
                 style={{ width: `${state.progress().percent}%` }}
               />
             </div>

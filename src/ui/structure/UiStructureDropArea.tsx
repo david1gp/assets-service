@@ -1,6 +1,7 @@
 import { mdiFolderUploadOutline } from "@adaptive-ds/mdi/mdiFolderUploadOutline.js"
 import { For, Show } from "solid-js"
 import { Icon } from "#ui/static/icon/Icon.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { UiStructureAssetChip } from "./UiStructureAssetChip.jsx"
 import { uiStructureDropZoneAttach } from "./uiStructureDropZoneAttach.js"
@@ -25,7 +26,10 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
   return (
     <ul
       aria-label={`Assets in ${p.label}`}
-      class={`flex min-h-14 flex-wrap items-center gap-2 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50 p-2.5 transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/30 ${p.class ?? ""}`}
+      class={classArr(
+        "flex min-h-14 flex-wrap items-center gap-2 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50 p-2.5 transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/30",
+        p.class,
+      )}
       ref={(element) =>
         uiStructureDropZoneAttach(element, {
           folderId: p.folderId,

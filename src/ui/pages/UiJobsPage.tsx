@@ -3,6 +3,7 @@ import { mdiRefresh } from "@adaptive-ds/mdi/mdiRefresh.js"
 import { For, Show } from "solid-js"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { Badge } from "#ui/static/badge/Badge.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
@@ -100,7 +101,7 @@ export function UiJobsPage() {
                       </p>
                       <Show when={job.error}>
                         {(error) => (
-                          <p class={`wrap-anywhere text-sm ${uiErrorTextClassesRead()}`}>{error().message}</p>
+                          <p class={classArr("wrap-anywhere text-sm", uiErrorTextClassesRead())}>{error().message}</p>
                         )}
                       </Show>
                     </div>

@@ -1,9 +1,10 @@
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { Icon } from "#ui/static/icon/Icon.jsx"
 import { mdiAlertOctagram } from "@adaptive-ds/mdi/mdiAlertOctagram.js"
 import { mdiCheckCircle } from "@adaptive-ds/mdi/mdiCheckCircle.js"
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { For, Show } from "solid-js"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import { uiToastDismiss } from "./uiToastDismiss.js"
 import { uiToastStore } from "./uiToastStore.js"
 import { uiToastToneClassesRead } from "./uiToastToneClassesRead.js"
@@ -30,7 +31,10 @@ export function UiToastViewport() {
         <For each={uiToastStore.get()}>
           {(toast) => (
             <li
-              class={`pointer-events-auto flex flex-wrap items-start gap-2 rounded-lg border p-4 shadow-lg ${uiToastToneClassesRead(toast.tone)}`}
+              class={classArr(
+                "pointer-events-auto flex flex-wrap items-start gap-2 rounded-lg border p-4 shadow-lg",
+                uiToastToneClassesRead(toast.tone),
+              )}
             >
               <Icon
                 path={toast.tone === "positive" ? mdiCheckCircle : mdiAlertOctagram}

@@ -3,6 +3,7 @@ import { mdiRestart } from "@adaptive-ds/mdi/mdiRestart.js"
 import { Show } from "solid-js"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
 import { uiUploadDropAreaStateCreate } from "../upload/uiUploadDropAreaStateCreate.js"
@@ -28,11 +29,12 @@ export function UiAssetDetailReplacementUpload(props: {
       <label
         data-testid="replacement-drop-area"
         data-drag-over={dropArea.isDragOver() ? "true" : "false"}
-        class={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-blue-500 ${
+        class={classArr(
+          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition-colors focus-within:ring-2 focus-within:ring-blue-500",
           dropArea.isDragOver()
             ? "border-blue-500 bg-blue-50/70 dark:border-blue-400 dark:bg-blue-950/40"
-            : "border-slate-300 bg-slate-50/50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/30 dark:hover:bg-slate-800/50"
-        }`}
+            : "border-slate-300 bg-slate-50/50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900/30 dark:hover:bg-slate-800/50",
+        )}
         for="replacement-file"
         onDragEnter={dropArea.dragOver}
         onDragOver={dropArea.dragOver}
@@ -87,7 +89,7 @@ export function UiAssetDetailReplacementUpload(props: {
           class="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
         >
           <div
-            class={`h-full transition-all ${props.upload.stage() === "failed" ? "bg-red-700" : "bg-blue-600"}`}
+            class={classArr("h-full transition-all", props.upload.stage() === "failed" ? "bg-red-700" : "bg-blue-600")}
             style={{ width: `${props.upload.progress().percent}%` }}
           />
         </div>

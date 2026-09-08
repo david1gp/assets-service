@@ -24,6 +24,7 @@ import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { CodeBlock } from "#ui/static/code/CodeBlock.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import { Img } from "#ui/static/img/Img.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import { UiDialog } from "../common/UiDialog.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
@@ -41,8 +42,8 @@ import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiDeepLinkCreate } from "../routing/uiDeepLinkCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
-import { uiAssetDetailPageStateCreate } from "./uiAssetDetailPageStateCreate.js"
 import { UiAssetDetailReplacementUpload } from "./UiAssetDetailReplacementUpload.jsx"
+import { uiAssetDetailPageStateCreate } from "./uiAssetDetailPageStateCreate.js"
 
 const imageFormats = ["webp", "avif", "jpg", "png"]
 
@@ -800,7 +801,7 @@ export function UiAssetDetailPage() {
                           </Show>
                         </div>
                         <ButtonIcon
-                          class={`mt-3 ${uiDestructiveButtonClassesRead("outline")}`}
+                          class={classArr("mt-3", uiDestructiveButtonClassesRead("outline"))}
                           type="button"
                           size="sm"
                           variant="outlineRed"

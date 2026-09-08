@@ -1,4 +1,5 @@
 import type { JSXElement } from "solid-js"
+import { classArr } from "#ui/utils/classArr.js"
 import { type UiNoticeTone, uiNoticeToneClassesRead } from "./uiNoticeToneClassesRead.js"
 
 export type UiNoticeProps = {
@@ -12,7 +13,7 @@ export type UiNoticeProps = {
 /** Inline alert or status panel using app tones that keep AA contrast. */
 export function UiNotice(p: UiNoticeProps) {
   return (
-    <div id={p.id} role={p.role} class={`rounded-lg border p-3 ${uiNoticeToneClassesRead(p.tone)} ${p.class ?? ""}`}>
+    <div id={p.id} role={p.role} class={classArr("rounded-lg border p-3", uiNoticeToneClassesRead(p.tone), p.class)}>
       {p.children}
     </div>
   )

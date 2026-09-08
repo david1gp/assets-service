@@ -1,9 +1,3 @@
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { ButtonIconOnly } from "#ui/interactive/button/ButtonIconOnly.jsx"
-import { ThemeButton } from "#ui/interactive/theme/ThemeButton.jsx"
-import { Badge } from "#ui/static/badge/Badge.jsx"
-import { Icon } from "#ui/static/icon/Icon.jsx"
-import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
 import { mdiAccount } from "@adaptive-ds/mdi/mdiAccount.js"
 import { mdiArrowLeft } from "@adaptive-ds/mdi/mdiArrowLeft.js"
 import { mdiChevronRight } from "@adaptive-ds/mdi/mdiChevronRight.js"
@@ -11,9 +5,16 @@ import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiFolderMultipleOutline } from "@adaptive-ds/mdi/mdiFolderMultipleOutline.js"
 import { mdiLogout } from "@adaptive-ds/mdi/mdiLogout.js"
 import { mdiMenu } from "@adaptive-ds/mdi/mdiMenu.js"
-import { A } from "@solidjs/router"
 import type { RouteSectionProps } from "@solidjs/router"
+import { A } from "@solidjs/router"
 import { For, Match, Show, Switch } from "solid-js"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { ButtonIconOnly } from "#ui/interactive/button/ButtonIconOnly.jsx"
+import { ThemeButton } from "#ui/interactive/theme/ThemeButton.jsx"
+import { Badge } from "#ui/static/badge/Badge.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
+import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
+import { classArr } from "#ui/utils/classArr.js"
 import { UiLoginPage } from "../pages/UiLoginPage.jsx"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiShellStateCreate } from "./uiShellStateCreate.js"
@@ -56,9 +57,10 @@ export function UiShell(p: RouteSectionProps) {
                     <span class="w-full truncate font-medium">{state.projectName()}</span>
                   </Show>
                   <span
-                    class={`w-full truncate font-mono ${
-                      state.projectName() === "" ? "font-medium" : "text-[11px] font-normal text-muted-foreground"
-                    }`}
+                    class={classArr(
+                      "w-full truncate font-mono",
+                      state.projectName() === "" ? "font-medium" : "text-[11px] font-normal text-muted-foreground",
+                    )}
                   >
                     {state.projectId()}
                   </span>
@@ -76,7 +78,13 @@ export function UiShell(p: RouteSectionProps) {
                     <Show when={state.accountName() !== ""}>
                       <span class="truncate font-medium">{state.accountName()}</span>
                     </Show>
-                    <span class={`truncate ${state.accountName() === "" ? "" : "text-[11px]"} text-muted-foreground`}>
+                    <span
+                      class={classArr(
+                        "truncate",
+                        state.accountName() === "" ? "" : "text-[11px]",
+                        "text-muted-foreground",
+                      )}
+                    >
                       {state.accountId()}
                     </span>
                   </span>
@@ -130,9 +138,10 @@ export function UiShell(p: RouteSectionProps) {
                     <span class="truncate text-sm font-semibold">{state.projectName()}</span>
                   </Show>
                   <span
-                    class={`truncate font-mono ${
-                      state.projectName() === "" ? "text-sm font-semibold" : "text-xs text-muted-foreground"
-                    }`}
+                    class={classArr(
+                      "truncate font-mono",
+                      state.projectName() === "" ? "text-sm font-semibold" : "text-xs text-muted-foreground",
+                    )}
                   >
                     {state.projectId()}
                   </span>
@@ -154,7 +163,13 @@ export function UiShell(p: RouteSectionProps) {
                   <Show when={state.accountName() !== ""}>
                     <span class="truncate text-sm font-medium">{state.accountName()}</span>
                   </Show>
-                  <span class={`truncate ${state.accountName() === "" ? "text-sm" : "text-xs"} text-muted-foreground`}>
+                  <span
+                    class={classArr(
+                      "truncate",
+                      state.accountName() === "" ? "text-sm" : "text-xs",
+                      "text-muted-foreground",
+                    )}
+                  >
                     {state.accountId()}
                   </span>
                 </span>
@@ -172,17 +187,19 @@ export function UiShell(p: RouteSectionProps) {
                           href={link.href}
                           onClick={state.closeMenu}
                           aria-current={active() ? "page" : undefined}
-                          class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          class={classArr(
+                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                             active()
                               ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                          }`}
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+                          )}
                         >
                           <Icon
                             path={link.icon}
-                            class={`size-5 ${
-                              active() ? "text-white dark:text-slate-900" : "text-slate-400 dark:text-slate-500"
-                            }`}
+                            class={classArr(
+                              "size-5",
+                              active() ? "text-white dark:text-slate-900" : "text-slate-400 dark:text-slate-500",
+                            )}
                           />
                           <span>{link.label}</span>
                         </A>
@@ -229,19 +246,21 @@ export function UiShell(p: RouteSectionProps) {
                           <A
                             href={link.href}
                             aria-current={active() ? "page" : undefined}
-                            class={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                            class={classArr(
+                              "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                               active()
                                 ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
-                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
-                            }`}
+                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100",
+                            )}
                           >
                             <Icon
                               path={link.icon}
-                              class={`size-5 transition-colors ${
+                              class={classArr(
+                                "size-5 transition-colors",
                                 active()
                                   ? "text-white dark:text-slate-900"
-                                  : "text-slate-400 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-300"
-                              }`}
+                                  : "text-slate-400 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-300",
+                              )}
                             />
                             <span>{link.label}</span>
                           </A>
