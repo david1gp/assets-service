@@ -6,6 +6,8 @@ import { documentExtensionMediaTypes } from "../src/document/documentExtensionMe
 import { storageMediaTypeDetect } from "../src/storage/storageMediaTypeDetect.js"
 import { uiUploadAcceptAttributeRead } from "../src/ui/upload/uiUploadAcceptAttributeRead.js"
 import { uiUploadMediaTypeRead } from "../src/ui/upload/uiUploadMediaTypeRead.js"
+import { uiUploadStageProgressRead } from "../src/ui/upload/uiUploadStageProgressRead.js"
+import { languageSignal } from "../src/ui/localization/languageSignal.js"
 
 const fileCreate = (name: string, type: string) => new File([new Uint8Array([1, 2, 3])], name, { type })
 
@@ -140,4 +142,19 @@ describe("uiUploadAcceptAttributeRead", () => {
     expect(accept).toContain(".json")
     expect(accept).not.toContain("svg")
   })
+})
+
+test("uses reactive German upload validation and progress copy", () => {
+  languageSignal.set("de")
+  try {
+    const result = uiUploadMediaTypeRead(fileCreate("hero", ""))
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.errorMessage).toContain("keine Erweiterung")
+    const unsupported = uiUploadMediaTypeRead(fileCreate("logo.svg", "image/svg+xml"))
+    expect(unsupported.success).toBe(false)
+    if (!unsupported.success) expect(unsupported.errorMessage).toContain("ist nicht erlaubt")
+    expect(uiUploadStageProgressRead("transferring").label).toBe("Übertragung in den Speicher")
+  } finally {
+    languageSignal.set("en")
+  }
 })

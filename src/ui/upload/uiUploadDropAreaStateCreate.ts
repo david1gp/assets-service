@@ -1,10 +1,11 @@
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
-import { uiUploadDropFileRead } from "./uiUploadDropFileRead.js"
+import { uiUploadDropFilesRead } from "./uiUploadDropFilesRead.js"
 
 /** Drives the drag highlight and file selection of an upload drop area. */
 export const uiUploadDropAreaStateCreate = (input: {
   disabled: () => boolean
   fileSelect: (file: File | null) => void
+  filesSelect?: (files: File[]) => void
 }) => {
   const isDragOver = createSignalObject(false)
 
@@ -26,9 +27,10 @@ export const uiUploadDropAreaStateCreate = (input: {
     if (input.disabled()) return
     event.preventDefault()
     isDragOver.set(false)
-    const file = uiUploadDropFileRead(event.dataTransfer)
-    if (file === null) return
-    input.fileSelect(file)
+    const files = uiUploadDropFilesRead(event.dataTransfer)
+    if (files.length === 0) return
+    if (input.filesSelect) return input.filesSelect(files)
+    input.fileSelect(files[0] ?? null)
   }
 
   return {
@@ -37,7 +39,16 @@ export const uiUploadDropAreaStateCreate = (input: {
     dragLeave,
     drop,
     inputChange: (event: { currentTarget: HTMLInputElement }) => {
-      input.fileSelect(event.currentTarget.files?.item(0) ?? null)
+      const files: File[] = []
+      const selected = event.currentTarget.files
+      const length = selected?.length ?? (selected ? 1 : 0)
+      for (let index = 0; index < length; index += 1) {
+        const file = selected?.item(index)
+        if (file) files.push(file)
+      }
+      if (input.filesSelect) input.filesSelect(files)
+      else input.fileSelect(files[0] ?? null)
+      event.currentTarget.value = ""
     },
   }
 }

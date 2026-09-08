@@ -121,6 +121,32 @@ test("selects the file chosen through the native file input", () => {
   dispose()
 })
 
+test("selects every file chosen through a multi-file input and permits selecting it again", () => {
+  const selected: File[][] = []
+  const dispose = createRoot((disposeRoot) => {
+    const state = uiUploadDropAreaStateCreate({
+      disabled: () => false,
+      fileSelect: () => {},
+      filesSelect: (files) => selected.push(files),
+    })
+    const first = fileCreate("first.png")
+    const second = fileCreate("second.png")
+    const input = {
+      files: { 0: first, 1: second, item: (index: number) => [first, second][index] ?? null, length: 2 },
+      value: "picked.png",
+    } as unknown as HTMLInputElement
+
+    state.inputChange({ currentTarget: input })
+    state.inputChange({
+      currentTarget: { ...input, files: { 0: first, item: () => first, length: 1 } } as unknown as HTMLInputElement,
+    })
+    expect(selected).toEqual([[first, second], [first]])
+    expect(input.value).toBe("")
+    return disposeRoot
+  })
+  dispose()
+})
+
 test("ignores drags that carry no file, such as text selections", () => {
   expect(uiUploadDropFileRead(null)).toBe(null)
   expect(

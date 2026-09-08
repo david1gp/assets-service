@@ -2,6 +2,7 @@ import { createMemo } from "solid-js"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import type { AssetDetailResponse } from "../../api-client/assetDetailResponseSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiUploadAcceptAttributeRead } from "../upload/uiUploadAcceptAttributeRead.js"
 import { uiUploadFoldersRead } from "../upload/uiUploadFoldersRead.js"
@@ -34,7 +35,11 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
   const fail = (message: string) => {
     stage.set("failed")
     errorMessage.set(message)
-    uiToastAdd({ tone: "negative", title: "Replacement upload failed", description: message })
+    uiToastAdd({
+      tone: "negative",
+      title: ttc("Replacement upload failed", "Ersatz-Upload fehlgeschlagen"),
+      description: message,
+    })
   }
 
   const selectFile = (selected: File | null) => {
@@ -47,9 +52,11 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
     if (isBusy()) return
 
     const selected = file.get()
-    if (selected === null) return fail("Select a replacement file before uploading")
+    if (selected === null)
+      return fail(ttc("Select a replacement file before uploading", "Wähle vor dem Upload eine Ersatzdatei aus"))
     const asset = input.asset()
-    if (asset === null) return fail("The asset details are not available")
+    if (asset === null)
+      return fail(ttc("The asset details are not available", "Die Asset-Details sind nicht verfügbar"))
 
     const folders = uiUploadFoldersRead(asset.folders)
     if (!folders.success) return fail(folders.errorMessage)
@@ -58,11 +65,11 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
     if (!mediaType.success) return fail(mediaType.errorMessage)
 
     const client = uiApiClientRead()
-    if (!client.success) return fail(client.errorMessage)
+    if (!client.success) return fail(ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"))
 
     const projectId = input.projectId()
     const assetId = input.assetId()
-    const integrationNote = asset.integrationNote?.trim() || "Replacement source revision"
+    const integrationNote = asset.integrationNote?.trim() || ttc("Replacement source revision", "Ersatz-Quellrevision")
     errorMessage.set(null)
     stage.set("hashing")
 
@@ -70,7 +77,7 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
     try {
       bytes = new Uint8Array(await selected.arrayBuffer())
     } catch {
-      return fail("The replacement file could not be read")
+      return fail(ttc("The replacement file could not be read", "Die Ersatzdatei konnte nicht gelesen werden"))
     }
     const sha256 = await uiUploadSha256Read(bytes)
     if (!sha256.success) return fail(sha256.errorMessage)
@@ -101,8 +108,8 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
     input.refresh()
     uiToastAdd({
       tone: "positive",
-      title: "Replacement upload accepted",
-      description: "A new source revision is queued.",
+      title: ttc("Replacement upload accepted", "Ersatz-Upload angenommen"),
+      description: ttc("A new source revision is queued.", "Eine neue Quellrevision wurde eingereiht."),
     })
   }
 
