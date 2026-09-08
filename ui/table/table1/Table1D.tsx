@@ -18,7 +18,7 @@ export function Table1D<T>(p: Table1aDProps<T>) {
 
   if (p.rows.length <= 0) return <span class={"text-lg text-center p-2 pt-6"}>{noEntriesText}</span>
   return (
-    <table class={classMerge("overflow-x-auto", p.class, p.desktopClasses?.class)}>
+    <table class={classMerge(p.class, p.desktopClasses?.class)}>
       <thead>
         <tr>
           {p.columns.map((h, i) => (

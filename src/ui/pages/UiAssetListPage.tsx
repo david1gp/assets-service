@@ -93,7 +93,7 @@ const columnsCreate = (
                 </span>
               </Show>
               {/* Narrow viewports wrap the target chips below the filename so they cannot overlap the folder select. */}
-              <div class="flex flex-wrap items-center gap-2 min-w-0 sm:flex-nowrap">
+              <div class="flex flex-wrap items-center gap-2 min-w-0">
                 <A
                   href={uiPaths.asset(projectId(), asset.id)}
                   class="font-mono text-sm font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400 truncate"
@@ -117,6 +117,7 @@ const columnsCreate = (
     {
       id: "class",
       name: "Class",
+      headerClass: "w-24",
       data: (asset) => asset.class,
       cell: (asset) => (
         <Badge variant="subtle" class="font-mono text-xs capitalize">
@@ -127,6 +128,8 @@ const columnsCreate = (
     {
       id: "outputCount",
       name: "Outputs",
+      headerClass: "w-20 text-center",
+      dataClass: "text-center",
       data: (asset) => asset.outputCount,
       cell: (asset) => (
         <span class="font-mono text-xs font-medium text-slate-600 dark:text-slate-400">{asset.outputCount}</span>
@@ -135,6 +138,7 @@ const columnsCreate = (
     {
       id: "updatedAt",
       name: "Updated",
+      headerClass: "w-28",
       data: (asset) => asset.updatedAt,
       cell: (asset) => (
         <time datetime={asset.updatedAt} class="font-mono text-xs text-slate-500 dark:text-slate-400">
@@ -148,6 +152,7 @@ const columnsCreate = (
     columns.push({
       id: "structureFolder",
       name: "Folder",
+      headerClass: "w-44",
       cell: (asset) => (
         <Show when={showFolderAssignment()}>
           <UiStructureAssetFolderSelect
@@ -158,6 +163,7 @@ const columnsCreate = (
             folderOptions={structure.folderOptions}
             isDisabled={() => !structure.isReady() || structure.pendingAssetIds().has(asset.id)}
             assetMove={structure.assetMove}
+            class="w-full min-w-0 p-1 text-xs"
           />
         </Show>
       ),
@@ -462,11 +468,13 @@ export function UiAssetListPage() {
                     </Show>
                   </div>
 
-                  <CardWrapper class="overflow-x-auto border border-slate-200 bg-white p-0 lg:p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                  <CardWrapper class="overflow-hidden border border-slate-200 bg-white p-0 lg:p-0 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                     <Table1R
                       rows={[...(data?.assets ?? [])]}
                       columns={columns()}
-                      desktopClasses={uiTableDesktopClassesRead()}
+                      desktopClasses={uiTableDesktopClassesRead({
+                        class: "w-full table-fixed text-left text-sm",
+                      })}
                       mobileClasses={uiTableMobileClassesRead()}
                     />
                   </CardWrapper>

@@ -10,6 +10,7 @@ export type UiStructureAssetFolderSelectProps = {
   folderOptions: () => readonly UiStructureFolderOption[]
   isDisabled: () => boolean
   assetMove: (assetId: string, folderId: string | null) => void
+  class?: string
 }
 
 /** Selects an asset's logical structure folder using the shared move action. */
@@ -31,7 +32,7 @@ export function UiStructureAssetFolderSelect(p: UiStructureAssetFolderSelectProp
         id={p.selectId}
         // Below `sm` the select takes its own row so the target chips after the
         // filename stay fully visible instead of being clipped by it.
-        class="!w-full shrink-0 basis-full p-1 text-xs sm:!w-36 sm:basis-auto md:!w-40"
+        class={p.class ?? "!w-full shrink-0 basis-full p-1 text-xs sm:!w-36 sm:basis-auto md:!w-40"}
         disabled={state.isDisabled()}
         valueSignal={state.valueSignal}
         getOptions={state.optionValues}
