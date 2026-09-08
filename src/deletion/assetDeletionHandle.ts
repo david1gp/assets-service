@@ -619,6 +619,7 @@ function deletionFinalize(
     .all()
     .map(({ id }) => id)
 
+  transaction.delete(manifestTable).where(eq(manifestTable.assetId, asset.id)).run()
   for (const replacement of replacements) {
     const existingGeneration = transaction
       .select()
@@ -676,7 +677,6 @@ function deletionFinalize(
       .run()
     transaction.delete(catalogGenerationTable).where(eq(catalogGenerationTable.id, replacement.oldGeneration.id)).run()
   }
-  transaction.delete(manifestTable).where(eq(manifestTable.assetId, asset.id)).run()
   if (sourceIds.length > 0)
     transaction.delete(backupReceiptTable).where(inArray(backupReceiptTable.sourceRevisionId, sourceIds)).run()
   const assetBlobConditions = [and(eq(blobTable.projectId, asset.projectId), eq(blobTable.assetId, asset.id))]

@@ -12,6 +12,7 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { databaseTransactionRun } from "../src/infrastructure/db/databaseTransactionRun.js"
 import { assetMetadataTable } from "../src/infrastructure/db/schema/assetMetadataTable.js"
 import { assetTable } from "../src/infrastructure/db/schema/assetTable.js"
+import { assetStructureFolderMembershipTable } from "../src/infrastructure/db/schema/assetStructureFolderMembershipTable.js"
 import { blobTable } from "../src/infrastructure/db/schema/blobTable.js"
 import { catalogTable } from "../src/infrastructure/db/schema/catalogTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
@@ -23,6 +24,7 @@ import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDef
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
+import { structureFolderTable } from "../src/infrastructure/db/schema/structureFolderTable.js"
 import { uploadTable } from "../src/infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
@@ -91,8 +93,8 @@ describe("asset ingestion workflow", () => {
           sourceRevisionId: null,
           originalFilename: "hero.png",
           folder1: "home",
-          folder2: null,
-          folder3: null,
+          folder2: "nested",
+          folder3: "deep",
           integrationNote: "From the fixture",
           stagingObjectKey: "projects/project-asset-workflow/private/staging/uploads/upload-asset-workflow",
           byteSize: bytes.byteLength,
@@ -163,6 +165,23 @@ describe("asset ingestion workflow", () => {
       })
       expect(ingestion).toMatchObject({ success: true, data: { assetId: "asset-upload-asset-workflow" } })
       if (!ingestion.success) return
+      const structureFolders = opened.data.db.select().from(structureFolderTable).all()
+      expect(structureFolders).toHaveLength(3)
+      const rootFolder = structureFolders.find((folder) => folder.name === "home")
+      const nestedFolder = structureFolders.find((folder) => folder.name === "nested")
+      const deepFolder = structureFolders.find((folder) => folder.name === "deep")
+      expect(rootFolder).toMatchObject({ parentId: null, depth: 1, projectId: "project-asset-workflow" })
+      expect(nestedFolder).toMatchObject({ parentId: rootFolder?.id, depth: 2 })
+      expect(deepFolder).toMatchObject({ parentId: nestedFolder?.id, depth: 3 })
+      expect(opened.data.db.select().from(assetStructureFolderMembershipTable).all()).toHaveLength(1)
+      expect(opened.data.db.select().from(assetStructureFolderMembershipTable).all()).toMatchObject([
+        { assetId: "asset-upload-asset-workflow", structureFolderId: deepFolder?.id },
+      ])
+      expect(opened.data.db.select().from(assetTable).get()).toMatchObject({
+        folder1: "home",
+        folder2: "nested",
+        folder3: "deep",
+      })
       expect(opened.data.db.select().from(outputDefinitionTable).all()).toMatchObject([
         {
           id: "output-asset-upload-asset-workflow-default",
@@ -742,6 +761,24 @@ describe("asset ingestion workflow", () => {
             createdAt: now,
           })
           if (!source.success) return source
+          const logicalFolder = databaseRecordInsert(transaction, structureFolderTable, {
+            id: "structure-folder-explicit-replacement",
+            projectId: "project-explicit-replacement",
+            parentId: null,
+            name: "manually-moved",
+            depth: 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!logicalFolder.success) return logicalFolder
+          const membership = databaseRecordInsert(transaction, assetStructureFolderMembershipTable, {
+            id: "membership-explicit-replacement",
+            assetId: "asset-explicit-replacement",
+            structureFolderId: logicalFolder.data.id,
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!membership.success) return membership
           const managedOutput = databaseRecordInsert(transaction, outputDefinitionTable, {
             id: "output-asset-explicit-replacement-default",
             assetId: "asset-explicit-replacement",
@@ -886,6 +923,16 @@ describe("asset ingestion workflow", () => {
           currentSourceRevisionId: "source-upload-explicit-replacement",
         },
       ])
+      expect(opened.data.db.select().from(assetStructureFolderMembershipTable).all()).toEqual([
+        {
+          id: "membership-explicit-replacement",
+          assetId: "asset-explicit-replacement",
+          structureFolderId: "structure-folder-explicit-replacement",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      expect(opened.data.db.select().from(structureFolderTable).all()).toHaveLength(1)
       expect(opened.data.db.select().from(sourceRevisionTable).all()).toMatchObject([
         { id: "source-explicit-replacement-1", assetId: "asset-explicit-replacement", revision: 1 },
         {

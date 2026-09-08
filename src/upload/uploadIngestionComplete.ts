@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, isNull } from "drizzle-orm"
 import * as v from "valibot"
 import { assetBasenameCreate } from "../asset/assetBasenameCreate.js"
 import { assetClassFromMediaType } from "../asset/assetClassFromMediaType.js"
@@ -21,6 +21,8 @@ import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { outputDefinitionTable } from "../infrastructure/db/schema/outputDefinitionTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
+import { assetStructureFolderMembershipTable } from "../infrastructure/db/schema/assetStructureFolderMembershipTable.js"
+import { structureFolderTable } from "../infrastructure/db/schema/structureFolderTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
@@ -280,6 +282,15 @@ export const uploadIngestionComplete = async (
           updatedAt: now,
         })
         if (!insertedAsset.success) return insertedAsset
+        const initializedStructure = assetStructureFolderHierarchyInitialize(transaction, {
+          assetId,
+          projectId: currentUpload.projectId,
+          folder1: columns.data.folder1,
+          folder2: columns.data.folder2,
+          folder3: columns.data.folder3,
+          now,
+        })
+        if (!initializedStructure.success) return initializedStructure
 
         const project = transaction
           .select()
@@ -470,6 +481,65 @@ export const uploadIngestionComplete = async (
     },
     { behavior: "immediate" },
   )
+}
+
+function assetStructureFolderHierarchyInitialize(
+  db: AssetDatabase,
+  input: {
+    assetId: string
+    projectId: string
+    folder1: string | null
+    folder2: string | null
+    folder3: string | null
+    now: string
+  },
+): Result<null> {
+  const op = "assetStructureFolderHierarchyInitialize"
+  const folderNames = [input.folder1, input.folder2, input.folder3]
+  let parentId: string | null = null
+
+  for (const [index, name] of folderNames.entries()) {
+    if (name === null) break
+    const existing: typeof structureFolderTable.$inferSelect | undefined = db
+      .select()
+      .from(structureFolderTable)
+      .where(
+        and(
+          eq(structureFolderTable.projectId, input.projectId),
+          parentId === null ? isNull(structureFolderTable.parentId) : eq(structureFolderTable.parentId, parentId),
+          eq(structureFolderTable.name, name),
+        ),
+      )
+      .get()
+    if (existing !== undefined) {
+      parentId = existing.id
+      continue
+    }
+
+    const inserted: Result<typeof structureFolderTable.$inferSelect> = databaseRecordInsert(db, structureFolderTable, {
+      id: crypto.randomUUID(),
+      projectId: input.projectId,
+      parentId,
+      name,
+      depth: index + 1,
+      createdAt: input.now,
+      updatedAt: input.now,
+    })
+    if (!inserted.success) return resultErrorCreate(op, "The asset structure folder could not be initialized", inserted)
+    parentId = inserted.data.id
+  }
+
+  if (parentId === null) return { success: true, data: null }
+  const membership = databaseRecordInsert(db, assetStructureFolderMembershipTable, {
+    id: crypto.randomUUID(),
+    assetId: input.assetId,
+    structureFolderId: parentId,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
+  if (!membership.success)
+    return resultErrorCreate(op, "The asset structure membership could not be initialized", membership)
+  return { success: true, data: null }
 }
 
 function workflowJobsEnsure(

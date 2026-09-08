@@ -93,28 +93,27 @@ const databaseCreate = () => {
   return opened.data
 }
 
-const migrationFolderCreate = (includeStructureMigration: boolean) => {
+const migrationFolderCreate = (lastMigrationNumber = Number.POSITIVE_INFINITY) => {
   const sourceFolder = resolve("drizzle")
   const migrationFolder = mkdtempSync(join(tmpdir(), "assets-structure-migrations-"))
   const metaFolder = join(migrationFolder, "meta")
   mkdirSync(metaFolder)
   for (const filename of readdirSync(sourceFolder)) {
     if (!filename.endsWith(".sql")) continue
-    if (!includeStructureMigration && Number.parseInt(filename, 10) >= 9) continue
+    if (Number.parseInt(filename, 10) > lastMigrationNumber) continue
     copyFileSync(join(sourceFolder, filename), join(migrationFolder, filename))
   }
   const journal = JSON.parse(readFileSync(join(sourceFolder, "meta", "_journal.json"), "utf8")) as {
     entries: { tag: string }[]
     [key: string]: unknown
   }
-  if (!includeStructureMigration)
-    journal.entries = journal.entries.filter((entry) => Number.parseInt(entry.tag, 10) < 9)
+  journal.entries = journal.entries.filter((entry) => Number.parseInt(entry.tag, 10) <= lastMigrationNumber)
   writeFileSync(join(metaFolder, "_journal.json"), JSON.stringify(journal))
   return migrationFolder
 }
 
 const legacyDatabaseCreate = () => {
-  const migrationFolder = migrationFolderCreate(false)
+  const migrationFolder = migrationFolderCreate(8)
   const opened = databaseOpen(":memory:")
   if (!opened.success) throw new Error(opened.errorMessage)
   const migrated = databaseMigrate(opened.data, migrationFolder)
@@ -235,7 +234,7 @@ describe("structure folder repository", () => {
       if (!insertedAssets.success)
         throw new Error(`${insertedAssets.errorMessage} ${JSON.stringify(insertedAssets.rawData)}`)
 
-      const structureMigrationFolder = migrationFolderCreate(true)
+      const structureMigrationFolder = migrationFolderCreate()
       try {
         const migrated = databaseMigrate(legacy.connection, structureMigrationFolder)
         expect(migrated).toEqual({ success: true, data: null })
@@ -303,7 +302,7 @@ describe("structure folder repository", () => {
         .select()
         .from(assetStructureFolderMembershipTable)
         .all()
-      const rerunFolder = migrationFolderCreate(true)
+      const rerunFolder = migrationFolderCreate()
       try {
         expect(databaseMigrate(legacy.connection, rerunFolder)).toEqual({ success: true, data: null })
       } finally {
@@ -316,6 +315,185 @@ describe("structure folder repository", () => {
     } finally {
       databaseClose(legacy.connection)
       rmSync(legacy.migrationFolder, { recursive: true, force: true })
+    }
+  })
+
+  test("repairs only projects with an entirely empty logical structure", () => {
+    const migrationFolder = migrationFolderCreate(19)
+    const opened = databaseOpen(":memory:")
+    if (!opened.success) throw new Error(opened.errorMessage)
+    const migrated = databaseMigrate(opened.data, migrationFolder)
+    if (!migrated.success) throw new Error(migrated.errorMessage)
+
+    try {
+      for (const [id, slug] of [
+        ["org-1", "example"],
+        ["org-2", "other"],
+      ] as const) {
+        expect(
+          databaseRecordInsert(opened.data.db, organizationTable, {
+            id,
+            name: slug,
+            slug,
+            createdAt: now,
+            updatedAt: now,
+          }).success,
+        ).toBe(true)
+      }
+      for (const [id, organizationId] of [
+        ["empty-project-1", "org-1"],
+        ["empty-project-2", "org-2"],
+        ["preserved-project", "org-1"],
+        ["unassigned-project", "org-2"],
+      ] as const) {
+        expect(
+          databaseRecordInsert(opened.data.db, projectTable, {
+            id,
+            organizationId,
+            name: id,
+            slug: id,
+            defaultEnvironment: "development",
+            createdAt: now,
+            updatedAt: now,
+          }).success,
+        ).toBe(true)
+      }
+
+      const assets = [
+        ["asset-root", "empty-project-1", "shared", null, null],
+        ["asset-child", "empty-project-1", "shared", "child", null],
+        ["asset-grandchild", "empty-project-1", "shared", "child", "grandchild"],
+        ["asset-unassigned", "empty-project-1", null, null, null],
+        ["asset-other-root", "empty-project-2", "shared", null, null],
+        ["asset-preserved", "preserved-project", "legacy", "nested", "deep"],
+        ["asset-preserved-unassigned", "preserved-project", null, null, null],
+        ["asset-intentionally-unassigned", "unassigned-project", "legacy", null, null],
+      ] as const
+      const insertedAssets = databaseTransactionRun(opened.data.db, (transaction) => {
+        for (const [id, projectId, folder1, folder2, folder3] of assets) {
+          const inserted = databaseRecordInsert(transaction, assetTable, {
+            id,
+            projectId,
+            class: "image",
+            folder1,
+            folder2,
+            folder3,
+            filename: `${id}.jpg`,
+            basename: id,
+            currentSourceRevisionId: `source-${id}`,
+            integrationNote: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          if (!inserted.success) return inserted
+          const source = databaseRecordInsert(transaction, sourceRevisionTable, {
+            id: `source-${id}`,
+            assetId: id,
+            revision: 1,
+            class: "image",
+            originalFilename: `${id}.jpg`,
+            mediaType: "image/jpeg",
+            byteSize: 10,
+            sha256: id.padEnd(64, "a"),
+            objectKey: `sources/${id}.jpg`,
+            createdAt: now,
+          })
+          if (!source.success) return source
+        }
+        return { success: true, data: null } as const
+      })
+      if (!insertedAssets.success) throw new Error(insertedAssets.errorMessage)
+
+      const repository = structureFolderRepositoryCreate(opened.data.db)
+      const preservedFolder = repository.structureFolderCreate("preserved-project", { name: "manual" })
+      const unassignedFolder = repository.structureFolderCreate("unassigned-project", { name: "manual" })
+      expect(preservedFolder).toMatchObject({ success: true })
+      expect(unassignedFolder).toMatchObject({ success: true })
+      if (!preservedFolder.success) return
+      expect(
+        repository.assetStructureFolderMembershipSet("preserved-project", "asset-preserved", preservedFolder.data.id),
+      ).toMatchObject({ success: true })
+
+      const repairMigrationFolder = migrationFolderCreate()
+      try {
+        expect(databaseMigrate(opened.data, repairMigrationFolder)).toEqual({ success: true, data: null })
+      } finally {
+        rmSync(repairMigrationFolder, { recursive: true, force: true })
+      }
+
+      const folders = opened.data.db
+        .select()
+        .from(structureFolderTable)
+        .all()
+        .sort((left, right) =>
+          `${left.projectId}/${left.depth}/${left.name}`.localeCompare(
+            `${right.projectId}/${right.depth}/${right.name}`,
+          ),
+        )
+      expect(
+        folders.map((folder) => ({
+          projectId: folder.projectId,
+          name: folder.name,
+          depth: folder.depth,
+          parentName: folders.find((parent) => parent.id === folder.parentId)?.name ?? null,
+        })),
+      ).toEqual([
+        { projectId: "empty-project-1", name: "shared", depth: 1, parentName: null },
+        { projectId: "empty-project-1", name: "child", depth: 2, parentName: "shared" },
+        { projectId: "empty-project-1", name: "grandchild", depth: 3, parentName: "child" },
+        { projectId: "empty-project-2", name: "shared", depth: 1, parentName: null },
+        { projectId: "preserved-project", name: "manual", depth: 1, parentName: null },
+        { projectId: "unassigned-project", name: "manual", depth: 1, parentName: null },
+      ])
+
+      const folderById = new Map(folders.map((folder) => [folder.id, folder]))
+      const memberships = opened.data.db
+        .select()
+        .from(assetStructureFolderMembershipTable)
+        .all()
+        .sort((left, right) => left.assetId.localeCompare(right.assetId))
+      expect(
+        memberships.map((membership) => ({
+          assetId: membership.assetId,
+          folder: folderById.get(membership.structureFolderId)?.name,
+        })),
+      ).toEqual([
+        { assetId: "asset-child", folder: "child" },
+        { assetId: "asset-grandchild", folder: "grandchild" },
+        { assetId: "asset-other-root", folder: "shared" },
+        { assetId: "asset-preserved", folder: "manual" },
+        { assetId: "asset-root", folder: "shared" },
+      ])
+      expect(
+        opened.data.db
+          .select({
+            id: assetTable.id,
+            folder1: assetTable.folder1,
+            folder2: assetTable.folder2,
+            folder3: assetTable.folder3,
+          })
+          .from(assetTable)
+          .all()
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      ).toEqual(
+        assets
+          .map(([id, , folder1, folder2, folder3]) => ({ id, folder1, folder2, folder3 }))
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      )
+
+      const foldersAfterMigration = opened.data.db.select().from(structureFolderTable).all()
+      const membershipsAfterMigration = opened.data.db.select().from(assetStructureFolderMembershipTable).all()
+      const rerunFolder = migrationFolderCreate()
+      try {
+        expect(databaseMigrate(opened.data, rerunFolder)).toEqual({ success: true, data: null })
+      } finally {
+        rmSync(rerunFolder, { recursive: true, force: true })
+      }
+      expect(opened.data.db.select().from(structureFolderTable).all()).toEqual(foldersAfterMigration)
+      expect(opened.data.db.select().from(assetStructureFolderMembershipTable).all()).toEqual(membershipsAfterMigration)
+    } finally {
+      databaseClose(opened.data)
+      rmSync(migrationFolder, { recursive: true, force: true })
     }
   })
 

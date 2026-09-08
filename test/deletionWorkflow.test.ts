@@ -505,6 +505,41 @@ test("retries deletion without duplicating a cross-project catalog manifest", as
 })
 
 describe("complete asset deletion", () => {
+  test("deletes an asset manifest before inserting a colliding replacement catalog manifest", async () => {
+    const fixture = await setup()
+    const replacementObjectKey = `catalogs/development/${canonicalJsonDigest([])}.json`
+    try {
+      expect(
+        databaseRecordInsert(fixture.db, manifestTable, {
+          id: "manifest-asset-delete-conflict",
+          projectId: "project-delete",
+          assetId: "asset-delete",
+          catalogGenerationId: null,
+          kind: "asset",
+          schema: "assets.manifest.v1",
+          objectKey: replacementObjectKey,
+          byteSize: 1,
+          sha256: "d".repeat(64),
+          createdAt: now,
+        }),
+      ).toMatchObject({ success: true })
+
+      await runDeletion(fixture)
+
+      expect(
+        deletionApiRepositoryCreate(fixture.db).deletionStateRead?.("project-delete", "asset-delete"),
+      ).toMatchObject({
+        success: true,
+        data: { status: "succeeded", pendingRemoteObjects: [] },
+      })
+      expect(fixture.db.select().from(manifestTable).all()).toMatchObject([
+        { projectId: "project-delete", assetId: null, objectKey: replacementObjectKey },
+      ])
+    } finally {
+      databaseClose(fixture.opened)
+    }
+  })
+
   test("deletes every remote and relational record before preserving status and audit evidence", async () => {
     const fixture = await setup()
     try {
