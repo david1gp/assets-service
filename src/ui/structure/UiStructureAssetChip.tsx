@@ -51,29 +51,20 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
   return (
     <li
       data-asset-id={p.asset.id}
-      class="group flex w-full min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 shadow-2xs transition-all hover:border-slate-300 aria-busy:cursor-wait aria-busy:opacity-60 sm:w-auto sm:max-w-md dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600"
+      class="group flex w-full flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-2xs transition-all hover:border-slate-300 hover:shadow-md aria-busy:cursor-wait aria-busy:opacity-60 sm:w-80 md:w-96 dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600"
       aria-busy={p.isPending}
     >
-      <Show when={p.showFolders()}>
-        <span
-          class="shrink-0 cursor-grab text-slate-300 transition-colors group-hover:text-slate-500 active:cursor-grabbing dark:text-slate-600 dark:group-hover:text-slate-400"
-          title="Drag to move folder"
-          aria-hidden="true"
+      {/* Prominent visual preview */}
+      <div class="relative flex aspect-video w-full shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/80 bg-slate-100/90 dark:border-slate-700 dark:bg-slate-900/60">
+        <Show
+          when={preview()}
+          fallback={
+            <div class="flex size-full items-center justify-center text-slate-400 dark:text-slate-500">
+              <Icon path={mdiFileOutline} class="size-12" />
+            </div>
+          }
         >
-          <Icon path={mdiDragVertical} class="size-4" />
-        </span>
-      </Show>
-
-      <Show
-        when={preview()}
-        fallback={
-          <div class="flex size-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
-            <Icon path={mdiFileOutline} class="size-4" />
-          </div>
-        }
-      >
-        {(source) => (
-          <div class="size-9 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+          {(source) => (
             <Img
               class="size-full object-contain"
               src={source().url}
@@ -81,50 +72,67 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
               width={source().kind === "optimized" ? source().width : undefined}
               height={source().kind === "optimized" ? source().height : undefined}
             />
-          </div>
-        )}
-      </Show>
+          )}
+        </Show>
 
-      {/* `overflow-hidden` keeps the chips inside this column so they can never reach the folder select. */}
-      <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Show when={hasFolders()}>
-          <span class="truncate font-mono text-[10px] text-slate-400 dark:text-slate-500">
-            {p.asset.folders.join("/")}/
+        <Show when={p.showFolders()}>
+          <span
+            class="absolute top-2 left-2 flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md bg-white/85 text-slate-500 shadow-xs backdrop-blur-xs transition-colors hover:bg-white hover:text-slate-800 active:cursor-grabbing dark:bg-slate-800/85 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            title="Drag to move folder"
+            aria-hidden="true"
+          >
+            <Icon path={mdiDragVertical} class="size-5" />
           </span>
         </Show>
-        {/* Chips wrap below the filename at every width because they never shrink and would otherwise overflow onto the folder select. */}
-        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-          <A
-            href={uiPaths.asset(p.projectId, p.asset.id)}
-            title={label()}
-            // The native link drag would start instead of the chip drag.
-            draggable={false}
-            class="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
-          >
-            {p.asset.filename}
-          </A>
-          <UiOutputTargetBadges targets={uiAssetOutputTargetsRead(p.asset)} class="px-1 py-0" />
-          <Show when={p.asset.deletionStatus}>
-            {(status) => (
-              <UiStatusBadge tone={uiDeletionStatusToneRead(status())} class="px-1 py-0 text-[10px]">
+
+        <Show when={p.asset.deletionStatus}>
+          {(status) => (
+            <div class="absolute top-2 right-2">
+              <UiStatusBadge tone={uiDeletionStatusToneRead(status())} class="px-1.5 py-0.5 text-[10px] shadow-xs">
                 {uiDeletionStatusLabelRead(status())}
               </UiStatusBadge>
-            )}
-          </Show>
-        </div>
+            </div>
+          )}
+        </Show>
       </div>
 
-      <Show when={p.showFolderAssignment()}>
-        <UiStructureAssetFolderSelect
-          assetId={p.asset.id}
-          assetLabel={label()}
-          selectId={selectId}
-          folderId={() => p.folderId}
-          folderOptions={() => p.folderOptions}
-          isDisabled={() => p.isPending}
-          assetMove={p.assetMove}
-        />
-      </Show>
+      {/* Details: path, filename, format badges, and folder assignment */}
+      <div class="mt-2.5 flex min-w-0 flex-1 flex-col justify-between gap-2 overflow-hidden">
+        <div class="flex min-w-0 flex-col gap-1 overflow-hidden">
+          <Show when={hasFolders()}>
+            <span class="truncate font-mono text-[11px] text-slate-400 dark:text-slate-500">
+              {p.asset.folders.join("/")}/
+            </span>
+          </Show>
+          <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
+            <A
+              href={uiPaths.asset(p.projectId, p.asset.id)}
+              title={label()}
+              // The native link drag would start instead of the chip drag.
+              draggable={false}
+              class="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100 dark:hover:text-blue-400"
+            >
+              {p.asset.filename}
+            </A>
+            <UiOutputTargetBadges targets={uiAssetOutputTargetsRead(p.asset)} class="shrink-0 px-1.5 py-0.5" />
+          </div>
+        </div>
+
+        <Show when={p.showFolderAssignment()}>
+          <div class="pt-0.5">
+            <UiStructureAssetFolderSelect
+              assetId={p.asset.id}
+              assetLabel={label()}
+              selectId={selectId}
+              folderId={() => p.folderId}
+              folderOptions={() => p.folderOptions}
+              isDisabled={() => p.isPending}
+              assetMove={p.assetMove}
+              class="!w-full text-xs"
+            />
+          </div>
+        </Show>
+      </div>
     </li>
   )
 }

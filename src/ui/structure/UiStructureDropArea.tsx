@@ -27,7 +27,7 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
     <ul
       aria-label={`Assets in ${p.label}`}
       class={classArr(
-        "flex min-h-14 flex-wrap items-center gap-2 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50 p-2.5 transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/30",
+        "flex min-h-48 flex-wrap items-start gap-4 sm:gap-5 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-4 transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/30",
         p.class,
       )}
       ref={(element) =>
@@ -54,7 +54,7 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
         )}
       </For>
       <Show when={p.assets.length === 0}>
-        <li class="flex items-center gap-1.5 p-1 text-xs font-medium text-slate-400 dark:text-slate-500">
+        <li class="flex items-center gap-2 p-2 text-xs font-medium text-slate-400 dark:text-slate-500">
           <Icon path={mdiFolderUploadOutline} class="size-4 shrink-0" />
           <span>Drop assets here</span>
         </li>
