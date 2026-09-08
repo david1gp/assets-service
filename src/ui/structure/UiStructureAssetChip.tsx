@@ -66,9 +66,7 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
             </div>
           }
         >
-          {(source) => (
-            <UiAssetPreviewImage source={source} class="size-full object-contain" />
-          )}
+          {(source) => <UiAssetPreviewImage source={source} class="size-full object-contain" />}
         </Show>
 
         <Show when={p.showFolders()}>
