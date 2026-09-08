@@ -4,6 +4,7 @@ import type { SignalObject } from "#ui/utils/createSignalObject.js"
 import { environmentNameSchema } from "../../schemas/environmentNameSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
@@ -28,7 +29,11 @@ export const uiCatalogPageStateCreate = () => {
   const query = uiQueryCreate<UiCatalogView>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiCatalogPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiCatalogPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       const catalog = await client.data.catalogCurrentOptionalRead(projectId(), environment())
       if (!catalog.success) return catalog
       if (catalog.data === null) return { success: true, data: { catalog: null, lists: null } }

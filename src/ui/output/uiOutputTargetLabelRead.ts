@@ -1,4 +1,5 @@
 import type { OutputDefinition } from "../../output/outputDefinitionSchema.js"
+import { ttc } from "../localization/ttc.js"
 
 /**
  * Builds the chip label of one output target from its structured properties.
@@ -7,6 +8,6 @@ import type { OutputDefinition } from "../../output/outputDefinitionSchema.js"
 export const uiOutputTargetLabelRead = (definition: OutputDefinition): string => {
   if (definition.kind === "image") return `${definition.width}×${definition.height} ${definition.format.toUpperCase()}`
   if (definition.kind === "font") return definition.format.toUpperCase()
-  if (definition.kind === "video") return "Video"
-  return "Document"
+  if (definition.kind === "video") return ttc("Video", "Video")
+  return ttc("Document", "Dokument")
 }

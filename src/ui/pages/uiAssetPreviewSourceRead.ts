@@ -1,5 +1,6 @@
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { sourceRevisionPreviewMediaTypeCheck } from "../../upload/sourceRevisionPreviewMediaTypeCheck.js"
+import { ttc } from "../localization/ttc.js"
 import { uiSourceRevisionLatestImageRead } from "./uiSourceRevisionLatestImageRead.js"
 
 type UiAssetPreviewSourceOptions = {
@@ -25,7 +26,7 @@ const stringCompare = (first: string, second: string): number => {
 const assetPreviewAltRead = (asset: AssetListItem): string => {
   const metadata = asset.metadata?.metadata
   if (metadata?.kind === "image" && metadata.alt) return metadata.alt
-  return `Preview of ${asset.filename}`
+  return ttc(`Preview of ${asset.filename}`, `Vorschau von ${asset.filename}`)
 }
 
 const assetPreviewCandidateCompare = (first: UiAssetPreviewCandidate, second: UiAssetPreviewCandidate): number => {
@@ -63,26 +64,39 @@ const assetPreviewCandidatesRead = (asset: AssetListItem): UiAssetPreviewCandida
   return candidates
 }
 
+export type UiAssetPreviewSource =
+  | {
+      alt: string
+      /** Latest original image URL used when the optimized output cannot be loaded. */
+      fallbackUrl: string | null
+      height: number
+      kind: "optimized"
+      url: string
+      width: number
+    }
+  | { alt: string; fallbackUrl: null; kind: "original"; url: string }
+
 /** Selects the smallest current optimized image output, falling back to the latest original image. */
-export const uiAssetPreviewSourceRead = (asset: AssetListItem, options: UiAssetPreviewSourceOptions) => {
+export const uiAssetPreviewSourceRead = (
+  asset: AssetListItem,
+  options: UiAssetPreviewSourceOptions,
+): UiAssetPreviewSource | null => {
   if (asset.class !== "image") return null
   const alt = assetPreviewAltRead(asset)
+  const sourceRevision = uiSourceRevisionLatestImageRead(asset.sourceHistory ?? [])
+  const originalUrl = sourceRevision === null ? null : options.sourceRevisionPreviewUrlCreate(sourceRevision.id)
   const candidate = assetPreviewCandidatesRead(asset).sort(assetPreviewCandidateCompare)[0]
   if (candidate !== undefined) {
     return {
       alt,
+      fallbackUrl: originalUrl,
       height: candidate.height,
-      kind: "optimized" as const,
+      kind: "optimized",
       url: options.outputVersionUrlCreate(candidate.versionId),
       width: candidate.width,
     }
   }
 
-  const sourceRevision = uiSourceRevisionLatestImageRead(asset.sourceHistory ?? [])
-  if (sourceRevision === null) return null
-  return {
-    alt,
-    kind: "original" as const,
-    url: options.sourceRevisionPreviewUrlCreate(sourceRevision.id),
-  }
+  if (originalUrl === null) return null
+  return { alt, fallbackUrl: null, kind: "original", url: originalUrl }
 }

@@ -1,6 +1,7 @@
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import { uiIdleCallbackSchedule } from "../common/uiIdleCallbackSchedule.js"
+import { ttc } from "../localization/ttc.js"
 
 const defaultDebounceMilliseconds = 150
 
@@ -23,19 +24,30 @@ const searchParamsReplaceRun = (search: string, options: SearchParamsReplaceOpti
   const op = "uiSearchParamsReplace"
   try {
     const targetLocation = options.location ?? (typeof window === "undefined" ? undefined : window.location)
-    if (targetLocation === undefined) return resultErrorCreate(op, "The browser location is unavailable")
+    if (targetLocation === undefined)
+      return resultErrorCreate(
+        op,
+        ttc("The browser location is unavailable", "Die Browser-Adresse ist nicht verfügbar"),
+      )
 
     const replaceState =
       options.replaceState ??
       ((url: string) => {
-        if (typeof window === "undefined") throw new Error("The browser history is unavailable")
+        if (typeof window === "undefined")
+          throw new Error(ttc("The browser history is unavailable", "Der Browser-Verlauf ist nicht verfügbar"))
         window.history.replaceState(window.history.state, "", url)
       })
     replaceState(`${targetLocation.pathname}${search}${targetLocation.hash}`)
     return { success: true, data: true }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The browser history operation failed"
-    return resultErrorCreate(op, `Could not replace the URL search: ${message}`)
+    const message =
+      error instanceof Error
+        ? error.message
+        : ttc("The browser history operation failed", "Der Browser-Verlauf konnte nicht geändert werden")
+    return resultErrorCreate(
+      op,
+      `${ttc("Could not replace the URL search", "Die URL-Suche konnte nicht ersetzt werden")}: ${message}`,
+    )
   }
 }
 
@@ -53,7 +65,11 @@ export const uiSearchParamsReplace = (
     const entry = existing ?? {
       timer: undefined,
       cancelIdle: undefined,
-      run: () => resultErrorCreate("uiSearchParamsReplace", "The URL search replacement was not scheduled"),
+      run: () =>
+        resultErrorCreate(
+          "uiSearchParamsReplace",
+          ttc("The URL search replacement was not scheduled", "Das Ersetzen der URL-Suche wurde nicht eingeplant"),
+        ),
       resolvers: [],
     }
     if (existing?.timer !== undefined) globalThis.clearTimeout(existing.timer)

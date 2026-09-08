@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from "@solidjs/router"
+import { useLocation, useParams, useSearchParams } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
@@ -16,6 +16,9 @@ import { uiOutputDraftsInputsRead } from "../output/uiOutputDraftsInputsRead.js"
 import { uiOutputSetChangesRead } from "../output/uiOutputSetChangesRead.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { ttc } from "../localization/ttc.js"
+import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
 import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
@@ -41,6 +44,14 @@ type UiAssetAltDraft = v.InferOutput<typeof assetAltDraftSchema>
 type UiAssetMoveDraft = v.InferOutput<typeof assetMoveDraftSchema>
 type UiAssetOutputsDraft = v.InferOutput<typeof assetOutputsDraftSchema>
 
+const uiAssetActionLabelRead = (label: string): string => {
+  if (label === "Alt text") return ttc("Alt text", "Alternativtext")
+  if (label === "Alt text removal") return ttc("Alt text removal", "Alternativtext entfernen")
+  if (label === "Output set") return ttc("Output set", "Ausgabensatz")
+  if (label === "Move") return ttc("Move", "Verschieben")
+  return ttc("Deletion", "Löschung")
+}
+
 const altValueRead = (asset: AssetDetailResponse): string => {
   const metadata = asset.metadata?.metadata
   if (metadata && "alt" in metadata && typeof metadata.alt === "string") return metadata.alt
@@ -52,10 +63,13 @@ const draftIdCreate = () => `draft-${crypto.randomUUID()}`
 /** Drives asset detail reads plus metadata, output-set, move, and delete mutations. */
 export const uiAssetDetailPageStateCreate = () => {
   const params = useParams<{ projectId: string; assetId: string }>()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const projectId = createMemo(() => params.projectId)
   const assetId = createMemo(() => params.assetId)
+  const mode = createMemo(() => uiProjectRouteModeRead(location.pathname) ?? "admin")
+  const paths = createMemo(() => uiPaths[mode()])
   const openDialog = createMemo<UiAssetDialog | null>(() => {
     const move = uiSearchParamPicklistRead(uiAssetDialogSchema, searchParams.moveDialog)
     if (move === "move") return move
@@ -142,7 +156,11 @@ export const uiAssetDetailPageStateCreate = () => {
   const query = uiQueryCreate<AssetDetailResponse>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAssetDetailPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAssetDetailPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.assetRead(projectId(), assetId())
     },
     {
@@ -154,7 +172,11 @@ export const uiAssetDetailPageStateCreate = () => {
   const activity = uiQueryCreate<UiAssetActivity>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAssetDetailActivityRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAssetDetailActivityRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       const project = await client.data.projectRead(projectId())
       if (!project.success) return project
       const environments = await client.data.environmentsRead(projectId())
@@ -219,10 +241,17 @@ export const uiAssetDetailPageStateCreate = () => {
     pending.set(null)
     if (!result.success) {
       actionError.set(result.errorMessage)
-      uiToastAdd({ tone: "negative", title: `${label} failed`, description: result.errorMessage })
+      uiToastAdd({
+        tone: "negative",
+        title: ttc(`${label} failed`, `${uiAssetActionLabelRead(label)} fehlgeschlagen`),
+        description: result.errorMessage,
+      })
       return false
     }
-    uiToastAdd({ tone: "positive", title: successTitle ?? `${label} applied` })
+    uiToastAdd({
+      tone: "positive",
+      title: successTitle ?? ttc(`${label} applied`, `${uiAssetActionLabelRead(label)} angewendet`),
+    })
     query.reload()
     activity.reload()
     return true
@@ -231,7 +260,11 @@ export const uiAssetDetailPageStateCreate = () => {
   const altSet = async () => {
     const applied = await run("Alt text", async () => {
       const client = clientRead()
-      if (!client) return resultErrorCreate("uiAssetDetailAltSet", "The API client is unavailable")
+      if (!client)
+        return resultErrorCreate(
+          "uiAssetDetailAltSet",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.assetMetadataSet(projectId(), assetId(), { alt: altDraft.get() })
     })
     if (applied) await altDraftPersistence.clear()
@@ -240,7 +273,11 @@ export const uiAssetDetailPageStateCreate = () => {
   const altUnset = async () => {
     const applied = await run("Alt text removal", async () => {
       const client = clientRead()
-      if (!client) return resultErrorCreate("uiAssetDetailAltUnset", "The API client is unavailable")
+      if (!client)
+        return resultErrorCreate(
+          "uiAssetDetailAltUnset",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.assetMetadataUnset(projectId(), assetId(), { field: "alt" })
     })
     if (!applied) return
@@ -291,7 +328,10 @@ export const uiAssetDetailPageStateCreate = () => {
     const inputs = outputInputs()
     if (!inputs.success) return inputs.errorMessage
     if (outputChanges()?.isDestructive && !confirmOutputs.get())
-      return "Confirm the deletion of the published outputs above to enable saving."
+      return ttc(
+        "Confirm the deletion of the published outputs above to enable saving.",
+        "Bestätige oben die Löschung der veröffentlichten Ausgaben, um das Speichern zu aktivieren.",
+      )
     return null
   })
 
@@ -313,7 +353,7 @@ export const uiAssetDetailPageStateCreate = () => {
     return {
       ...revision,
       contentUrl: revision.previewUrl,
-      alt: altValueRead(asset) || `Preview of ${revision.originalFilename}`,
+      alt: altValueRead(asset) || `${ttc("Preview of", "Vorschau von")} ${revision.originalFilename}`,
     }
   })
 
@@ -339,12 +379,21 @@ export const uiAssetDetailPageStateCreate = () => {
     }
     const changes = outputChanges()
     if (changes?.isDestructive && !confirmOutputs.get()) {
-      actionError.set("Confirm the deletion of the published outputs before saving the output set")
+      actionError.set(
+        ttc(
+          "Confirm the deletion of the published outputs before saving the output set",
+          "Bestätige die Löschung der veröffentlichten Ausgaben, bevor du den Ausgabensatz speicherst",
+        ),
+      )
       return
     }
     const applied = await run("Output set", async () => {
       const client = clientRead()
-      if (!client) return resultErrorCreate("uiAssetDetailOutputsSave", "The API client is unavailable")
+      if (!client)
+        return resultErrorCreate(
+          "uiAssetDetailOutputsSave",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.assetOutputsSet(projectId(), assetId(), { outputs: inputs.data })
     })
     if (!applied) return
@@ -361,7 +410,11 @@ export const uiAssetDetailPageStateCreate = () => {
     }
     const applied = await run("Move", async () => {
       const client = clientRead()
-      if (!client) return resultErrorCreate("uiAssetDetailMove", "The API client is unavailable")
+      if (!client)
+        return resultErrorCreate(
+          "uiAssetDetailMove",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.assetMove(projectId(), assetId(), { folders: folders.data, filename: moveFilename.get().trim() })
     })
     if (!applied) return
@@ -371,17 +424,26 @@ export const uiAssetDetailPageStateCreate = () => {
 
   const deleteAsset = async () => {
     if (!confirmDeletion.get()) {
-      actionError.set("Confirm the permanent deletion before requesting it")
+      actionError.set(
+        ttc(
+          "Confirm the permanent deletion before requesting it",
+          "Bestätige die dauerhafte Löschung, bevor du sie anforderst",
+        ),
+      )
       return
     }
     const applied = await run(
       "Deletion",
       async () => {
         const client = clientRead()
-        if (!client) return resultErrorCreate("uiAssetDetailDelete", "The API client is unavailable")
+        if (!client)
+          return resultErrorCreate(
+            "uiAssetDetailDelete",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
         return client.assetDeleteRequest(projectId(), assetId())
       },
-      "Deletion requested",
+      ttc("Deletion requested", "Löschung angefordert"),
     )
     if (!applied) return
     confirmDeletion.set(false)
@@ -395,6 +457,8 @@ export const uiAssetDetailPageStateCreate = () => {
   return {
     projectId,
     assetId,
+    mode,
+    paths,
     query,
     activity,
     altDraft: altDraftSignal,

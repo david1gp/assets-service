@@ -5,6 +5,7 @@ import { uiDeletionProgressRead } from "../src/ui/deletion/uiDeletionProgressRea
 import { uiDeletionStatusDetailRead } from "../src/ui/deletion/uiDeletionStatusDetailRead.js"
 import { uiDeletionStatusLabelRead } from "../src/ui/deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../src/ui/deletion/uiDeletionStatusToneRead.js"
+import { languageSignal } from "../src/ui/localization/languageSignal.js"
 
 const stateCreate = (overrides: Partial<DeletionState> = {}): DeletionState => ({
   id: "deletion-asset-hero",
@@ -99,4 +100,17 @@ describe("uiDeletionStatusDetailRead", () => {
       uiDeletionStatusDetailRead(stateCreate({ status: "succeeded", completedAt: "2026-08-17T10:30:00.000Z" })),
     ).toBe("completed 2026-08-17 10:30 UTC")
   })
+})
+
+test("reacts to German copy for deletion status and progress", () => {
+  languageSignal.set("de")
+  try {
+    expect(uiDeletionStatusLabelRead("requested")).toBe("Löschung angefordert")
+    expect(uiDeletionStatusDetailRead(stateCreate())).toBe("angefordert 2026-08-17 09:00 UTC")
+    expect(uiDeletionProgressRead(stateCreate({ pendingRemoteObjects: ["one"] })).label).toContain(
+      "Schritte abgeschlossen",
+    )
+  } finally {
+    languageSignal.set("en")
+  }
 })

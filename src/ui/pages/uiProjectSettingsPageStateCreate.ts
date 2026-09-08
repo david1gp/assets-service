@@ -15,6 +15,7 @@ import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
 import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
+import { ttc } from "../localization/ttc.js"
 
 export type UiEnvironmentDraft = {
   name: EnvironmentName
@@ -130,7 +131,11 @@ export const uiProjectSettingsPageStateCreate = () => {
   const query = uiQueryCreate<ProjectSettings>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiProjectSettingsPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiProjectSettingsPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.projectSettingsRead(projectId())
     },
     {
@@ -170,12 +175,12 @@ export const uiProjectSettingsPageStateCreate = () => {
   const save = async () => {
     const update = updateRead()
     if (!update.success) {
-      formError.set(v.summarize(update.issues))
+      formError.set(ttc("Please check the project settings.", "Bitte überprüfe die Projekteinstellungen."))
       return
     }
     const client = uiApiClientRead()
     if (!client.success) {
-      formError.set(client.errorMessage)
+      formError.set(ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"))
       return
     }
     formError.set(null)
@@ -184,12 +189,16 @@ export const uiProjectSettingsPageStateCreate = () => {
     saving.set(false)
     if (!written.success) {
       formError.set(written.errorMessage)
-      uiToastAdd({ tone: "negative", title: "Settings not saved", description: written.errorMessage })
+      uiToastAdd({
+        tone: "negative",
+        title: ttc("Settings not saved", "Einstellungen nicht gespeichert"),
+        description: written.errorMessage,
+      })
       return
     }
     draftsLoad(written.data)
     await draft.clear()
-    uiToastAdd({ tone: "positive", title: "Settings saved" })
+    uiToastAdd({ tone: "positive", title: ttc("Settings saved", "Einstellungen gespeichert") })
     query.reload()
   }
 

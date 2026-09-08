@@ -1,4 +1,4 @@
-import { useParams, useSearchParams } from "@solidjs/router"
+import { useLocation, useParams, useSearchParams } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
 import type { SignalObject } from "#ui/utils/createSignalObject.js"
@@ -7,8 +7,12 @@ import { assetListQuerySchema } from "../../api-client/assetListQuerySchema.js"
 import { type AssetListResponse, assetListResponseSchema } from "../../api-client/assetListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiPageSummaryTextRead } from "../common/uiPageSummaryTextRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
@@ -32,9 +36,11 @@ const uiAssetFolderAssignmentPreferenceKey = "assets-service:ui:asset-list:show-
 /** Holds asset inventory filters, search, and pagination bound to the URL. */
 export const uiAssetListPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const projectId = createMemo(() => params.projectId)
+  const paths = createMemo(() => uiPaths[uiProjectRouteModeRead(location.pathname) ?? "admin"])
   const classSchema = assetListQuerySchema.entries.class
   const folderSchema = assetListQuerySchema.entries.folder
   const searchSchema = assetListQuerySchema.entries.search
@@ -59,7 +65,7 @@ export const uiAssetListPageStateCreate = () => {
     },
   }
 
-  const showPreviewsState = createSignalObject(false)
+  const showPreviewsState = createSignalObject(true)
   const previewPreferencePersistence = uiAssetPreviewPreferencePersistenceCreate()
   const hydratedPreviewPreference = previewPreferencePersistence.hydrate()
   if (hydratedPreviewPreference.success && hydratedPreviewPreference.data !== undefined)
@@ -138,11 +144,11 @@ export const uiAssetListPageStateCreate = () => {
 
   // Hiding folders also removes the folder filter control, so the active folder
   // filter is dropped with it; an unreachable filter would silently hide assets.
-  const showFolders = uiAssetDisplayOptionCreate(uiAssetFolderPreferenceKey, true, (enabled) => {
+  const showFolders = uiAssetDisplayOptionCreate(uiAssetFolderPreferenceKey, false, (enabled) => {
     if (!enabled) folderClear()
   })
   if (!showFolders.get() && folder() !== undefined) folderClear()
-  const showFolderAssignment = uiAssetDisplayOptionCreate(uiAssetFolderAssignmentPreferenceKey, true)
+  const showFolderAssignment = uiAssetDisplayOptionCreate(uiAssetFolderAssignmentPreferenceKey, false)
   const folderPaths = uiAssetFolderPathsStateCreate({ projectId, isEnabled: showFolders.get })
   const folderOptions = createMemo(() => uiAssetFolderFilterOptionsRead(folderPaths.paths(), folderDraftState.get()))
 
@@ -167,7 +173,11 @@ export const uiAssetListPageStateCreate = () => {
     async () => {
       if (tab() !== "list") return { success: true, data: null }
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAssetListPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAssetListPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.assetListRead(projectId(), {
         limit: 100,
         include: "history,metadata",
@@ -203,6 +213,7 @@ export const uiAssetListPageStateCreate = () => {
     folderOptions,
     structure,
     query,
+    paths,
     searchDraft,
     folderDraft,
     classDraft,
@@ -212,6 +223,12 @@ export const uiAssetListPageStateCreate = () => {
     search: () => search(),
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => cursor() === undefined,
+    pageSummaryText: () =>
+      uiPageSummaryTextRead({
+        shownCount: query.data()?.assets.length ?? 0,
+        page: query.data()?.page,
+        cursor: cursor(),
+      }),
     applyFilters: () => filtersUrlReplace(),
     clearFilters: () => {
       searchDraftState.set("")

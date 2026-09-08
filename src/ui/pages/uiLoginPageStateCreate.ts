@@ -28,6 +28,7 @@ export const uiLoginPageStateCreate = () => {
     isPending: pending.get,
     errorMessage: () => errorMessage.get() ?? session().errorMessage,
     login,
+    loginClick: () => void login(),
     retrySession: () => void uiSessionRefresh(),
   }
 }

@@ -1,6 +1,7 @@
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import { uiIdleCallbackSchedule } from "../common/uiIdleCallbackSchedule.js"
+import { ttc } from "../localization/ttc.js"
 
 const defaultDebounceMilliseconds = 150
 
@@ -17,13 +18,20 @@ const localStorageWriteRun = (key: string, serialized: string | undefined, stora
   const op = "uiLocalStorageWrite"
   try {
     const target = storage ?? (typeof globalThis.localStorage === "undefined" ? undefined : globalThis.localStorage)
-    if (target === undefined) return resultErrorCreate(op, "localStorage is unavailable")
+    if (target === undefined)
+      return resultErrorCreate(op, ttc("localStorage is unavailable", "localStorage ist nicht verfügbar"))
     if (serialized === undefined) target.removeItem(key)
     else target.setItem(key, serialized)
     return { success: true, data: true }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "The storage operation failed"
-    return resultErrorCreate(op, `Could not write localStorage: ${message}`)
+    const message =
+      error instanceof Error
+        ? error.message
+        : ttc("The storage operation failed", "Der Speichervorgang ist fehlgeschlagen")
+    return resultErrorCreate(
+      op,
+      `${ttc("Could not write localStorage", "localStorage konnte nicht geschrieben werden")}: ${message}`,
+    )
   }
 }
 
@@ -39,11 +47,24 @@ export const uiLocalStorageWrite = (
     try {
       serialized = JSON.stringify(value)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The value could not be serialized"
-      return Promise.resolve(resultErrorCreate(op, `Could not serialize localStorage value: ${message}`))
+      const message =
+        error instanceof Error
+          ? error.message
+          : ttc("The value could not be serialized", "Der Wert konnte nicht serialisiert werden")
+      return Promise.resolve(
+        resultErrorCreate(
+          op,
+          `${ttc("Could not serialize localStorage value", "Der localStorage-Wert konnte nicht serialisiert werden")}: ${message}`,
+        ),
+      )
     }
     if (serialized === undefined)
-      return Promise.resolve(resultErrorCreate(op, "Could not serialize localStorage value"))
+      return Promise.resolve(
+        resultErrorCreate(
+          op,
+          ttc("Could not serialize localStorage value", "Der localStorage-Wert konnte nicht serialisiert werden"),
+        ),
+      )
   }
 
   return new Promise((resolve) => {
@@ -51,7 +72,11 @@ export const uiLocalStorageWrite = (
     const entry = existing ?? {
       timer: undefined,
       cancelIdle: undefined,
-      run: () => resultErrorCreate(op, "The localStorage write was not scheduled"),
+      run: () =>
+        resultErrorCreate(
+          op,
+          ttc("The localStorage write was not scheduled", "Das Schreiben in localStorage wurde nicht eingeplant"),
+        ),
       resolvers: [],
     }
     if (existing?.timer !== undefined) globalThis.clearTimeout(existing.timer)

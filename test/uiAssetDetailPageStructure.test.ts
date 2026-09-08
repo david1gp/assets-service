@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises"
 
 const pageSource = await readFile("src/ui/pages/UiAssetDetailPage.tsx", "utf8")
 const uploadSource = await readFile("src/ui/pages/UiAssetDetailReplacementUpload.tsx", "utf8")
+const dropAreaSource = await readFile("src/ui/upload/UiUploadDropArea.tsx", "utf8")
+const progressBarSource = await readFile("src/ui/upload/UiUploadProgressBar.tsx", "utf8")
 
 describe("asset detail page structure", () => {
   test("renders the replacement upload wired to the replacement state", () => {
@@ -10,7 +12,7 @@ describe("asset detail page structure", () => {
   })
 
   test("collapses Metadata JSON in a Details disclosure without open", () => {
-    expect(pageSource).toContain('<Details title="Metadata JSON"')
+    expect(pageSource).toContain('<Details title={ttc("Metadata JSON", "Metadaten-JSON")}')
     expect(pageSource).not.toMatch(/<Details[^>]*\sopen/)
   })
 
@@ -25,16 +27,19 @@ describe("asset detail page structure", () => {
 
 describe("replacement upload area structure", () => {
   test("supports click selection and native drop on the same area", () => {
-    expect(uploadSource).toContain('type="file"')
-    expect(uploadSource).toContain("onDrop={dropArea.drop}")
-    expect(uploadSource).toContain("onDragOver={dropArea.dragOver}")
-    expect(uploadSource).toContain('for="replacement-file"')
+    expect(dropAreaSource).toContain('type="file"')
+    expect(dropAreaSource).toContain("onDrop={dropArea.drop}")
+    expect(dropAreaSource).toContain("onDragOver={dropArea.dragOver}")
+    expect(dropAreaSource).toContain("for={p.inputId}")
+    expect(uploadSource).toContain('inputId="replacement-file"')
   })
 
   test("exposes accessible validation, progress, and status regions", () => {
-    expect(uploadSource).toContain('role="progressbar"')
-    expect(uploadSource).toContain('aria-labelledby="replacement-progress-label"')
-    expect(uploadSource).toContain("aria-invalid={props.upload.fileError() !== null}")
+    expect(progressBarSource).toContain('role="progressbar"')
+    expect(progressBarSource).toContain("aria-labelledby={p.labelId}")
+    expect(uploadSource).toContain('labelId="replacement-progress-label"')
+    expect(dropAreaSource).toContain("aria-invalid={p.invalid === true}")
+    expect(uploadSource).toContain("invalid={props.upload.fileError() !== null}")
     expect(uploadSource).toContain('role="alert"')
   })
 

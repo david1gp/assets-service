@@ -3,17 +3,19 @@ import { mdiFileOutline } from "@adaptive-ds/mdi/mdiFileOutline.js"
 import { A } from "@solidjs/router"
 import { Show } from "solid-js"
 import { Icon } from "#ui/static/icon/Icon.jsx"
-import { Img } from "#ui/static/img/Img.jsx"
 import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { UiAssetPreviewImage } from "../common/UiAssetPreviewImage.jsx"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { ttc } from "../localization/ttc.js"
 import { UiOutputTargetBadges } from "../output/UiOutputTargetBadges.jsx"
 import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiAssetPreviewSourceRead } from "../pages/uiAssetPreviewSourceRead.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { UiStructureAssetFolderSelect } from "./UiStructureAssetFolderSelect.jsx"
 import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 
@@ -65,20 +67,14 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
           }
         >
           {(source) => (
-            <Img
-              class="size-full object-contain"
-              src={source().url}
-              alt={source().alt}
-              width={source().kind === "optimized" ? source().width : undefined}
-              height={source().kind === "optimized" ? source().height : undefined}
-            />
+            <UiAssetPreviewImage source={source} class="size-full object-contain" />
           )}
         </Show>
 
         <Show when={p.showFolders()}>
           <span
             class="absolute top-2 left-2 flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md bg-white/85 text-slate-500 shadow-xs backdrop-blur-xs transition-colors hover:bg-white hover:text-slate-800 active:cursor-grabbing dark:bg-slate-800/85 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-            title="Drag to move folder"
+            title={ttc("Drag to move folder", "Ziehen, um den Ordner zu ändern")}
             aria-hidden="true"
           >
             <Icon path={mdiDragVertical} class="size-5" />
@@ -106,7 +102,7 @@ export function UiStructureAssetChip(p: UiStructureAssetChipProps) {
           </Show>
           <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
             <A
-              href={uiPaths.asset(p.projectId, p.asset.id)}
+              href={uiPaths[uiProjectRouteModeRead(window.location.pathname) ?? "admin"].asset(p.projectId, p.asset.id)}
               title={label()}
               // The native link drag would start instead of the chip drag.
               draggable={false}

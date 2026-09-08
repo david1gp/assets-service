@@ -107,16 +107,17 @@ test("keeps the structure presentation and list request at the intended boundari
   const pageState = await readFile("src/ui/pages/uiAssetListPageStateCreate.ts", "utf8")
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 
-  expect(view).toContain('<section aria-label="Unassigned"')
+  expect(view).toContain('<section aria-label={ttc("Unassigned", "Nicht zugewiesen")}')
   expect(section).toContain("<UiStructureFolder")
   expect(section).toContain("grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3")
   expect(folder).toContain("<CardWrapper")
   expect(folder).toContain("rounded-lg border border-slate-200")
   expect(dropArea).toContain("Drop assets here")
-  expect(dropArea).toContain("aria-label={`Assets in ${p.label}`}")
+  expect(dropArea).toContain('aria-label={`${ttc("Assets in", "Assets in")} ${p.label}`}')
   expect(view).toContain("<UiPager")
-  expect(view).toContain("Showing")
-  expect(view).toContain("Page 2+")
+  // The summary text itself is derived in the state factory, the view only renders it next to the pager.
+  expect(view).toContain("p.state.pageSummaryText()")
+  expect(view.indexOf("<UiPager")).toBeGreaterThan(view.indexOf('aria-label={ttc("Unassigned", "Nicht zugewiesen")}'))
   // The filter form is rendered once outside the tab branches so it applies to both views.
   expect(page).toContain("The filters are shared by both views")
   expect(page.indexOf("<form")).toBeLessThan(page.indexOf('<Show when={state.tabSignal.get() === "structure"}>'))
@@ -128,7 +129,7 @@ test("keeps the structure presentation and list request at the intended boundari
 test("associates each asset view tab with its hidden tabpanel", async () => {
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 
-  expect(page).toContain('role="tablist" aria-label="Asset views"')
+  expect(page).toContain('role="tablist" aria-label={ttc("Asset views", "Asset-Ansichten")}')
   expect(page).toContain("id={`asset-view-tab-${value}`}")
   expect(page).toContain("aria-controls={`asset-view-panel-${value}`}")
   expect(page).toContain('id="asset-view-panel-structure"')

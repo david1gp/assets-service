@@ -4,9 +4,11 @@ import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import type { AssetListQuery } from "../../api-client/assetListQuerySchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { uiPageSummaryTextRead } from "../common/uiPageSummaryTextRead.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
+import { ttc } from "../localization/ttc.js"
 import { type UiAssetStructure, uiAssetStructureSchema } from "./uiAssetStructureSchema.js"
 import { uiStructureFolderOptionsRead, uiStructureUnassignedOptionValue } from "./uiStructureFolderOptionsRead.js"
 import { uiStructureTreeCreate } from "./uiStructureTreeCreate.js"
@@ -56,7 +58,11 @@ export const uiAssetStructureStateCreate = (input: {
       const sequence = structureQuerySequence
       if (!input.isActive()) return { success: true, data: null }
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAssetStructureRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAssetStructureRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       const structure = await client.data.structureRead(input.projectId())
       if (!structure.success) return structure
       const assets = await client.data.assetListRead(input.projectId(), {
@@ -153,7 +159,10 @@ export const uiAssetStructureStateCreate = (input: {
       const client = clientRead()
       const result = client
         ? await client.assetStructureFolderMembershipSet(input.projectId(), assetId, { structureFolderId: folderId })
-        : resultErrorCreate("uiAssetStructureAssetMove", "The API client is unavailable")
+        : resultErrorCreate(
+            "uiAssetStructureAssetMove",
+            ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+          )
       const isLatest = moveSequenceByAssetId.get(assetId) === sequence
       if (!isLatest) return
       moveSequenceByAssetId.delete(assetId)
@@ -161,10 +170,14 @@ export const uiAssetStructureStateCreate = (input: {
       if (!result.success) {
         overrideRestore(assetId, previous)
         actionError.set(result.errorMessage)
-        uiToastAdd({ tone: "negative", title: "Move failed", description: result.errorMessage })
+        uiToastAdd({
+          tone: "negative",
+          title: ttc("Move failed", "Verschieben fehlgeschlagen"),
+          description: result.errorMessage,
+        })
         return
       }
-      uiToastAdd({ tone: "positive", title: "Asset moved" })
+      uiToastAdd({ tone: "positive", title: ttc("Asset moved", "Asset verschoben") })
       // Reloading while other moves are in flight would render their pre-move
       // server state; the last finishing move reloads for all of them.
       if (pendingAssetIds.get().size === 0) query.reload()
@@ -183,14 +196,21 @@ export const uiAssetStructureStateCreate = (input: {
           name: folderNameDraft.get().trim(),
           parentId: parent === uiStructureUnassignedOptionValue ? null : parent,
         })
-      : resultErrorCreate("uiAssetStructureFolderCreate", "The API client is unavailable")
+      : resultErrorCreate(
+          "uiAssetStructureFolderCreate",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
     isFolderPending.set(false)
     if (!result.success) {
       actionError.set(result.errorMessage)
-      uiToastAdd({ tone: "negative", title: "Folder creation failed", description: result.errorMessage })
+      uiToastAdd({
+        tone: "negative",
+        title: ttc("Folder creation failed", "Ordnererstellung fehlgeschlagen"),
+        description: result.errorMessage,
+      })
       return
     }
-    uiToastAdd({ tone: "positive", title: "Folder created" })
+    uiToastAdd({ tone: "positive", title: ttc("Folder created", "Ordner erstellt") })
     folderNameDraft.set("")
     folderParentDraft.set(uiStructureUnassignedOptionValue)
     input.folderDialogOpenSet(false)
@@ -221,6 +241,12 @@ export const uiAssetStructureStateCreate = (input: {
     folderCreate: () => void folderCreate(),
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => input.cursor() === undefined,
+    pageSummaryText: () =>
+      uiPageSummaryTextRead({
+        shownCount: query.data()?.assets.length ?? 0,
+        page: query.data()?.page,
+        cursor: input.cursor(),
+      }),
     goToNextPage: () => input.cursorSet(query.data()?.page.nextCursor ?? null),
     goToFirstPage: () => input.cursorSet(null),
   }

@@ -9,6 +9,7 @@ import {
 import { auditActionCatalog, type AuditAction } from "../../audit/auditActionCatalog.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
@@ -71,7 +72,11 @@ export const uiAuditPageStateCreate = () => {
   const query = uiQueryCreate<AuditEventListResponse>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAuditPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAuditPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.auditEventListRead(projectId(), {
         limit: 25,
         ...(action() === undefined ? {} : { action: action() }),

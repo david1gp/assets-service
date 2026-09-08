@@ -4,6 +4,7 @@ import { mdiRefresh } from "@adaptive-ds/mdi/mdiRefresh.js"
 import type { JSXElement } from "solid-js"
 import { Match, Switch } from "solid-js"
 import type { UiQuery } from "../query/uiQueryCreate.js"
+import { ttc } from "../localization/ttc.js"
 import { UiNotice } from "./UiNotice.jsx"
 
 export type UiQueryViewProps<T> = {
@@ -20,9 +21,12 @@ export function UiQueryView<T>(p: UiQueryViewProps<T>) {
     <Switch>
       <Match when={p.query.status() === "error"}>
         <UiNotice tone="negative" role="alert">
-          <p>{p.query.errorMessage()}</p>
+          <p class="font-semibold">
+            {ttc("This content could not be loaded.", "Dieser Inhalt konnte nicht geladen werden.")}
+          </p>
+          <p class="mt-1 text-sm">{p.query.errorMessage()}</p>
           <ButtonIcon class="mt-3" icon={mdiRefresh} variant="outline" onClick={() => p.query.reload()}>
-            Try again
+            {ttc("Try again", "Erneut versuchen")}
           </ButtonIcon>
         </UiNotice>
       </Match>
@@ -30,7 +34,7 @@ export function UiQueryView<T>(p: UiQueryViewProps<T>) {
         <Switch>
           <Match when={p.isEmpty !== undefined && p.isEmpty(p.query.data() as T)}>
             <p class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-muted-foreground">
-              {p.emptyMessage ?? "Nothing to show yet."}
+              {p.emptyMessage ?? ttc("Nothing to show yet.", "Noch nichts anzuzeigen.")}
             </p>
           </Match>
           <Match when={true}>{p.children(p.query.data() as T)}</Match>

@@ -79,7 +79,7 @@ test("replaces the free-text folder filter with a flat folder select", async () 
 
   expect(page).toContain('<SelectSingleNative\n                id="asset-folder"')
   expect(page).toContain("getOptions={state.folderOptions}")
-  expect(page).toContain('valueText={(value) => (value === "" ? "All folders" : value)}')
+  expect(page).toContain('valueText={(value) => (value === "" ? ttc("All folders", "Alle Ordner") : value)}')
   expect(page).not.toContain('<InputS id="asset-folder"')
 })
 
@@ -119,7 +119,7 @@ test("omits list folder columns and prefixes when folders are hidden while retai
   expect(page).toContain("if (showFolders()) {")
   expect(page).toContain('id: "structureFolder"')
   expect(page.indexOf('id: "structureFolder"')).toBeGreaterThan(page.indexOf("if (showFolders()) {"))
-  expect(page).toContain("href={uiPaths.asset(projectId(), asset.id)}")
+  expect(page).toContain("href={paths().asset(projectId(), asset.id)}")
 })
 
 test("drops the active folder filter when folders get hidden", async () => {

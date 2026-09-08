@@ -6,6 +6,7 @@ import { classesDialogContentMerge, classesDialogOverlayMerge } from "#ui/intera
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import type { JSXElement } from "solid-js"
 import { Show } from "solid-js"
+import { ttc } from "../localization/ttc.js"
 
 export type UiDialogProps = {
   title: string
@@ -37,7 +38,10 @@ export function UiDialog(p: UiDialogProps) {
                 )}
               </Show>
             </div>
-            <Dialog.Close class={buttonCvaIconOnly(buttonVariant.outline, false, false)} title="Close dialog">
+            <Dialog.Close
+              class={buttonCvaIconOnly(buttonVariant.outline, false, false)}
+              title={ttc("Close dialog", "Dialog schließen")}
+            >
               <Icon path={mdiClose} class={buttonIconCva(buttonVariant.outline, "")} />
             </Dialog.Close>
           </div>

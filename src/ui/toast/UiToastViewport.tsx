@@ -5,6 +5,7 @@ import { For, Show } from "solid-js"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import { classArr } from "#ui/utils/classArr.js"
+import { ttc } from "../localization/ttc.js"
 import { uiToastDismiss } from "./uiToastDismiss.js"
 import { uiToastStore } from "./uiToastStore.js"
 import { uiToastToneClassesRead } from "./uiToastToneClassesRead.js"
@@ -24,7 +25,7 @@ export function UiToastViewport() {
   return (
     <div
       role="log"
-      aria-label="Notifications"
+      aria-label={ttc("Notifications", "Benachrichtigungen")}
       class="pointer-events-none fixed inset-x-0 bottom-0 z-100 p-4 print:hidden sm:inset-x-auto sm:right-0"
     >
       <ul class="flex max-h-screen flex-col gap-4">
@@ -50,7 +51,7 @@ export function UiToastViewport() {
                 variant="ghost"
                 size="sm"
                 class="text-current"
-                title={`Dismiss ${toast.title}`}
+                title={`${ttc("Dismiss", "Schließen")} ${toast.title}`}
                 icon={mdiClose}
                 onClick={() => uiToastDismiss(toast.id)}
               />

@@ -6,6 +6,7 @@ import type { AssetClass } from "../../schemas/assetClassSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import type { UiOutputDraft } from "./uiOutputDraftSchema.js"
+import { ttc } from "../localization/ttc.js"
 
 const numberRead = (value: string): number | undefined => {
   const trimmed = value.trim()
@@ -39,6 +40,11 @@ export const uiOutputDraftsInputsRead = (
   const op = "uiOutputDraftsInputsRead"
   const outputs = drafts.map((draft) => draftInputRead(draft, assetClass))
   const parsed = v.safeParse(outputSetRequestSchema, { outputs })
-  if (!parsed.success) return resultErrorCreate(op, v.summarize(parsed.issues), outputs)
+  if (!parsed.success)
+    return resultErrorCreate(
+      op,
+      ttc(v.summarize(parsed.issues), "Die Ausgaben sind ungültig. Prüfe Schlüssel, Maße und Qualitätswerte."),
+      outputs,
+    )
   return { success: true, data: parsed.output.outputs }
 }

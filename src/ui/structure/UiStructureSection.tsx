@@ -2,6 +2,7 @@ import { mdiFolderOutline } from "@adaptive-ds/mdi/mdiFolderOutline.js"
 import { For } from "solid-js"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
+import { ttc } from "../localization/ttc.js"
 import { UiStructureDropArea } from "./UiStructureDropArea.jsx"
 import { UiStructureFolder } from "./UiStructureFolder.jsx"
 import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
@@ -28,7 +29,8 @@ export function UiStructureSection(p: UiStructureSectionProps) {
           <span>{p.node.folder.name}</span>
         </h2>
         <Badge variant="subtle" class="font-mono text-xs">
-          {p.node.assets.length} {p.node.assets.length === 1 ? "direct asset" : "direct assets"}
+          {p.node.assets.length}{" "}
+          {p.node.assets.length === 1 ? ttc("direct asset", "direktes Asset") : ttc("direct assets", "direkte Assets")}
         </Badge>
       </div>
 

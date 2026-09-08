@@ -42,6 +42,24 @@ describe("uiLocalStorageRead", () => {
     expect(uiLocalStorageRead("invalid-schema", browserStateSchema, storage).success).toBe(false)
     expect(uiLocalStorageRead("invalid-json", browserStateSchema, storage).success).toBe(false)
   })
+
+  test("localizes storage operation failures without translating the runtime detail", () => {
+    const storage = {
+      getItem: () => {
+        throw new Error("blocked")
+      },
+    } as unknown as Storage
+    languageSignal.set("de")
+    try {
+      expect(uiLocalStorageRead("language", browserStateSchema, storage)).toEqual({
+        success: false,
+        op: "uiLocalStorageRead",
+        errorMessage: "localStorage konnte nicht gelesen werden: blocked",
+      })
+    } finally {
+      languageSignal.set("en")
+    }
+  })
 })
 
 describe("uiLocalStorageWrite", () => {

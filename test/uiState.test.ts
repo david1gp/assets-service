@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 
 import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import { uiAssetPathFormat } from "../src/ui/common/uiAssetPathFormat.js"
+import { uiAssetPreviewImageStateCreate } from "../src/ui/common/uiAssetPreviewImageStateCreate.js"
 import { uiByteSizeFormat } from "../src/ui/common/uiByteSizeFormat.js"
+import { languageSignal } from "../src/ui/localization/languageSignal.js"
 import { uiAssetClassOptions } from "../src/ui/pages/uiAssetClassOptions.js"
 import { uiAssetPreviewSourceRead } from "../src/ui/pages/uiAssetPreviewSourceRead.js"
 import { uiSourceRevisionLatestImageRead } from "../src/ui/pages/uiSourceRevisionLatestImageRead.js"
@@ -11,6 +13,8 @@ import { uiSearchParamNumberRead } from "../src/ui/search/uiSearchParamNumberRea
 import { uiSearchParamStringRead } from "../src/ui/search/uiSearchParamStringRead.js"
 import { uiUploadFoldersRead } from "../src/ui/upload/uiUploadFoldersRead.js"
 import { uiUploadStageProgressRead } from "../src/ui/upload/uiUploadStageProgressRead.js"
+import { uiUploadStatusLabelRead } from "../src/ui/upload/uiUploadStatusLabelRead.js"
+import { uiWorkflowStatusLabelRead } from "../src/ui/workflow/uiWorkflowStatusLabelRead.js"
 
 describe("uiUploadFoldersRead", () => {
   test("accepts zero to three folders", () => {
@@ -42,8 +46,20 @@ describe("uiUploadStageProgressRead", () => {
   })
 
   test("labels a failed upload", () => {
+    languageSignal.set("en")
     expect(uiUploadStageProgressRead("failed").label).toBe("Upload failed")
   })
+})
+
+test("localizes upload and workflow status labels while preserving unknown values", () => {
+  languageSignal.set("de")
+  try {
+    expect(uiUploadStatusLabelRead("accepted")).toBe("angenommen")
+    expect(uiWorkflowStatusLabelRead("dead")).toBe("endgültig fehlgeschlagen")
+    expect(uiWorkflowStatusLabelRead("backend-status")).toBe("backend-status")
+  } finally {
+    languageSignal.set("en")
+  }
 })
 
 describe("uiSearchParamStringRead", () => {
@@ -171,6 +187,48 @@ describe("uiAssetPreviewSourceRead", () => {
     expect(uiAssetPreviewSourceRead(asset, options)).toMatchObject({ kind: "original", url: "/sources/source-2" })
   })
 
+  test("offers the latest original image as fallback for an optimized output", () => {
+    const asset = assetCreate({
+      outputHistory: [
+        {
+          definition: { id: "small", kind: "image", key: "800x450", width: 800, height: 450 },
+          versions: [{ id: "small-version", current: true, mediaType: "image/webp", version: 1 }],
+        },
+      ],
+      sourceHistory: [
+        { id: "source-2", revision: 2, mediaType: "image/jpeg" },
+        { id: "source-1", revision: 1, mediaType: "image/jpeg" },
+      ],
+    })
+
+    expect(uiAssetPreviewSourceRead(asset, options)).toMatchObject({
+      kind: "optimized",
+      url: "/outputs/small-version",
+      fallbackUrl: "/sources/source-2",
+    })
+  })
+
+  test("has no fallback when the original is missing or is already the preview", () => {
+    const withoutOriginal = assetCreate({
+      outputHistory: [
+        {
+          definition: { id: "small", kind: "image", key: "800x450", width: 800, height: 450 },
+          versions: [{ id: "small-version", current: true, mediaType: "image/webp", version: 1 }],
+        },
+      ],
+      sourceHistory: [{ id: "source-1", revision: 1, mediaType: "application/pdf" }],
+    })
+    const originalOnly = assetCreate({
+      sourceHistory: [{ id: "source-1", revision: 1, mediaType: "image/jpeg" }],
+    })
+
+    expect(uiAssetPreviewSourceRead(withoutOriginal, options)).toMatchObject({
+      kind: "optimized",
+      fallbackUrl: null,
+    })
+    expect(uiAssetPreviewSourceRead(originalOnly, options)).toMatchObject({ kind: "original", fallbackUrl: null })
+  })
+
   test("returns no source for non-image assets or without an image original", () => {
     expect(uiAssetPreviewSourceRead(assetCreate({ class: "document" }), options)).toBeNull()
     expect(
@@ -179,5 +237,64 @@ describe("uiAssetPreviewSourceRead", () => {
         options,
       ),
     ).toBeNull()
+  })
+})
+
+describe("uiAssetPreviewImageStateCreate", () => {
+  const optimized = {
+    alt: "hero",
+    fallbackUrl: "/sources/source-2",
+    height: 450,
+    kind: "optimized" as const,
+    url: "/outputs/small-version",
+    width: 800,
+  }
+
+  test("shows the optimized output with its dimensions until it fails to load", () => {
+    const state = uiAssetPreviewImageStateCreate(() => optimized)
+
+    expect(state.src()).toBe("/outputs/small-version")
+    expect(state.width()).toBe(800)
+    expect(state.height()).toBe(450)
+  })
+
+  test("falls back to the latest original image and drops the output dimensions", () => {
+    const state = uiAssetPreviewImageStateCreate(() => optimized)
+
+    state.loadFailed()
+
+    expect(state.src()).toBe("/sources/source-2")
+    // The original has other dimensions, so the output ones would distort it.
+    expect(state.width()).toBeUndefined()
+    expect(state.height()).toBeUndefined()
+  })
+
+  test("keeps the fallback when it fails too instead of looping back to the output", () => {
+    const state = uiAssetPreviewImageStateCreate(() => optimized)
+
+    state.loadFailed()
+    state.loadFailed()
+
+    expect(state.src()).toBe("/sources/source-2")
+  })
+
+  test("does not fall back without an original image", () => {
+    const state = uiAssetPreviewImageStateCreate(() => ({ ...optimized, fallbackUrl: null }))
+
+    state.loadFailed()
+
+    expect(state.src()).toBe("/outputs/small-version")
+    expect(state.width()).toBe(800)
+  })
+
+  test("resets the fallback when the preview source changes", () => {
+    let source = optimized
+    const state = uiAssetPreviewImageStateCreate(() => source)
+
+    state.loadFailed()
+    source = { ...optimized, url: "/outputs/other-version" }
+
+    expect(state.src()).toBe("/outputs/other-version")
+    expect(state.width()).toBe(800)
   })
 })

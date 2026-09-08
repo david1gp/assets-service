@@ -52,11 +52,11 @@ describe("UiToastViewport DOM", () => {
     // name. `log` is the appending live region, so it carries both.
     const wrapper = source.slice(0, source.indexOf("<ul"))
     expect(wrapper).toContain('role="log"')
-    expect(wrapper).toContain('aria-label="Notifications"')
+    expect(wrapper).toContain('aria-label={ttc("Notifications", "Benachrichtigungen")}')
   })
 
   test("labels the dismiss control per toast", async () => {
     const source = await readFile("src/ui/toast/UiToastViewport.tsx", "utf8")
-    expect(source).toContain("title={`Dismiss ${toast.title}`}")
+    expect(source).toContain('title={`${ttc("Dismiss", "Schließen")} ${toast.title}`}')
   })
 })

@@ -12,6 +12,7 @@ import { UiDialog } from "../common/UiDialog.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
+import { ttc } from "../localization/ttc.js"
 import { UiStructureDropArea } from "./UiStructureDropArea.jsx"
 import { UiStructureSection } from "./UiStructureSection.jsx"
 import type { uiAssetStructureStateCreate } from "./uiAssetStructureStateCreate.js"
@@ -38,7 +39,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
   ]
   const parentOptionText = (value: string) =>
     value === uiStructureUnassignedOptionValue
-      ? "Top level"
+      ? ttc("Top level", "Oberste Ebene")
       : (p.state.folderOptions().find((option) => option.id === value)?.path ?? value)
 
   return (
@@ -47,14 +48,18 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/50">
           <div class="flex flex-wrap items-center gap-3">
             <ButtonIcon type="button" icon={mdiFolderPlus} onClick={p.state.folderDialogOpen}>
-              New folder
+              {ttc("New folder", "Neuer Ordner")}
             </ButtonIcon>
             <p class="text-xs text-slate-500 dark:text-slate-400">
-              Moving an asset here changes its structure folder only, never its canonical path.
+              {ttc(
+                "Moving an asset here changes its structure folder only, never its canonical path.",
+                "Das Verschieben eines Assets ändert nur seinen Strukturordner, niemals seinen kanonischen Pfad.",
+              )}
             </p>
           </div>
           <Badge variant="subtle" class="font-mono text-xs">
-            {p.state.folderOptions().length} {p.state.folderOptions().length === 1 ? "folder" : "folders"}
+            {p.state.folderOptions().length}{" "}
+            {p.state.folderOptions().length === 1 ? ttc("folder", "Ordner") : ttc("folders", "Ordner")}
           </Badge>
         </div>
       </Show>
@@ -67,27 +72,16 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
         )}
       </Show>
 
-      <UiQueryView query={p.state.query} loadingItem="the structure">
-        {(data) => (
+      <UiQueryView query={p.state.query} loadingItem={ttc("the structure", "die Struktur")}>
+        {() => (
           <div class="flex flex-col gap-4">
-            <div class="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400">
-              <span>
-                Showing{" "}
-                <strong class="font-semibold text-slate-700 dark:text-slate-200">{data?.assets.length ?? 0}</strong>{" "}
-                {data?.assets.length === 1 ? "asset" : "assets"}
-              </span>
-              <Show when={!p.state.isFirstPage()}>
-                <span class="font-mono">Page 2+</span>
-              </Show>
-            </div>
-
             <Show
               when={p.showFolders()}
               fallback={
-                <section aria-label="Assets" class="flex flex-col gap-3">
+                <section aria-label={ttc("Assets", "Assets")} class="flex flex-col gap-3">
                   <UiStructureDropArea
                     folderId={null}
-                    label="Assets"
+                    label={ttc("Assets", "Assets")}
                     assets={uiStructureTreeAssetsRead(p.state.tree())}
                     projectId={p.projectId}
                     showPreviews={p.showPreviews}
@@ -116,19 +110,20 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                   )}
                 </For>
 
-                <section aria-label="Unassigned" class="flex flex-col gap-3">
+                <section aria-label={ttc("Unassigned", "Nicht zugewiesen")} class="flex flex-col gap-3">
                   <div class="flex items-center justify-between gap-3">
                     <h2 class="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-slate-100">
                       <Icon path={mdiFolderOffOutline} class="size-5 text-slate-500 dark:text-slate-400" />
-                      <span>Unassigned</span>
+                      <span>{ttc("Unassigned", "Nicht zugewiesen")}</span>
                     </h2>
                     <Badge variant="subtle" class="font-mono text-xs">
-                      {p.state.tree().unassigned.length} {p.state.tree().unassigned.length === 1 ? "asset" : "assets"}
+                      {p.state.tree().unassigned.length}{" "}
+                      {p.state.tree().unassigned.length === 1 ? ttc("asset", "Asset") : ttc("assets", "Assets")}
                     </Badge>
                   </div>
                   <UiStructureDropArea
                     folderId={null}
-                    label="Unassigned"
+                    label={ttc("Unassigned", "Nicht zugewiesen")}
                     assets={p.state.tree().unassigned}
                     projectId={p.projectId}
                     showPreviews={p.showPreviews}
@@ -142,20 +137,27 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
               </div>
             </Show>
 
-            <UiPager
-              isFirstPage={p.state.isFirstPage()}
-              nextCursor={p.state.nextCursor()}
-              onFirstPage={p.state.goToFirstPage}
-              onNextPage={p.state.goToNextPage}
-            />
+            {/* Result summary sits below the board, next to the pager it describes. */}
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+              <UiPager
+                isFirstPage={p.state.isFirstPage()}
+                nextCursor={p.state.nextCursor()}
+                onFirstPage={p.state.goToFirstPage}
+                onNextPage={p.state.goToNextPage}
+              />
+              <span class="text-xs text-slate-500 dark:text-slate-400">{p.state.pageSummaryText()}</span>
+            </div>
           </div>
         )}
       </UiQueryView>
 
       <Show when={p.showFolders()}>
         <UiDialog
-          title="New structure folder"
-          description="Folders can be nested up to three levels deep."
+          title={ttc("New structure folder", "Neuer Strukturordner")}
+          description={ttc(
+            "Folders can be nested up to three levels deep.",
+            "Ordner können bis zu drei Ebenen tief verschachtelt werden.",
+          )}
           open={p.state.isFolderDialogOpen()}
           onClose={p.state.folderDialogClose}
         >
@@ -174,14 +176,14 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                 for="structure-folder-name"
                 class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
               >
-                Name
+                {ttc("Name", "Name")}
               </Label>
               <div class="mt-1">
                 <InputS
                   id="structure-folder-name"
                   maxLength={255}
                   valueSignal={p.state.folderNameDraft}
-                  placeholder="logos"
+                  placeholder={ttc("logos", "Logos")}
                 />
               </div>
             </div>
@@ -190,7 +192,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                 for="structure-folder-parent"
                 class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
               >
-                Parent folder
+                {ttc("Parent folder", "Übergeordneter Ordner")}
               </Label>
               <div class="mt-1">
                 <SelectSingleNative
@@ -203,7 +205,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
             </div>
             <div class="mt-2 flex justify-end gap-2">
               <ButtonIcon type="button" icon={mdiClose} variant="outline" onClick={p.state.folderDialogClose}>
-                Cancel
+                {ttc("Cancel", "Abbrechen")}
               </ButtonIcon>
               <ButtonIcon
                 type="submit"
@@ -211,7 +213,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                 isLoading={p.state.isFolderPending()}
                 disabled={p.state.isFolderPending()}
               >
-                Create folder
+                {ttc("Create folder", "Ordner erstellen")}
               </ButtonIcon>
             </div>
           </form>

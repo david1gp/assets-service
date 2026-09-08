@@ -1,6 +1,7 @@
 import type { SignalObject } from "#ui/utils/createSignalObject.js"
 import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 import { uiStructureUnassignedOptionValue } from "./uiStructureFolderOptionsRead.js"
+import { ttc } from "../localization/ttc.js"
 
 type UiStructureAssetFolderSelectStateInput = {
   assetId: () => string
@@ -15,7 +16,7 @@ export const uiStructureAssetFolderSelectStateCreate = (input: UiStructureAssetF
   const optionValues = () => [uiStructureUnassignedOptionValue, ...input.folderOptions().map((option) => option.id)]
   const optionText = (value: string) =>
     value === uiStructureUnassignedOptionValue
-      ? "Unassigned"
+      ? ttc("Unassigned", "Nicht zugewiesen")
       : (input.folderOptions().find((option) => option.id === value)?.path ?? value)
   const valueSignal: SignalObject<string> = {
     get: () => input.folderId() ?? uiStructureUnassignedOptionValue,

@@ -3,6 +3,7 @@ import { createMemo } from "solid-js"
 import { type BackupListResponse, backupListResponseSchema } from "../../api-client/backupListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
@@ -18,7 +19,11 @@ export const uiBackupsPageStateCreate = () => {
   const query = uiQueryCreate<BackupListResponse>(
     async () => {
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiBackupsPageRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiBackupsPageRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       return client.data.backupListRead(projectId(), {
         limit: 25,
         ...(cursor() === undefined ? {} : { cursor: cursor() }),

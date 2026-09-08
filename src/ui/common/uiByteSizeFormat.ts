@@ -1,8 +1,10 @@
+import { ttc } from "../localization/ttc.js"
+
 const units = ["B", "kB", "MB", "GB", "TB"] as const
 
 /** Formats a byte count as a short human readable size. */
 export const uiByteSizeFormat = (bytes: number): string => {
-  if (!Number.isFinite(bytes) || bytes < 0) return "unknown"
+  if (!Number.isFinite(bytes) || bytes < 0) return ttc("unknown", "unbekannt")
   let value = bytes
   let unitIndex = 0
   while (value >= 1000 && unitIndex < units.length - 1) {

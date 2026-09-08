@@ -1,4 +1,5 @@
 import { SelectSingleNative } from "#ui/input/select/SelectSingleNative.jsx"
+import { ttc } from "../localization/ttc.js"
 import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 import { uiStructureAssetFolderSelectStateCreate } from "./uiStructureAssetFolderSelectStateCreate.js"
 
@@ -26,7 +27,7 @@ export function UiStructureAssetFolderSelect(p: UiStructureAssetFolderSelectProp
   return (
     <>
       <label class="sr-only" for={p.selectId}>
-        Structure folder of {p.assetLabel}
+        {ttc("Structure folder of", "Strukturordner von")} {p.assetLabel}
       </label>
       <SelectSingleNative
         id={p.selectId}

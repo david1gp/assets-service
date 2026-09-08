@@ -4,6 +4,7 @@ import { For, Show } from "solid-js"
 import { Badge } from "#ui/static/badge/Badge.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
+import { ttc } from "../localization/ttc.js"
 import { UiStructureDropArea } from "./UiStructureDropArea.jsx"
 import type { UiStructureFolderOption } from "./uiStructureFolderOptionsRead.js"
 import type { UiStructureNode } from "./uiStructureNode.js"
@@ -32,7 +33,7 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
           <span class="truncate">{p.node.folder.name}</span>
         </h3>
         <Badge variant="subtle" class="shrink-0 font-mono text-xs">
-          {p.node.assets.length} {p.node.assets.length === 1 ? "asset" : "assets"}
+          {p.node.assets.length} {p.node.assets.length === 1 ? ttc("asset", "Asset") : ttc("assets", "Assets")}
         </Badge>
       </div>
 

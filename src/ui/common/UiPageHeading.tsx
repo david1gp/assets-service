@@ -1,6 +1,7 @@
 import { SetPageTitle } from "#ui/static/meta/SetPageTitle.jsx"
 import type { JSXElement } from "solid-js"
 import { Show } from "solid-js"
+import { ttc } from "../localization/ttc.js"
 
 export type UiPageHeadingProps = {
   title: string
@@ -12,7 +13,7 @@ export type UiPageHeadingProps = {
 export function UiPageHeading(p: UiPageHeadingProps) {
   return (
     <>
-      <SetPageTitle title={`${p.title} · Assets service`} />
+      <SetPageTitle title={`${p.title} · ${ttc("Assets service", "Asset-Service")}`} />
       <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 class="text-2xl font-semibold">{p.title}</h1>

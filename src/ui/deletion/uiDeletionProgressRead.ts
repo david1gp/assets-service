@@ -1,4 +1,5 @@
 import type { DeletionState } from "../../deletion/deletionStateSchema.js"
+import { ttc } from "../localization/ttc.js"
 
 /**
  * The worker records four fixed steps (`plan:remote-objects`, `database:catalog`,
@@ -13,7 +14,8 @@ const remoteStepCount = (state: DeletionState): number =>
 const fixedStepCount = (state: DeletionState): number =>
   Math.min(state.completedSteps.length - remoteStepCount(state), fixedStepTotal)
 
-const objectPhrase = (count: number): string => `${count} remote object${count === 1 ? "" : "s"}`
+const objectPhrase = (count: number): string =>
+  `${count} ${ttc(count === 1 ? "remote object" : "remote objects", count === 1 ? "Remote-Objekt" : "Remote-Objekte")}`
 
 export type UiDeletionProgress = {
   percent: number
@@ -34,8 +36,8 @@ export const uiDeletionProgressRead = (state: DeletionState): UiDeletionProgress
   const pendingObjects = state.pendingRemoteObjects.length
   const totalSteps = fixedStepTotal + removedObjects + pendingObjects
   const completedSteps = fixedStepCount(state) + removedObjects
-  const stepPhrase = `${completedSteps} of ${totalSteps} steps done`
-  const objectPart = `${removedObjects} of ${removedObjects + pendingObjects} remote objects removed`
+  const stepPhrase = `${completedSteps} ${ttc("of", "von")} ${totalSteps} ${ttc("steps done", "Schritte abgeschlossen")}`
+  const objectPart = `${removedObjects} ${ttc("of", "von")} ${removedObjects + pendingObjects} ${ttc("remote objects removed", "Remote-Objekte entfernt")}`
 
   if (state.status === "succeeded")
     return {
@@ -44,7 +46,7 @@ export const uiDeletionProgressRead = (state: DeletionState): UiDeletionProgress
       totalSteps,
       removedObjects,
       pendingObjects: 0,
-      label: `${totalSteps} of ${totalSteps} steps done. All objects, revisions, and catalog entries are removed.`,
+      label: `${totalSteps} ${ttc("of", "von")} ${totalSteps} ${ttc("steps done", "Schritte abgeschlossen")}. ${ttc("All objects, revisions, and catalog entries are removed.", "Alle Objekte, Revisionen und Katalogeinträge wurden entfernt.")}`,
     }
 
   if (state.status === "requested")
@@ -54,7 +56,7 @@ export const uiDeletionProgressRead = (state: DeletionState): UiDeletionProgress
       totalSteps,
       removedObjects: 0,
       pendingObjects,
-      label: `0 of ${totalSteps} steps done. Queued, so the asset and its objects are still in place until the workflow runs.`,
+      label: `0 ${ttc("of", "von")} ${totalSteps} ${ttc("steps done", "Schritte abgeschlossen")}. ${ttc("Queued, so the asset and its objects are still in place until the workflow runs.", "Eingereiht; das Asset und seine Objekte bleiben bestehen, bis der Workflow ausgeführt wird.")}`,
     }
 
   if (state.status === "failed")
@@ -64,10 +66,11 @@ export const uiDeletionProgressRead = (state: DeletionState): UiDeletionProgress
       totalSteps,
       removedObjects,
       pendingObjects,
-      label: `Deletion stopped after ${stepPhrase}, with ${objectPhrase(pendingObjects)} left. Retry it from the jobs page.`,
+      label: `${ttc("Deletion stopped after", "Löschung angehalten nach")} ${stepPhrase}, ${ttc("with", "mit")} ${objectPhrase(pendingObjects)} ${ttc("left", "verbleibend")}. ${ttc("Retry it from the jobs page.", "Wiederhole sie auf der Job-Seite.")}`,
     }
 
-  const suffix = state.status === "retryable" ? " Retrying after a failure." : ""
+  const suffix =
+    state.status === "retryable" ? ` ${ttc("Retrying after a failure.", "Wiederholung nach einem Fehler.")}` : ""
   return {
     percent: totalSteps === 0 ? 0 : Math.round((completedSteps / totalSteps) * 100),
     completedSteps,

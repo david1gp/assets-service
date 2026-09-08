@@ -2,6 +2,7 @@ import { createMemo } from "solid-js"
 import * as v from "valibot"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiAssetFolderPathsRead } from "./uiAssetFolderPathsRead.js"
@@ -18,7 +19,11 @@ export const uiAssetFolderPathsStateCreate = (input: UiAssetFolderPathsInput) =>
     async () => {
       if (!input.isEnabled()) return { success: true, data: null }
       const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiAssetFolderPathsRead", client.errorMessage)
+      if (!client.success)
+        return resultErrorCreate(
+          "uiAssetFolderPathsRead",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
       const assets = await client.data.assetsReadAll(input.projectId())
       if (!assets.success) return assets
       return { success: true, data: uiAssetFolderPathsRead(assets.data) }

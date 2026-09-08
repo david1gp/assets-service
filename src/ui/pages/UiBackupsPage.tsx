@@ -4,6 +4,7 @@ import { Table1R } from "#ui/table/table1/Table1R.jsx"
 import type { BackupReceipt } from "../../backup/backupReceiptSchema.js"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
+import { ttc } from "../localization/ttc.js"
 import { UiPager } from "../common/UiPager.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
 import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
@@ -11,32 +12,32 @@ import { uiBackupsPageStateCreate } from "./uiBackupsPageStateCreate.js"
 import { uiTableDesktopClassesRead } from "../table/uiTableDesktopClassesRead.js"
 import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 
-const columns: TableColumnDef<BackupReceipt>[] = [
+const columns = (): TableColumnDef<BackupReceipt>[] => [
   {
     id: "remotePath",
-    name: "Remote path",
+    name: ttc("Remote path", "Remote-Pfad"),
     data: (receipt) => receipt.remotePath,
     cell: (receipt) => <span class="wrap-anywhere font-mono text-sm">{receipt.remotePath}</span>,
   },
   {
     id: "checkResult",
-    name: "Verification",
+    name: ttc("Verification", "Verifizierung"),
     data: (receipt) => receipt.checkResult,
     cell: (receipt) => (
       <UiStatusBadge tone={receipt.checkResult === "verified" ? "positive" : "negative"}>
-        {receipt.checkResult}
+        {receipt.checkResult === "verified" ? ttc("verified", "verifiziert") : ttc("failed", "fehlgeschlagen")}
       </UiStatusBadge>
     ),
   },
   {
     id: "byteSize",
-    name: "Size",
+    name: ttc("Size", "Größe"),
     data: (receipt) => receipt.byteSize,
     cell: (receipt) => uiByteSizeFormat(receipt.byteSize),
   },
   {
     id: "completedAt",
-    name: "Completed",
+    name: ttc("Completed", "Abgeschlossen"),
     data: (receipt) => receipt.completedAt,
     cell: (receipt) => <time datetime={receipt.completedAt}>{receipt.completedAt.slice(0, 19).replace("T", " ")}</time>,
   },
@@ -48,11 +49,17 @@ export function UiBackupsPage() {
 
   return (
     <>
-      <UiPageHeading title="Backups" subtitle="Verified copies written before any asset was published." />
+      <UiPageHeading
+        title={ttc("Backups", "Sicherungen")}
+        subtitle={ttc(
+          "Verified copies written before any asset was published.",
+          "Verifizierte Kopien, die vor der Veröffentlichung eines Assets geschrieben wurden.",
+        )}
+      />
       <UiQueryView
         query={state.query}
-        loadingItem="backups"
-        emptyMessage="No backup receipts were recorded yet."
+        loadingItem={ttc("backups", "Sicherungen")}
+        emptyMessage={ttc("No backup receipts were recorded yet.", "Es wurden noch keine Sicherungsbelege erfasst.")}
         isEmpty={(data) => data.receipts.length === 0}
       >
         {(data) => (
@@ -60,7 +67,7 @@ export function UiBackupsPage() {
             <CardWrapper class="overflow-hidden p-0">
               <Table1R
                 rows={[...data.receipts]}
-                columns={columns}
+                columns={columns()}
                 desktopClasses={uiTableDesktopClassesRead()}
                 mobileClasses={uiTableMobileClassesRead()}
               />
