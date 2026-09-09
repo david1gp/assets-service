@@ -16,6 +16,7 @@ import { For, Match, Show, Switch } from "solid-js"
 import { classArr } from "#ui/utils/classArr.js"
 import { UiLanguageToggle } from "../localization/UiLanguageToggle.jsx"
 import { ttc } from "../localization/ttc.js"
+import { UiOrganizationSelector } from "../organization/UiOrganizationSelector.jsx"
 import { UiLoginPage } from "../pages/UiLoginPage.jsx"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiShellStateCreate } from "./uiShellStateCreate.js"
@@ -66,6 +67,7 @@ export function UiShell(p: RouteSectionProps) {
 
           <div class="order-2 flex items-center gap-2 shrink-0 ml-auto md:order-none">
             <Show when={state.session().status === "authenticated"}>
+              <UiOrganizationSelector />
               <Show when={state.accountId() !== ""}>
                 <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
                   <Icon path={mdiAccount} class="size-3.5 text-muted-foreground" />

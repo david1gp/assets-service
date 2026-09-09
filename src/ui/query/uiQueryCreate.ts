@@ -4,6 +4,7 @@ import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import { uiLocalStorageRead } from "../storage/uiLocalStorageRead.js"
 import { uiLocalStorageWrite } from "../storage/uiLocalStorageWrite.js"
+import { uiTenantGeneration } from "../organization/uiTenantGeneration.js"
 
 export type UiQueryStatus = "idle" | "loading" | "ready" | "error"
 
@@ -48,6 +49,7 @@ export const uiQueryCreate = <T>(load: () => Promise<Result<T>>, options?: UiQue
   cacheHydrate(options?.cacheKey())
 
   createEffect(() => {
+    uiTenantGeneration.get()
     reloadToken.get()
     const key = options?.cacheKey()
     requestSequence += 1
