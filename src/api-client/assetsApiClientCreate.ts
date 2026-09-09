@@ -25,6 +25,9 @@ import { jobStatusSchema } from "../workflow/jobStatusSchema.js"
 import { workflowKindSchema } from "../workflow/workflowKindSchema.js"
 import { workflowSchema } from "../workflow/workflowSchema.js"
 import { workflowStatusSchema } from "../workflow/workflowStatusSchema.js"
+import { organizationSwitchRequestSchema } from "../authentication/organizationSwitchRequestSchema.js"
+import { authOrganizationsResponseSchema } from "./authOrganizationsResponseSchema.js"
+import { authOrganizationSwitchResponseSchema } from "./authOrganizationSwitchResponseSchema.js"
 import { authSessionResponseSchema } from "./authSessionResponseSchema.js"
 import { assetDetailResponseSchema } from "./assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "./assetHistoryResponseSchema.js"
@@ -355,6 +358,23 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       method: "POST",
       responseSchema: v.strictObject({ loggedOut: v.boolean() }),
       operation: "assetsApiClientAuthLogout",
+    })
+
+  const authOrganizationsRead = () =>
+    requestRead({
+      path: "/auth/organizations",
+      responseSchema: authOrganizationsResponseSchema,
+      operation: "assetsApiClientAuthOrganizationsRead",
+    })
+
+  const authOrganizationSwitch = (organizationId: string) =>
+    requestRead({
+      path: "/auth/organization",
+      method: "POST",
+      body: { organizationId },
+      bodySchema: organizationSwitchRequestSchema,
+      responseSchema: authOrganizationSwitchResponseSchema,
+      operation: "assetsApiClientAuthOrganizationSwitch",
     })
 
   const projectsRead = async (query: { cursor?: number; limit?: number; search?: string } = {}) => {
@@ -984,6 +1004,8 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     authLogin,
     authLogout,
     authSessionRead,
+    authOrganizationsRead,
+    authOrganizationSwitch,
     healthRead,
     readyRead,
     projectsRead,

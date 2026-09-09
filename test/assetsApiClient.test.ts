@@ -59,6 +59,65 @@ test("assets API client validates the server-derived session mode", async () => 
   })
 })
 
+test("assets API client reads organizations and switches organization", async () => {
+  const requests: Request[] = []
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    sessionCookie: "human-session-cookie",
+    fetcher: async (input, init) => {
+      const req = new Request(String(input), init)
+      requests.push(req)
+      if (req.url.endsWith("/auth/organizations")) {
+        return envelopeResponseCreate({
+          organizations: [
+            { id: "org-contentoren", name: "Contentoren", current: true, mode: "admin", organizationAdmin: true },
+            { id: "org-david", name: "David", current: false, mode: "admin", organizationAdmin: true },
+          ],
+          currentOrganizationId: "org-contentoren",
+        })
+      }
+      if (req.url.endsWith("/auth/organization")) {
+        const body = (await req.json()) as { organizationId: string }
+        return envelopeResponseCreate({
+          switched: true,
+          organizationId: body.organizationId,
+          principal: {
+            subjectId: "david-1",
+            displayName: "David",
+            organizationId: body.organizationId,
+            mode: "admin",
+            organizationAdmin: true,
+            method: "human_session",
+            grants: [],
+            issuedAt: 100,
+            expiresAt: 200,
+          },
+        })
+      }
+      return envelopeResponseCreate({})
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const orgs = await clientResult.data.authOrganizationsRead()
+  expect(orgs.success).toBe(true)
+  if (!orgs.success) return
+  expect(orgs.data.currentOrganizationId).toBe("org-contentoren")
+  expect(orgs.data.organizations).toHaveLength(2)
+  expect(requests[0]?.url).toBe("https://assets.example.test/api/v1/auth/organizations")
+
+  const switched = await clientResult.data.authOrganizationSwitch("org-david")
+  expect(switched.success).toBe(true)
+  if (!switched.success) return
+  expect(switched.data.switched).toBe(true)
+  expect(switched.data.organizationId).toBe("org-david")
+  expect(switched.data.principal.organizationId).toBe("org-david")
+  expect(requests[1]?.url).toBe("https://assets.example.test/api/v1/auth/organization")
+  expect(requests[1]?.method).toBe("POST")
+})
+
 test("assets API client registers a project with an authenticated JSON request", async () => {
   let request: Request | undefined
   const clientResult = assetsApiClientCreate({

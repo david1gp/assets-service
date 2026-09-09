@@ -1,4 +1,5 @@
 import type { PkceStateStore } from "../authentication/pkceStateStore.js"
+import type { SessionAccessTokenStore } from "../authentication/sessionAccessTokenStore.js"
 import type { SessionStore } from "../authentication/sessionStore.js"
 import type { ZitadelAuthConfig } from "../authentication/zitadelAuthConfigSchema.js"
 import type { ZitadelJwksClient } from "../infrastructure/zitadel/zitadelJwksClient.js"
@@ -12,5 +13,6 @@ export type ApiAuthenticationOptions = {
   oidcClient: ZitadelOidcClient
   jwksClient: ZitadelJwksClient
   serviceBearer: RequestAuthenticationReadOptions["serviceBearer"]
+  sessionAccessTokenStore?: SessionAccessTokenStore
   now?: () => number
 }

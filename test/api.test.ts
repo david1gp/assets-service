@@ -730,6 +730,138 @@ describe("HTTP API", () => {
     expect(jwtResponse.status).toBe(403)
   })
 
+  test("allows machine provisioner to create projects for other configured owner tenants, denying customer and unconfigured tenants and cross-tenant human admins", async () => {
+    const provisionerSubjectId = "provisioner-subject-id"
+    const multiOwnerMappings = [
+      { ownerOrganizationId: "org-1", customerOrganizationId: "org-customers" },
+      { ownerOrganizationId: "org-2", customerOrganizationId: "org-2-customers" },
+    ] as const
+
+    const options = optionsCreate()
+    options.authentication.config = {
+      ...options.authentication.config,
+      projectProvisionerSubjectId: provisionerSubjectId,
+      organizationMappings: multiOwnerMappings,
+    }
+    options.authentication.serviceBearer = {
+      issuer: options.authentication.config.issuer,
+      audience: options.authentication.config.audience,
+      jwksClient: zitadelJwksClientMemoryCreate([]),
+      organizationId: "org-1",
+      projectProvisionerSubjectId: provisionerSubjectId,
+      allowedOrganizationIds: ["org-1", "org-2"],
+      now: () => now * 1000,
+      patFetcher: async (input) => {
+        if (String(input).endsWith("/auth/v1/users/me")) {
+          return new Response(
+            JSON.stringify({
+              user: {
+                id: provisionerSubjectId,
+                state: "USER_STATE_ACTIVE",
+                details: { resourceOwner: "org-1" },
+                machine: { name: "Provisioner" },
+              },
+            }),
+          )
+        }
+        return new Response(JSON.stringify({ result: [] }))
+      },
+    }
+
+    let createdCount = 0
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectCreate: (input, subjectId) => {
+        createdCount++
+        return {
+          success: true,
+          data: {
+            project: {
+              project: { ...project, id: `proj-${createdCount}` },
+              organization: null,
+              binding,
+              environments: [environment],
+            },
+            created: true,
+          },
+        }
+      },
+    }
+
+    const app = apiAppCreate(options)
+    const patHeader = "Bearer pat-token-multi"
+
+    const makeCreateBody = (orgId: string) => ({
+      organization: { id: orgId, name: `Name ${orgId}`, slug: `slug-${orgId}` },
+      name: "New Project",
+      slug: `new-proj-${orgId}`,
+      defaultEnvironment: "development",
+      binding: { zitadelProjectId: `zit-${orgId}`, serviceProjectId: `srv-${orgId}` },
+      environments: [
+        {
+          name: "development",
+          r2Bucket: "assets-dev",
+          r2Prefix: `prefix-${orgId}/dev`,
+          publicBaseUrl: "https://dev.example.test",
+        },
+        {
+          name: "production",
+          r2Bucket: "assets-prod",
+          r2Prefix: `prefix-${orgId}/prod`,
+          publicBaseUrl: "https://prod.example.test",
+        },
+      ],
+    })
+
+    // 1. Provisioner (org-1) creates project for another configured owner tenant (org-2) -> 201
+    const validOtherOwner = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: patHeader, "content-type": "application/json" },
+        body: JSON.stringify(makeCreateBody("org-2")),
+      }),
+    )
+    expect(validOtherOwner.status).toBe(201)
+
+    // 2. Provisioner creates project for customer tenant -> 403
+    const customerDenial = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: patHeader, "content-type": "application/json" },
+        body: JSON.stringify(makeCreateBody("org-customers")),
+      }),
+    )
+    expect(customerDenial.status).toBe(403)
+    const customerDenialBody = (await customerDenial.json()) as { error: { message: string } }
+    expect(customerDenialBody.error.message).toBe("The project organization was not allowed")
+
+    // 3. Provisioner creates project for unconfigured tenant -> 403
+    const unconfiguredDenial = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { authorization: patHeader, "content-type": "application/json" },
+        body: JSON.stringify(makeCreateBody("org-unconfigured")),
+      }),
+    )
+    expect(unconfiguredDenial.status).toBe(403)
+    const unconfiguredDenialBody = (await unconfiguredDenial.json()) as { error: { message: string } }
+    expect(unconfiguredDenialBody.error.message).toBe("The project organization was not allowed")
+
+    // 4. Ordinary owner human admin (org-1) attempting cross-tenant create for org-2 -> 403
+    const org1AdminCookie = await sessionCreate(options, "admin", true, "org-1")
+    const crossTenantHuman = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: org1AdminCookie, "content-type": "application/json" },
+        body: JSON.stringify(makeCreateBody("org-2")),
+      }),
+    )
+    expect(crossTenantHuman.status).toBe(403)
+    const crossTenantHumanBody = (await crossTenantHuman.json()) as { error: { message: string } }
+    expect(crossTenantHumanBody.error.message).toBe("The project organization was not allowed")
+  })
+
   test("allows an organization administrator to access an ungranted same-organization project only", async () => {
     const ungrantedProject = { ...project, id: "project-2", name: "Un granted" }
     const ungrantedBinding = {

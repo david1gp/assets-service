@@ -165,11 +165,14 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     const isOrganizationAdmin = exactMemberships.some((membership) =>
       membership.roles.some((role) => organizationAdministratorRoles.has(role)),
     )
+    const exactMembership =
+      exactMemberships.find((membership) => membership.displayName !== undefined) ?? exactMemberships[0]
     return {
       success: true,
       data: {
         isExactMember: exactMemberships.length > 0,
         isOrganizationAdmin,
+        ...(exactMembership?.displayName !== undefined ? { displayName: exactMembership.displayName } : {}),
         ...(exactMemberships.length === 0
           ? {
               diagnostics: {

@@ -18,6 +18,7 @@ const membershipLookupDiagnosticsSchema = v.strictObject({
 export const zitadelOrganizationMembershipSchema = v.strictObject({
   isExactMember: v.boolean(),
   isOrganizationAdmin: v.boolean(),
+  displayName: v.optional(v.string()),
   diagnostics: v.optional(membershipLookupDiagnosticsSchema),
 })
 

@@ -19,6 +19,9 @@ export const memorySessionStoreCreate = (options: MemorySessionStoreOptions = {}
       ...session.principal,
       grants: session.principal.grants.map((grant) => ({ ...grant, roles: [...grant.roles] })),
     },
+    ...(session.identityGrants === undefined
+      ? {}
+      : { identityGrants: session.identityGrants.map((grant) => ({ ...grant, roles: [...grant.roles] })) }),
   })
   const sessionValueCreate = (session: AuthenticationSession): AuthenticationSession =>
     copy(

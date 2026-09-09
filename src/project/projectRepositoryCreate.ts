@@ -277,6 +277,19 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     }
   }
 
+  const projectGrantIdsRead = (organizationId: string): Result<readonly string[]> => {
+    try {
+      const records = db
+        .select({ zitadelProjectId: projectBindingTable.zitadelProjectId })
+        .from(projectBindingTable)
+        .where(eq(projectBindingTable.organizationId, organizationId))
+        .all()
+      return { success: true, data: records.map((record) => record.zitadelProjectId) }
+    } catch (error) {
+      return resultErrorCreate("projectRepositoryProjectGrantIdsRead", "The project grants could not be read", error)
+    }
+  }
+
   const environmentReadByIdentifier = (
     projectId: string,
     environmentIdentifier: string,
@@ -572,5 +585,6 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     projectSettingsWrite,
     projectCreate,
     organizationRead: organizationReadById,
+    projectGrantIdsRead,
   }
 }

@@ -14,6 +14,7 @@ import type { PkceStateStore } from "./pkceStateStore.js"
 import { sessionCookieCreate } from "./sessionCookieCreate.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { SessionStore } from "./sessionStore.js"
+import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
 import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
 import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
@@ -21,6 +22,7 @@ type HumanLoginCallbackOptions = {
   config: ZitadelAuthConfig
   stateStore: PkceStateStore
   sessionStore: SessionStore
+  sessionAccessTokenStore?: SessionAccessTokenStore
   oidcClient: ZitadelOidcClient
   jwksClient: ZitadelJwksClient
   jwksUri?: string
@@ -178,6 +180,12 @@ export const humanLoginCallback = async (
 
   const now = Math.floor((options.now ?? (() => Date.now()))() / 1000)
   const expiresAt = Math.min(now + options.config.sessionTtlSeconds, principal.data.expiresAt)
+  let accessTokenReference: string | undefined
+  if (options.sessionAccessTokenStore !== undefined) {
+    const reference = options.sessionAccessTokenStore.create(token.data.access_token, expiresAt)
+    if (!reference.success) return reference
+    accessTokenReference = reference.data
+  }
   const session: AuthenticationSession = {
     principal: {
       ...principal.data,
@@ -191,9 +199,15 @@ export const humanLoginCallback = async (
     expiresAt,
     rotateAt: Math.min(now + options.config.sessionRotationSeconds, expiresAt),
     sessionPolicyVersion: sessionPolicyVersion.data,
+    identityOrganizationId: principal.data.organizationId,
+    identityGrants: grants,
+    ...(accessTokenReference === undefined ? {} : { accessTokenReference }),
   }
   const sessionId = await options.sessionStore.create(session)
-  if (!sessionId.success) return sessionId
+  if (!sessionId.success) {
+    if (accessTokenReference !== undefined) options.sessionAccessTokenStore?.revoke(accessTokenReference)
+    return sessionId
+  }
   const sessionCookie = sessionCookieCreate(sessionId.data, {
     name: options.config.sessionCookieName,
     maxAgeSeconds: expiresAt - now,

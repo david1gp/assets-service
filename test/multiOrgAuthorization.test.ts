@@ -1257,6 +1257,37 @@ describe("Multi-organization Actual Database API Project Listing and Route Autho
     const sessionStore = memorySessionStoreCreate()
     const stateStore = memoryPkceStateStoreCreate({ now: () => nowSeconds * 1000 })
 
+    const provisionerSubjectId = "provisioner-subject-id"
+    const authConfig: ZitadelAuthConfig = {
+      ...config,
+      projectProvisionerSubjectId: provisionerSubjectId,
+    }
+    const serviceBearer = {
+      issuer: config.issuer,
+      audience: config.audience,
+      jwksClient: zitadelJwksClientMemoryCreate([]),
+      organizationId: "org-contentoren",
+      allowedOrganizationIds: ["org-contentoren", "org-fabian", "org-david"],
+      projectProvisionerSubjectId: provisionerSubjectId,
+      now: () => nowSeconds * 1000,
+      patFetcher: async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith("/auth/v1/users/me")) {
+          return new Response(
+            JSON.stringify({
+              user: {
+                id: provisionerSubjectId,
+                state: "USER_STATE_ACTIVE",
+                details: { resourceOwner: "org-contentoren" },
+                machine: { name: "Provisioner" },
+              },
+            }),
+          )
+        }
+        return new Response(JSON.stringify({ result: [] }))
+      },
+    }
+
     const app = apiAppCreate({
       projectRepository,
       storageMigrationRepository: {} as any,
@@ -1271,12 +1302,12 @@ describe("Multi-organization Actual Database API Project Listing and Route Autho
       catalogPublicationService: {} as any,
       auditApiRepository: {} as any,
       authentication: {
-        config,
+        config: authConfig,
         stateStore,
         sessionStore,
         oidcClient: {} as any,
         jwksClient: {} as any,
-        serviceBearer: undefined,
+        serviceBearer,
         now: () => nowSeconds * 1000,
       },
     })
@@ -1293,7 +1324,7 @@ describe("Multi-organization Actual Database API Project Listing and Route Autho
       return `${config.sessionCookieName}=${sessionResult.data}`
     }
 
-    return { app, cookieForPrincipal }
+    return { app, cookieForPrincipal, provisionerToken: "test-provisioner-pat" }
   }
 
   test("GET /api/v1/projects against actual database enforces tenant isolation and grant scoping", async () => {
@@ -1607,5 +1638,209 @@ describe("Multi-organization Actual Database API Project Listing and Route Autho
       }),
     )
     expect(validCreate.status).toBe(201)
+
+    // Ordinary owner cross-tenant denial: Contentoren admin cannot create project for Fabian
+    const contentorenCrossCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: contentorenAdminCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          organization: { id: "org-fabian", name: "Fabian", slug: "fabian" },
+          name: "Cross Org Contentoren to Fabian",
+          slug: "cross-org-c-to-f",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-new-c-f", serviceProjectId: "srv-new-c-f" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "new-c-f/dev",
+              publicBaseUrl: "https://new-c-f-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "new-c-f/prod",
+              publicBaseUrl: "https://new-c-f-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(contentorenCrossCreate.status).toBe(403)
+    const contentorenCrossBody = (await contentorenCrossCreate.json()) as { error: { message: string } }
+    expect(contentorenCrossBody.error.message).toBe("The project organization was not allowed")
+
+    // Ordinary owner denial: Contentoren admin cannot create project for customer tenant
+    const contentorenCustomerCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: { cookie: contentorenAdminCookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          organization: {
+            id: "org-contentoren-customers",
+            name: "Contentoren Customers",
+            slug: "contentoren-customers",
+          },
+          name: "Customer Project Attempt",
+          slug: "cust-project-attempt",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-new-cust", serviceProjectId: "srv-new-cust" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "new-cust/dev",
+              publicBaseUrl: "https://new-cust-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "new-cust/prod",
+              publicBaseUrl: "https://new-cust-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(contentorenCustomerCreate.status).toBe(403)
+    const contentorenCustomerBody = (await contentorenCustomerCreate.json()) as { error: { message: string } }
+    expect(contentorenCustomerBody.error.message).toBe("The project organization was not allowed")
+
+    // Machine provisioner (resourceOwner: org-contentoren) can create project for other configured owner tenant (Fabian)
+    const provisionerFabianCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${fixture.provisionerToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organization: { id: "org-fabian", name: "Fabian", slug: "fabian" },
+          name: "Provisioned Fabian Project",
+          slug: "prov-fabian-project",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-prov-fabian", serviceProjectId: "srv-prov-fabian" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "prov-f/dev",
+              publicBaseUrl: "https://prov-f-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "prov-f/prod",
+              publicBaseUrl: "https://prov-f-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(provisionerFabianCreate.status).toBe(201)
+
+    // Machine provisioner (resourceOwner: org-contentoren) can create project for other configured owner tenant (David)
+    const provisionerDavidCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${fixture.provisionerToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organization: { id: "org-david", name: "David", slug: "david" },
+          name: "Provisioned David Project",
+          slug: "prov-david-project",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-prov-david", serviceProjectId: "srv-prov-david" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "prov-d/dev",
+              publicBaseUrl: "https://prov-d-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "prov-d/prod",
+              publicBaseUrl: "https://prov-d-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(provisionerDavidCreate.status).toBe(201)
+
+    // Machine provisioner cannot create project for customer tenant
+    const provisionerCustomerCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${fixture.provisionerToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organization: { id: "org-fabian-customers", name: "Fabian Customers", slug: "fabian-customers" },
+          name: "Provisioned Customer Project",
+          slug: "prov-cust-project",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-prov-cust", serviceProjectId: "srv-prov-cust" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "prov-cust/dev",
+              publicBaseUrl: "https://prov-cust-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "prov-cust/prod",
+              publicBaseUrl: "https://prov-cust-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(provisionerCustomerCreate.status).toBe(403)
+    const provisionerCustomerBody = (await provisionerCustomerCreate.json()) as { error: { message: string } }
+    expect(provisionerCustomerBody.error.message).toBe("The project organization was not allowed")
+
+    // Machine provisioner cannot create project for unconfigured tenant
+    const provisionerUnconfiguredCreate = await fixture.app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${fixture.provisionerToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organization: { id: "org-unconfigured", name: "Unconfigured Org", slug: "unconfigured" },
+          name: "Provisioned Unconfigured Project",
+          slug: "prov-unconf-project",
+          defaultEnvironment: "development",
+          binding: { zitadelProjectId: "zit-prov-unconf", serviceProjectId: "srv-prov-unconf" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "assets",
+              r2Prefix: "prov-unconf/dev",
+              publicBaseUrl: "https://prov-unconf-dev.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "assets",
+              r2Prefix: "prov-unconf/prod",
+              publicBaseUrl: "https://prov-unconf-prod.test",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(provisionerUnconfiguredCreate.status).toBe(403)
+    const provisionerUnconfiguredBody = (await provisionerUnconfiguredCreate.json()) as { error: { message: string } }
+    expect(provisionerUnconfiguredBody.error.message).toBe("The project organization was not allowed")
   })
 })

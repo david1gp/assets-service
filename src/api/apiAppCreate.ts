@@ -18,11 +18,15 @@ import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
 import { foldersSchema } from "../asset/foldersSchema.js"
 import { humanLoginCallback } from "../authentication/humanLoginCallback.js"
 import { humanLoginInitiate } from "../authentication/humanLoginInitiate.js"
+import { organizationSwitchRequestSchema } from "../authentication/organizationSwitchRequestSchema.js"
 import { pkceCallbackRequestSchema } from "../authentication/pkceCallbackRequestSchema.js"
 import { pkceLoginRequestSchema } from "../authentication/pkceLoginRequestSchema.js"
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
 import { sessionCookieCreate } from "../authentication/sessionCookieCreate.js"
 import { sessionCookieRead } from "../authentication/sessionCookieRead.js"
+import { sessionOrganizationsRead } from "../authentication/sessionOrganizationsRead.js"
+import { sessionOrganizationSwitch } from "../authentication/sessionOrganizationSwitch.js"
+import { sessionAccessTokenStoreCreate } from "../authentication/sessionAccessTokenStoreCreate.js"
 import { zitadelOrganizationContextCreate } from "../authentication/zitadelOrganizationContextCreate.js"
 import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
@@ -193,8 +197,8 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/(health|ready)$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/health\/(live|ready|readiness)$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/readiness$/, methods: ["GET"] },
-    { pattern: /^\/api\/v1\/auth\/(login|callback|session)$/, methods: ["GET"] },
-    { pattern: /^\/api\/v1\/auth\/logout$/, methods: ["POST"] },
+    { pattern: /^\/api\/v1\/auth\/(login|callback|session|organizations)$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/auth\/(logout|organization|organization\/switch)$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects$/, methods: ["GET", "POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/settings$/, methods: ["GET", "PUT"] },
@@ -258,6 +262,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
 }
 
 export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
+  const sessionAccessTokenStore = options.authentication.sessionAccessTokenStore ?? sessionAccessTokenStoreCreate()
   const app = new Hono<ApiContext>()
   const authenticationMiddleware = apiAuthenticationMiddlewareCreate(options.authentication)
   const uploaderMiddleware = apiProjectRoleMiddlewareCreate({
@@ -364,6 +369,7 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         config: options.authentication.config,
         stateStore: options.authentication.stateStore,
         sessionStore: options.authentication.sessionStore,
+        sessionAccessTokenStore,
         oidcClient: options.authentication.oidcClient,
         jwksClient: options.authentication.jwksClient,
         now: options.authentication.now,
@@ -444,6 +450,196 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       : response
   })
 
+  app.get(`${apiVersionPath}/auth/organizations`, async (context) => {
+    if (context.req.header("authorization") !== undefined) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization management is only allowed for human sessions",
+      })
+    }
+    const sessionId = sessionCookieRead(context.req.raw, options.authentication.config.sessionCookieName)
+    if (!sessionId) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    }
+    const session = await options.authentication.sessionStore.read(sessionId)
+    if (!session.success || !session.data) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    }
+    if (session.data.principal.method !== "human_session") {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization management is only allowed for human sessions",
+      })
+    }
+    const now = Math.floor((options.authentication.now ?? (() => Date.now()))() / 1000)
+    if (session.data.expiresAt <= now || session.data.principal.expiresAt <= now) {
+      await options.authentication.sessionStore.revoke(sessionId)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "The session has expired",
+      })
+    }
+    const result = await sessionOrganizationsRead(session.data, {
+      config: options.authentication.config,
+      oidcClient: options.authentication.oidcClient,
+      sessionAccessTokenStore,
+      projectRepository: options.projectRepository,
+      now: options.authentication.now,
+    })
+    if (!result.success) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 500,
+        code: "internal_error",
+        message: result.errorMessage,
+      })
+    }
+    return successResponseCreate(context, result.data)
+  })
+
+  const organizationSwitchHandle = async (context: import("hono").Context<ApiContext>) => {
+    const origin = context.req.header("origin")
+    if (origin !== undefined) {
+      try {
+        const expectedOrigin = new URL(context.req.url).origin
+        if (origin !== expectedOrigin) {
+          return apiErrorResponseCreate({
+            requestId: requestIdRead(context),
+            status: 403,
+            code: "forbidden",
+            message: "Cross-origin request forbidden",
+          })
+        }
+      } catch {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 403,
+          code: "forbidden",
+          message: "Cross-origin request forbidden",
+        })
+      }
+    }
+    if (context.req.header("sec-fetch-site") === "cross-site") {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Cross-origin request forbidden",
+      })
+    }
+    if (context.req.header("authorization") !== undefined) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization switching is only allowed for human sessions",
+      })
+    }
+    const sessionId = sessionCookieRead(context.req.raw, options.authentication.config.sessionCookieName)
+    if (!sessionId) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    }
+    const session = await options.authentication.sessionStore.read(sessionId)
+    if (!session.success || !session.data) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    }
+    if (session.data.principal.method !== "human_session") {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization switching is only allowed for human sessions",
+      })
+    }
+    if (origin === undefined) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Cross-origin request forbidden",
+      })
+    }
+    const now = Math.floor((options.authentication.now ?? (() => Date.now()))() / 1000)
+    if (session.data.expiresAt <= now || session.data.principal.expiresAt <= now) {
+      await options.authentication.sessionStore.revoke(sessionId)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "The session has expired",
+      })
+    }
+
+    const body = await requestBodyRead(context.req.raw)
+    const parsed = v.safeParse(organizationSwitchRequestSchema, body)
+    if (!parsed.success) return validationFailureCreate(context, "The organization switch request was invalid")
+
+    const switchResult = await sessionOrganizationSwitch(session.data, parsed.output.organizationId, {
+      config: options.authentication.config,
+      oidcClient: options.authentication.oidcClient,
+      sessionAccessTokenStore,
+      projectRepository: options.projectRepository,
+      now: options.authentication.now,
+    })
+    if (!switchResult.success) {
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: switchResult.errorMessage,
+      })
+    }
+
+    const rotatedSessionId = await options.authentication.sessionStore.rotate(sessionId, switchResult.data)
+    if (!rotatedSessionId.success) return failureFromRepositoryCreate(context)
+
+    const maxAgeSeconds = Math.max(0, switchResult.data.expiresAt - now)
+    const sessionCookie = sessionCookieCreate(rotatedSessionId.data, {
+      name: options.authentication.config.sessionCookieName,
+      maxAgeSeconds,
+    })
+
+    return successResponseCreate(
+      context,
+      {
+        switched: true,
+        organizationId: parsed.output.organizationId,
+        principal: switchResult.data.principal,
+      },
+      200,
+      { "set-cookie": sessionCookie },
+    )
+  }
+
+  app.post(`${apiVersionPath}/auth/organization`, organizationSwitchHandle)
+  app.post(`${apiVersionPath}/auth/organization/switch`, organizationSwitchHandle)
+
   app.get(`${apiVersionPath}/projects`, authenticationMiddleware, async (context) => {
     const authentication = context.get("authentication") as RequestAuthentication | undefined
     if (!authentication)
@@ -504,10 +700,22 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         code: "unauthorized",
         message: "Authentication is required",
       })
+    const orgContext = zitadelOrganizationContextCreate(
+      options.authentication.config.organizationMappings ?? [
+        {
+          ownerOrganizationId: options.authentication.config.organizationId,
+          customerOrganizationId: options.authentication.config.customerOrganizationId,
+        },
+      ],
+    )
     const isHumanOrgAdmin =
-      authentication.principal.method === "human_session" && Boolean(authentication.principal.organizationAdmin)
+      authentication.principal.method === "human_session" &&
+      orgContext.isOwner(authentication.principal.organizationId) &&
+      Boolean(authentication.principal.organizationAdmin)
     const isMachineProvisioner =
-      authentication.principal.method === "service_account" && Boolean(authentication.principal.projectProvisioner)
+      authentication.principal.method === "service_account" &&
+      Boolean(authentication.principal.projectProvisioner) &&
+      orgContext.isOwner(authentication.principal.organizationId)
     if (!isHumanOrgAdmin && !isMachineProvisioner)
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
@@ -518,7 +726,10 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     const body = await requestBodyRead(context.req.raw)
     const parsed = v.safeParse(projectCreateSchema, body)
     if (!parsed.success) return validationFailureCreate(context, "The project creation request was invalid")
-    if (parsed.output.organization.id !== authentication.principal.organizationId)
+    const isAllowedOrganization = isMachineProvisioner
+      ? orgContext.isOwner(parsed.output.organization.id)
+      : parsed.output.organization.id === authentication.principal.organizationId
+    if (!isAllowedOrganization)
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 403,

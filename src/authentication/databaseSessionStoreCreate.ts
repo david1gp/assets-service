@@ -67,6 +67,9 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
       ...session.principal,
       grants: session.principal.grants.map((grant) => ({ ...grant, roles: [...grant.roles] })),
     },
+    ...(session.identityGrants === undefined
+      ? {}
+      : { identityGrants: session.identityGrants.map((grant) => ({ ...grant, roles: [...grant.roles] })) }),
   })
   const sessionValueCreate = (session: AuthenticationSession): Result<AuthenticationSession> => {
     const parsed = v.safeParse(sessionSchema, session)
@@ -109,6 +112,15 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
         .prepare("SELECT payload, expires_at FROM authentication_sessions WHERE id_hash = ?")
         .get(hashCreate(sessionId)) as { payload?: string; expires_at?: number } | null
       if (!row?.payload) return { success: true, data: null }
+      try {
+        const legacyPayload = JSON.parse(row.payload) as unknown
+        if (legacyPayload !== null && typeof legacyPayload === "object" && "accessToken" in legacyPayload) {
+          await store.revoke(sessionId)
+          return { success: true, data: null }
+        }
+      } catch {
+        // sessionRead below returns the structured invalid-payload error
+      }
       if (typeof row.expires_at !== "number" || row.expires_at <= Math.floor(Date.now() / 1000)) {
         await store.revoke(sessionId)
         return { success: true, data: null }

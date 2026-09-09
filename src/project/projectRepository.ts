@@ -23,4 +23,5 @@ export type ProjectRepository = {
   projectSettingsWrite: (projectIdentifier: string, input: ProjectSettingsUpdate) => Result<ProjectSettings | null>
   projectCreate: (input: ProjectCreate, initialAdminSubjectId: string) => Result<ProjectCreateResult>
   organizationRead: (organizationId: string) => Result<Organization | null>
+  projectGrantIdsRead?: (organizationId: string) => Result<readonly string[]>
 }
