@@ -34,6 +34,7 @@ export const databaseSessionStoreCreate = (connection: DatabaseConnection): Resu
     connection.client
       .prepare("UPDATE authentication_session_policy SET version = ? WHERE id = 1 AND version < ?")
       .run(sessionPolicyVersionDefault, sessionPolicyVersionDefault)
+    connection.client.prepare(`DELETE FROM authentication_sessions WHERE instr(payload, '"accessToken"') > 0`).run()
   } catch (error) {
     return resultErrorCreate(op, "The authentication session table could not be created", error)
   }
