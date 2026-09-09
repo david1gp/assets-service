@@ -517,7 +517,7 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     const origin = context.req.header("origin")
     if (origin !== undefined) {
       try {
-        const expectedOrigin = new URL(context.req.url).origin
+        const expectedOrigin = new URL(options.authentication.config.redirectUri).origin
         if (origin !== expectedOrigin) {
           return apiErrorResponseCreate({
             requestId: requestIdRead(context),
