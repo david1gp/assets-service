@@ -5319,6 +5319,8 @@ Summary: new=0 changed=1 matching=0 needs-processing=0 remote-only=1 unsupported
 })
 
 test("uploads list displays recent uploads with ISO 8601 dates and filters by days and limit", async () => {
+  const recentUploadDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const secondRecentUploadDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
   const uploadsData = [
     {
       id: "upload-1",
@@ -5329,8 +5331,8 @@ test("uploads list displays recent uploads with ISO 8601 dates and filters by da
       integrationNote: "test upload",
       byteSize: 1234,
       status: "accepted" as const,
-      createdAt: "2026-09-04T10:00:00.000Z",
-      updatedAt: "2026-09-04T10:00:00.000Z",
+      createdAt: recentUploadDate,
+      updatedAt: recentUploadDate,
     },
     {
       id: "upload-2",
@@ -5341,8 +5343,8 @@ test("uploads list displays recent uploads with ISO 8601 dates and filters by da
       integrationNote: "test upload 2",
       byteSize: 5678,
       status: "verified" as const,
-      createdAt: "2026-09-02T12:00:00.000Z",
-      updatedAt: "2026-09-02T12:00:00.000Z",
+      createdAt: secondRecentUploadDate,
+      updatedAt: secondRecentUploadDate,
     },
     {
       id: "upload-old",
@@ -5380,9 +5382,9 @@ test("uploads list displays recent uploads with ISO 8601 dates and filters by da
   expect(parsedJson.ok).toBe(true)
   expect(parsedJson.data.uploads).toHaveLength(2)
   expect(parsedJson.data.uploads[0].id).toBe("upload-1")
-  expect(parsedJson.data.uploads[0].createdAt).toBe("2026-09-04T10:00:00.000Z")
+  expect(parsedJson.data.uploads[0].createdAt).toBe(recentUploadDate)
   expect(parsedJson.data.uploads[1].id).toBe("upload-2")
-  expect(parsedJson.data.uploads[1].createdAt).toBe("2026-09-02T12:00:00.000Z")
+  expect(parsedJson.data.uploads[1].createdAt).toBe(secondRecentUploadDate)
 
   const outputHuman: string[] = []
   const exitCodeHuman = await assetsCliMain(["uploads", "list", "--limit", "1"], {
@@ -5402,5 +5404,5 @@ test("uploads list displays recent uploads with ISO 8601 dates and filters by da
   })
 
   expect(exitCodeHuman).toBe(0)
-  expect(outputHuman[0]).toBe("- upload-1 [accepted] branding/logo.png (1234 bytes, 2026-09-04T10:00:00.000Z)\n")
+  expect(outputHuman[0]).toBe(`- upload-1 [accepted] branding/logo.png (1234 bytes, ${recentUploadDate})\n`)
 })
