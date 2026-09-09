@@ -6,6 +6,7 @@ import type { AuthenticationMethod } from "./authenticationMethodSchema.js"
 import { projectAuthorizationCheck } from "./projectAuthorizationCheck.js"
 import { protectedRequestBoundaryCreate } from "./protectedRequestBoundaryCreate.js"
 import type { RequestAuthentication } from "./requestAuthenticationSchema.js"
+import type { ZitadelOrganizationMapping } from "./zitadelOrganizationMappingSchema.js"
 
 type ProjectProtectedRequestBoundaryOptions = {
   authenticationRead: (request: Request) => Promise<Result<RequestAuthentication>>
@@ -15,6 +16,7 @@ type ProjectProtectedRequestBoundaryOptions = {
   requiredMethod?: AuthenticationMethod
   organizationId?: string
   customerOrganizationId?: string
+  organizationMappings?: readonly ZitadelOrganizationMapping[]
 }
 
 export const projectProtectedRequestBoundaryCreate = (options: ProjectProtectedRequestBoundaryOptions) =>
@@ -32,6 +34,7 @@ export const projectProtectedRequestBoundaryCreate = (options: ProjectProtectedR
         {
           organizationId: options.organizationId,
           customerOrganizationId: options.customerOrganizationId,
+          organizationMappings: options.organizationMappings,
         },
       )
     },

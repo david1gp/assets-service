@@ -6,6 +6,7 @@ import type { RequestAuthentication } from "../authentication/requestAuthenticat
 import type { ProjectBinding } from "../project/projectBindingSchema.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
 import type { Project } from "../project/projectSchema.js"
+import type { ZitadelOrganizationMapping } from "../authentication/zitadelOrganizationMappingSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -14,6 +15,7 @@ type ApiProjectAuthorization = { project: Project; binding: ProjectBinding; auth
 type ApiProjectAuthorizationScope = {
   organizationId?: string
   customerOrganizationId?: string
+  organizationMappings?: readonly ZitadelOrganizationMapping[]
 }
 
 export const apiProjectAuthorizationRead = (

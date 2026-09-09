@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from "hono"
 
 import type { AuthenticationRole } from "../authentication/authenticationRoleSchema.js"
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
+import type { ZitadelOrganizationMapping } from "../authentication/zitadelOrganizationMappingSchema.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
 import { apiErrorResponseCreate } from "./apiErrorResponseCreate.js"
 import { apiProjectAuthorizationRead } from "./apiProjectAuthorizationRead.js"
@@ -14,6 +15,7 @@ export const apiProjectRoleMiddlewareCreate =
     requiredRole: AuthenticationRole
     organizationId?: string
     customerOrganizationId?: string
+    organizationMappings?: readonly ZitadelOrganizationMapping[]
   }): MiddlewareHandler<ApiContext> =>
   async (context, next) => {
     const authentication = context.get("authentication") as RequestAuthentication | undefined
@@ -33,6 +35,7 @@ export const apiProjectRoleMiddlewareCreate =
       {
         organizationId: options.organizationId,
         customerOrganizationId: options.customerOrganizationId,
+        organizationMappings: options.organizationMappings,
       },
     )
     if (!authorization.success) {

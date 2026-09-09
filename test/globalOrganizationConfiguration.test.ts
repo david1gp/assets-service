@@ -11,7 +11,7 @@ import { globalOrganizationConfigurationRead } from "../src/config/globalOrganiz
 import { globalOrganizationConfigurationSchema } from "../src/config/globalOrganizationConfigurationSchema.js"
 import type { GlobalOrganizationConfiguration } from "../src/config/globalOrganizationConfigurationSchema.js"
 
-const configuration: GlobalOrganizationConfiguration = {
+const configuration = {
   organizations: {
     david: { id: "org-david", name: "David", slug: "david" },
     contentoren: { id: "org-contentoren", name: "Contentoren", slug: "contentoren" },
@@ -20,7 +20,7 @@ const configuration: GlobalOrganizationConfiguration = {
     "~/personal": "david",
     "~/leo": "contentoren",
   },
-}
+} satisfies GlobalOrganizationConfiguration
 
 const environmentCreate = (homeDirectory: string): NodeJS.ProcessEnv => ({ HOME: homeDirectory })
 
@@ -202,5 +202,34 @@ test("directory organization resolution respects path boundaries and leaves adap
   expect(directoryOrganizationResolve("~/personal/../personal/./project", configuration, { homeDirectory })).toEqual({
     success: true,
     data: configuration.organizations.david,
+  })
+})
+
+test("global organization configuration schema supports generic aliases including fabian and fabian-customers", () => {
+  const multiOrgConfig = {
+    organizations: {
+      david: { id: "org-david", name: "David", slug: "david" },
+      contentoren: { id: "org-contentoren", name: "Contentoren", slug: "contentoren" },
+      fabian: { id: "org-fabian", name: "Fabian", slug: "fabian" },
+      "fabian-customers": { id: "org-fabian-customers", name: "Fabian Customers", slug: "fabian-customers" },
+    },
+    directoryMappings: {
+      "~/personal": "david",
+      "~/leo": "contentoren",
+      "~/fabian": "fabian",
+      "~/fabian/customers": "fabian-customers",
+    },
+  } satisfies GlobalOrganizationConfiguration
+  const result = v.safeParse(globalOrganizationConfigurationSchema, multiOrgConfig)
+  expect(result.success).toBe(true)
+
+  const homeDirectory = "/home/example"
+  expect(directoryOrganizationResolve("~/fabian/site", multiOrgConfig, { homeDirectory })).toEqual({
+    success: true,
+    data: multiOrgConfig.organizations.fabian,
+  })
+  expect(directoryOrganizationResolve("~/fabian/customers/client-site", multiOrgConfig, { homeDirectory })).toEqual({
+    success: true,
+    data: multiOrgConfig.organizations["fabian-customers"],
   })
 })

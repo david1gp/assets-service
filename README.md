@@ -43,8 +43,8 @@ bun run assets lists --check --dir src/app/assets
 ### Organization and environment selection
 
 The CLI uses the global organization configuration at `~/.config/assets-service/config.json` (or the equivalent
-`XDG_CONFIG_HOME` path). Its schema contains the existing `david` and `contentoren` organizations and optional directory
-mappings:
+`XDG_CONFIG_HOME` path). The schema defines organizations using generic non-empty alias keys (such as `david`,
+`contentoren`, `fabian`, and `fabian-customers`) and optional directory mappings:
 
 ```json
 {
@@ -58,25 +58,38 @@ mappings:
       "id": "<contentoren-organization-id>",
       "name": "Contentoren",
       "slug": "contentoren"
+    },
+    "fabian": {
+      "id": "<fabian-organization-id>",
+      "name": "Fabian",
+      "slug": "fabian"
+    },
+    "fabian-customers": {
+      "id": "<fabian-customers-organization-id>",
+      "name": "Fabian Customers",
+      "slug": "fabian-customers"
     }
   },
   "directoryMappings": {
     "~/personal": "david",
-    "~/leo": "contentoren"
+    "~/leo": "contentoren",
+    "~/fabian": "fabian",
+    "~/fabian/customers": "fabian-customers"
   }
 }
 ```
 
-Only `david` and `contentoren` may be configured. `~/adaptive` remains unmapped. Mappings use normalized containing
-directories, require path boundaries, and choose the longest matching mapping. The legacy
-`~/.config/assets/config.json` path is used only when the canonical file is absent; an invalid canonical file does not
-fall back. The fallback accepts this organization schema, while an old saved CLI configuration there is ignored for
-organization selection.
+Any non-empty organization alias key may be configured. `~/adaptive` remains unmapped. Directory mappings use
+normalized containing directories, require path boundaries, and choose the longest matching mapping. Every mapped
+alias target must match a key configured in `organizations`. The legacy `~/.config/assets/config.json` path is used only
+when the canonical file is absent; an invalid canonical file does not fall back. The fallback accepts this organization
+schema, while an old saved CLI configuration there is ignored for organization selection.
 
 Put a project override in the selected `.env` file:
 
 ```dotenv
 ASSETS_ORGANIZATION=contentoren
+# or ASSETS_ORGANIZATION=fabian
 ```
 
 The environment file is selected in this order: `--env-file <path>`, `ASSETS_ENV_FILE`, `<command-root>/.env`, then
@@ -86,15 +99,18 @@ discovery. All other commands keep standard project-scoped credential behavior a
 provisioner file. Explicit paths are relative to the working directory and must exist; a default `.env` is optional. The CLI
 does not search ancestor directories. For organization selection, the precise precedence is `--organization`,
 `ASSETS_ORGANIZATION` in the selected `.env`, process `ASSETS_ORGANIZATION`, the global directory mapping, then
-unrestricted resolution. Organization selectors may be a configured key, ID, or slug. `ZITADEL_ORGANIZATION_ID` is
-reserved for server authentication and is not used for CLI selection.
+unrestricted resolution. Organization selectors may be a configured alias key, ID, or slug:
 
 ```bash
 bun run assets diff ./site --env-file ./env/site.env
 ASSETS_ENV_FILE=./env/site.env bun run assets diff ./site
+bun run assets diff ./fabian-site --organization fabian
+bun run assets diff ./client-site --organization fabian-customers
 bun run assets config show ./site
 bun run assets config show ./site --json
 ```
+
+`ZITADEL_ORGANIZATION_ID` is reserved for server authentication and is not used for CLI selection.
 
 `assets config show [root] [--json]` defaults `root` to `.` and reports the effective values, source paths, load state,
 and source of each value. JSON and human output omit credentials and session secrets; API URLs are sanitized.
@@ -334,6 +350,34 @@ exact UTF-8/LF bytes and exits with code 1 when a file differs.
 Copy `.env.example` to `.env` and replace its placeholders. `compose.production.yml` runs separate API and worker
 containers with a persistent SQLite volume. `ops/caddy/assets-service.Caddyfile` is a Caddy reverse-proxy example,
 and `ops/systemd` contains separate user units for hosts that do not use Compose.
+
+### Backend organization mappings
+
+The assets service authenticates requests against Zitadel organizations. Multi-organization deployments configure
+mappings using the optional `ZITADEL_ORGANIZATION_MAPPINGS` environment variable, formatted as a JSON array of
+`{ ownerOrganizationId, customerOrganizationId? }` records:
+
+```dotenv
+ZITADEL_ORGANIZATION_MAPPINGS='[{"ownerOrganizationId":"<contentoren-org-id>","customerOrganizationId":"<contentoren-customers-org-id>"},{"ownerOrganizationId":"<fabian-org-id>","customerOrganizationId":"<fabian-customers-org-id>"},{"ownerOrganizationId":"<david-org-id>"}]'
+```
+
+Alternatively, a JSON object mapping owner organization IDs to customer organization IDs (or `null`) is accepted:
+
+```dotenv
+ZITADEL_ORGANIZATION_MAPPINGS='{"<contentoren-org-id>":"<contentoren-customers-org-id>","<fabian-org-id>":"<fabian-customers-org-id>","<david-org-id>":null}'
+```
+
+Each owner organization ID must be unique across mappings, and no organization may be configured as both owner and customer.
+When `customerOrganizationId` is omitted or null, the owner organization operates without a customer mapping (for example, David).
+
+For single-organization or legacy setups, the two variables `ZITADEL_ORGANIZATION_ID` (owner organization) and
+`ZITADEL_CUSTOMER_ORGANIZATION_ID` (customer organization) remain fully supported and default the mapping when
+`ZITADEL_ORGANIZATION_MAPPINGS` is omitted:
+
+```dotenv
+ZITADEL_ORGANIZATION_ID=<owner-org-id>
+ZITADEL_CUSTOMER_ORGANIZATION_ID=<customer-org-id>
+```
 
 For the Contentoren production deployment, the package scripts are the canonical command interface:
 

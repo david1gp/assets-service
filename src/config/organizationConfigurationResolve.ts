@@ -37,9 +37,7 @@ const organizationFind = (
   selector: string,
   configuration: GlobalOrganizationConfiguration,
 ): OrganizationDefinition | null => {
-  const named = Object.hasOwn(configuration.organizations, selector)
-    ? configuration.organizations[selector as keyof typeof configuration.organizations]
-    : undefined
+  const named = Object.hasOwn(configuration.organizations, selector) ? configuration.organizations[selector] : undefined
   if (named !== undefined) return named
   for (const organization of Object.values(configuration.organizations)) {
     if (organization.id === selector || organization.slug === selector) return organization

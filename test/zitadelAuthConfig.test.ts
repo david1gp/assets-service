@@ -63,3 +63,98 @@ test("reads the optional project provisioner subject ID when configured", () => 
   })
   expect(invalid.success).toBe(false)
 })
+
+test("defaults organizationMappings from ZITADEL_ORGANIZATION_ID and ZITADEL_CUSTOMER_ORGANIZATION_ID when omitted", () => {
+  const result = zitadelAuthConfigRead(environment)
+  expect(result.success).toBe(true)
+  if (!result.success) return
+  expect(result.data.organizationMappings).toEqual([
+    {
+      ownerOrganizationId: "org-contentoren",
+      customerOrganizationId: "org-contentoren-customers",
+    },
+  ])
+})
+
+test("reads multi-org mappings from ZITADEL_ORGANIZATION_MAPPINGS JSON array", () => {
+  const mappings = [
+    { ownerOrganizationId: "org-contentoren", customerOrganizationId: "org-contentoren-customers" },
+    { ownerOrganizationId: "org-fabian", customerOrganizationId: "org-fabian-customers" },
+    { ownerOrganizationId: "org-david" },
+  ]
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: JSON.stringify(mappings),
+  })
+  expect(result.success).toBe(true)
+  if (!result.success) return
+  expect(result.data.organizationMappings).toEqual(mappings)
+})
+
+test("reads multi-org mappings from ZITADEL_ORGANIZATION_MAPPINGS JSON object record", () => {
+  const mappingsRecord = {
+    "org-contentoren": "org-contentoren-customers",
+    "org-fabian": "org-fabian-customers",
+    "org-david": null,
+  }
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: JSON.stringify(mappingsRecord),
+  })
+  expect(result.success).toBe(true)
+  if (!result.success) return
+  expect(result.data.organizationMappings).toEqual([
+    { ownerOrganizationId: "org-contentoren", customerOrganizationId: "org-contentoren-customers" },
+    { ownerOrganizationId: "org-fabian", customerOrganizationId: "org-fabian-customers" },
+    { ownerOrganizationId: "org-david" },
+  ])
+})
+
+test("rejects invalid JSON in ZITADEL_ORGANIZATION_MAPPINGS", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: "{invalid",
+  })
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result.errorMessage).toContain("organization mappings JSON was invalid")
+})
+
+test("rejects duplicate owner in ZITADEL_ORGANIZATION_MAPPINGS", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: JSON.stringify([
+      { ownerOrganizationId: "org-1", customerOrganizationId: "org-c1" },
+      { ownerOrganizationId: "org-1", customerOrganizationId: "org-c2" },
+    ]),
+  })
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result.errorMessage).toContain("Duplicate owner organization")
+})
+
+test("rejects duplicate customer in ZITADEL_ORGANIZATION_MAPPINGS", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: JSON.stringify([
+      { ownerOrganizationId: "org-1", customerOrganizationId: "org-customer" },
+      { ownerOrganizationId: "org-2", customerOrganizationId: "org-customer" },
+    ]),
+  })
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result.errorMessage).toContain("Duplicate customer organization")
+})
+
+test("rejects organization configured as both owner and customer", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_ORGANIZATION_MAPPINGS: JSON.stringify([
+      { ownerOrganizationId: "org-shared", customerOrganizationId: "org-c1" },
+      { ownerOrganizationId: "org-2", customerOrganizationId: "org-shared" },
+    ]),
+  })
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result.errorMessage).toContain("cannot be both owner and customer")
+})

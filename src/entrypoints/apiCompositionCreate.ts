@@ -3,6 +3,7 @@ import { assetApiRepositoryCreate } from "../asset/assetApiRepositoryCreate.js"
 import { auditApiRepositoryCreate } from "../audit/auditApiRepositoryCreate.js"
 import { databasePkceStateStoreCreate } from "../authentication/databasePkceStateStoreCreate.js"
 import { databaseSessionStoreCreate } from "../authentication/databaseSessionStoreCreate.js"
+import { zitadelOrganizationContextCreate } from "../authentication/zitadelOrganizationContextCreate.js"
 import { backupApiRepositoryCreate } from "../backup/backupApiRepositoryCreate.js"
 import { catalogApiRepositoryCreate } from "../catalog/catalogApiRepositoryCreate.js"
 import { catalogPublicationServiceCreate } from "../catalog/catalogPublicationServiceCreate.js"
@@ -60,6 +61,14 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })
+  const organizationContext = zitadelOrganizationContextCreate(
+    config.zitadel.organizationMappings ?? [
+      {
+        ownerOrganizationId: config.zitadel.organizationId,
+        customerOrganizationId: config.zitadel.customerOrganizationId,
+      },
+    ],
+  )
   const serviceBearer =
     config.zitadel.serviceAccountClientId || config.zitadel.projectProvisionerSubjectId
       ? {
@@ -68,6 +77,9 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
           jwksClient,
           discoveryRead: oidcClient.discoveryRead,
           organizationId: config.zitadel.organizationId,
+          allowedOrganizationIds: organizationContext.ownerOrganizationIds,
+          ownerOrganizationIds: organizationContext.ownerOrganizationIds,
+          customerOrganizationIds: organizationContext.customerOrganizationIds,
           serviceAccountClientId: config.zitadel.serviceAccountClientId,
           defaultProjectId: config.zitadel.projectId,
           now: undefined,

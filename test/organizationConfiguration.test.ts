@@ -359,3 +359,93 @@ test("default env selection does not search an ancestor and explicit files are r
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test("organization configuration resolves generalized aliases including fabian and fabian-customers", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-org-fabian-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-org-fabian-root-"))
+  try {
+    const multiOrgConfig = {
+      organizations: {
+        david: { id: "org-david", name: "David", slug: "david" },
+        contentoren: { id: "org-contentoren", name: "Contentoren", slug: "contentoren" },
+        fabian: { id: "org-fabian", name: "Fabian", slug: "fabian" },
+        "fabian-customers": {
+          id: "org-fabian-customers",
+          name: "Fabian Customers",
+          slug: "fabian-customers",
+        },
+      },
+      directoryMappings: {
+        "~/personal": "david",
+        "~/leo": "contentoren",
+        "~/fabian": "fabian",
+        "~/fabian/customers": "fabian-customers",
+      },
+    }
+    await globalConfigurationWrite(homeDirectory, multiOrgConfig)
+
+    for (const selector of ["fabian", "org-fabian"]) {
+      const result = await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: root },
+        organization: selector,
+      })
+      expect(result).toEqual({
+        success: true,
+        data: { organization: multiOrgConfig.organizations.fabian, source: "option" },
+      })
+    }
+
+    for (const selector of ["fabian-customers", "org-fabian-customers"]) {
+      const result = await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: root },
+        organization: selector,
+      })
+      expect(result).toEqual({
+        success: true,
+        data: { organization: multiOrgConfig.organizations["fabian-customers"], source: "option" },
+      })
+    }
+
+    const envFile = join(root, "fabian.env")
+    await writeFile(envFile, "ASSETS_ORGANIZATION=fabian\n")
+    expect(
+      await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: root },
+        envFile,
+      }),
+    ).toEqual({
+      success: true,
+      data: { organization: multiOrgConfig.organizations.fabian, source: "env-file" },
+    })
+
+    expect(
+      await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: root, ASSETS_ORGANIZATION: "fabian-customers" },
+      }),
+    ).toEqual({
+      success: true,
+      data: { organization: multiOrgConfig.organizations["fabian-customers"], source: "process-environment" },
+    })
+
+    expect(
+      await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: join(homeDirectory, "fabian", "my-project") },
+      }),
+    ).toEqual({
+      success: true,
+      data: { organization: multiOrgConfig.organizations.fabian, source: "directory-mapping" },
+    })
+
+    expect(
+      await organizationConfigurationResolve({
+        env: { HOME: homeDirectory, PWD: join(homeDirectory, "fabian", "customers", "client-1") },
+      }),
+    ).toEqual({
+      success: true,
+      data: { organization: multiOrgConfig.organizations["fabian-customers"], source: "directory-mapping" },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})

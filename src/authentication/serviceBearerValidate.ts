@@ -19,6 +19,7 @@ export const serviceBearerValidate = async (
     return servicePatPrincipalValidate(token, {
       issuer: options.issuer,
       organizationId: options.organizationId,
+      allowedOrganizationIds: options.allowedOrganizationIds,
       projectId: options.projectId,
       fetcher: options.patFetcher,
       now: options.now,
@@ -33,6 +34,9 @@ export const serviceBearerValidate = async (
     jwksClient: options.jwksClient,
     discoveryRead: options.discoveryRead,
     organizationId: options.organizationId,
+    allowedOrganizationIds: options.allowedOrganizationIds,
+    ownerOrganizationIds: options.ownerOrganizationIds,
+    customerOrganizationIds: options.customerOrganizationIds,
     defaultProjectId: options.defaultProjectId,
     requiredClientId: options.serviceAccountClientId ?? "",
     requiredProjectId: options.projectId,

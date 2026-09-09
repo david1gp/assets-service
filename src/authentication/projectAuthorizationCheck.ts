@@ -4,10 +4,12 @@ import type { Result } from "../schemas/resultSchema.js"
 import type { AuthenticatedPrincipal } from "./authenticatedPrincipalSchema.js"
 import type { AuthenticationRole } from "./authenticationRoleSchema.js"
 import type { AuthenticationMethod } from "./authenticationMethodSchema.js"
+import type { ZitadelOrganizationMapping } from "./zitadelOrganizationMappingSchema.js"
 
 type ProjectAuthorizationScope = {
   organizationId?: string
   customerOrganizationId?: string
+  organizationMappings?: readonly ZitadelOrganizationMapping[]
 }
 
 export const projectAuthorizationCheck = (
@@ -21,13 +23,30 @@ export const projectAuthorizationCheck = (
   const op = "projectAuthorizationCheck"
   if (requiredMethod !== undefined && principal.method !== requiredMethod)
     return resultErrorCreate(op, "The authentication method was not allowed for this route")
-  const ownerOrganizationId = scope.organizationId ?? binding.organizationId
-  if (binding.organizationId !== ownerOrganizationId) return resultErrorCreate(op, "The organization grant was invalid")
-  const isOwner = principal.organizationId === ownerOrganizationId
-  const isCustomer =
-    principal.method === "human_session" &&
-    scope.customerOrganizationId !== undefined &&
-    principal.organizationId === scope.customerOrganizationId
+
+  let isOwner: boolean
+  let isCustomer: boolean
+  if (scope.organizationMappings && scope.organizationMappings.length > 0) {
+    const mapping = scope.organizationMappings.find(
+      (candidate) => candidate.ownerOrganizationId === binding.organizationId,
+    )
+    if (!mapping) return resultErrorCreate(op, "The organization grant was invalid")
+    isOwner = principal.organizationId === binding.organizationId
+    isCustomer =
+      principal.method === "human_session" &&
+      Boolean(mapping.customerOrganizationId) &&
+      principal.organizationId === mapping.customerOrganizationId
+  } else {
+    const ownerOrganizationId = scope.organizationId ?? binding.organizationId
+    if (binding.organizationId !== ownerOrganizationId)
+      return resultErrorCreate(op, "The organization grant was invalid")
+    isOwner = principal.organizationId === ownerOrganizationId
+    isCustomer =
+      principal.method === "human_session" &&
+      scope.customerOrganizationId !== undefined &&
+      principal.organizationId === scope.customerOrganizationId
+  }
+
   if (!isOwner && !isCustomer) return resultErrorCreate(op, "The organization grant was invalid")
   if (binding.serviceProjectId !== serviceProjectId)
     return resultErrorCreate(op, "The service project binding was invalid")

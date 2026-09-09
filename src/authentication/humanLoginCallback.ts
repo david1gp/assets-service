@@ -15,6 +15,7 @@ import { sessionCookieCreate } from "./sessionCookieCreate.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { SessionStore } from "./sessionStore.js"
 import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
+import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
 type HumanLoginCallbackOptions = {
   config: ZitadelAuthConfig
@@ -111,6 +112,14 @@ export const humanLoginCallback = async (
     verifiedIdTokenPayload = idToken.data.payload
   }
 
+  const organizationContext = zitadelOrganizationContextCreate(
+    options.config.organizationMappings ?? [
+      {
+        ownerOrganizationId: options.config.organizationId,
+        customerOrganizationId: options.config.customerOrganizationId,
+      },
+    ],
+  )
   const principal = await jwtPrincipalValidate(token.data.access_token, {
     issuer: options.config.issuer,
     audience: options.config.audience,
@@ -118,7 +127,9 @@ export const humanLoginCallback = async (
     jwksClient: options.jwksClient,
     organizationId: options.config.organizationId,
     customerOrganizationId: options.config.customerOrganizationId,
-    allowedOrganizationIds: [options.config.organizationId, options.config.customerOrganizationId],
+    ownerOrganizationIds: organizationContext.ownerOrganizationIds,
+    customerOrganizationIds: organizationContext.customerOrganizationIds,
+    allowedOrganizationIds: organizationContext.allowedOrganizationIds,
     defaultProjectId: options.config.projectId,
     method: "human_session",
     now: options.now,
@@ -133,10 +144,9 @@ export const humanLoginCallback = async (
     displayName = oidcIdTokenDisplayNameExtract(verifiedIdTokenPayload)
   }
 
-  const isContentorenOrganization = principal.data.organizationId === options.config.organizationId
-  const isCustomerOrganization = principal.data.organizationId === options.config.customerOrganizationId
-  if (!isContentorenOrganization && !isCustomerOrganization)
-    return resultErrorCreate(op, "The JWT organization was invalid")
+  const isOwnerOrganization = organizationContext.isOwner(principal.data.organizationId)
+  const isCustomerOrganization = organizationContext.isCustomer(principal.data.organizationId)
+  if (!isOwnerOrganization && !isCustomerOrganization) return resultErrorCreate(op, "The JWT organization was invalid")
 
   if (isCustomerOrganization) {
     const membership = await options.oidcClient.organizationMembershipRead(
@@ -162,7 +172,7 @@ export const humanLoginCallback = async (
   if (isCustomerOrganization && grants.length === 0) {
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   }
-  const isOrganizationAdmin = isContentorenOrganization
+  const isOrganizationAdmin = isOwnerOrganization
   const sessionPolicyVersion = options.sessionStore.sessionPolicyVersionRead()
   if (!sessionPolicyVersion.success) return sessionPolicyVersion
 
@@ -172,7 +182,7 @@ export const humanLoginCallback = async (
     principal: {
       ...principal.data,
       ...(displayName === undefined ? {} : { displayName }),
-      mode: isContentorenOrganization ? "admin" : "contributor",
+      mode: isOwnerOrganization ? "admin" : "contributor",
       grants,
       organizationAdmin: isOrganizationAdmin,
       expiresAt,

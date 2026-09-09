@@ -16,6 +16,8 @@ type JwtPrincipalValidateOptions = {
   jwksClient: ZitadelJwksClient
   organizationId: string
   customerOrganizationId?: string
+  ownerOrganizationIds?: readonly string[]
+  customerOrganizationIds?: readonly string[]
   defaultProjectId?: string
   requiredClientId?: string
   requiredProjectId?: string
@@ -184,51 +186,59 @@ export const jwtPrincipalValidate = async (
       })
     }
     // ZITADEL's resourceowner:id claim identifies the user's organization; context aliases alone do not establish
-    // Contentoren membership.
+    // owner organization membership.
+    const ownerOrganizationIds = options.ownerOrganizationIds ?? [options.organizationId]
     if (
-      claimedOrganization === options.organizationId &&
-      stringRead(claims["urn:zitadel:iam:user:resourceowner:id"]) !== options.organizationId
+      ownerOrganizationIds.includes(claimedOrganization) &&
+      stringRead(claims["urn:zitadel:iam:user:resourceowner:id"]) !== claimedOrganization
     ) {
       return resultErrorCreate(op, "The JWT organization was invalid", {
         foundOrganizationId: presentOrganizationClaimValues,
-        expectedOrganizationId: options.organizationId,
+        expectedOrganizationId: claimedOrganization,
         claims,
       })
     }
     claimedOrganizationId = claimedOrganization
   } else {
+    const allowedOrganizationIds = options.allowedOrganizationIds ?? [options.organizationId]
     if (
       hasOrganizationClaim &&
-      presentOrganizationClaimValues.some((value) => stringRead(value) !== options.organizationId)
+      presentOrganizationClaimValues.some((value) => {
+        const parsed = stringRead(value)
+        return parsed === null || !allowedOrganizationIds.includes(parsed)
+      })
     )
       return resultErrorCreate(op, "The JWT organization was invalid", {
         foundOrganizationId: presentOrganizationClaimValues,
-        expectedOrganizationId: options.organizationId,
+        expectedOrganizationId: allowedOrganizationIds,
         claims,
       })
-    const orgClaim = hasOrganizationClaim ? options.organizationId : null
+    const claimedOrg = hasOrganizationClaim
+      ? (presentOrganizationClaimValues
+          .map(stringRead)
+          .find((value): value is string => value !== null && allowedOrganizationIds.includes(value)) ?? null)
+      : null
     claimedOrganizationId =
-      orgClaim ?? (roleOrgs.includes(options.organizationId) ? options.organizationId : roleOrgs[0]) ?? null
-    if (claimedOrganizationId === null)
+      claimedOrg ??
+      roleOrgs.find((org) => allowedOrganizationIds.includes(org)) ??
+      (roleOrgs.length === 0 && allowedOrganizationIds.length === 1 ? allowedOrganizationIds[0] : null) ??
+      null
+    if (claimedOrganizationId === null || !allowedOrganizationIds.includes(claimedOrganizationId))
       return resultErrorCreate(op, "The JWT organization was invalid", {
         foundOrganizationId: claimedOrganizationId,
-        expectedOrganizationId: options.organizationId,
-        claims,
-      })
-    if (claimedOrganizationId !== null && claimedOrganizationId !== options.organizationId)
-      return resultErrorCreate(op, "The JWT organization was invalid", {
-        foundOrganizationId: claimedOrganizationId,
-        expectedOrganizationId: options.organizationId,
+        expectedOrganizationId: allowedOrganizationIds,
         claims,
       })
   }
   const organizationId = claimedOrganizationId ?? options.organizationId
-  const mode =
-    organizationId === options.organizationId
-      ? "admin"
-      : organizationId === options.customerOrganizationId
-        ? "contributor"
-        : null
+  const ownerOrganizationIds = options.ownerOrganizationIds ?? [options.organizationId]
+  const customerOrganizationIds =
+    options.customerOrganizationIds ?? (options.customerOrganizationId ? [options.customerOrganizationId] : [])
+  const mode = ownerOrganizationIds.includes(organizationId)
+    ? "admin"
+    : customerOrganizationIds.includes(organizationId)
+      ? "contributor"
+      : null
   if (mode === null) return resultErrorCreate(op, "The JWT organization was invalid")
   const grants = [...projectGrantsRead(claims, organizationId, options.defaultProjectId)].map(([projectId, roles]) => ({
     projectId,

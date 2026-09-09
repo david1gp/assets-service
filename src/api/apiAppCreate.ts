@@ -23,6 +23,7 @@ import { pkceLoginRequestSchema } from "../authentication/pkceLoginRequestSchema
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
 import { sessionCookieCreate } from "../authentication/sessionCookieCreate.js"
 import { sessionCookieRead } from "../authentication/sessionCookieRead.js"
+import { zitadelOrganizationContextCreate } from "../authentication/zitadelOrganizationContextCreate.js"
 import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
@@ -264,12 +265,14 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     requiredRole: "contributor",
     organizationId: options.authentication.config.organizationId,
     customerOrganizationId: options.authentication.config.customerOrganizationId,
+    organizationMappings: options.authentication.config.organizationMappings,
   })
   const adminMiddleware = apiProjectRoleMiddlewareCreate({
     projectRepository: options.projectRepository,
     requiredRole: "admin",
     organizationId: options.authentication.config.organizationId,
     customerOrganizationId: options.authentication.config.customerOrganizationId,
+    organizationMappings: options.authentication.config.organizationMappings,
   })
 
   const metadataUnsetHandle = (
@@ -452,20 +455,29 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       })
     const parsedQuery = v.safeParse(projectListQuerySchema, queryObjectRead(context.req.raw))
     if (!parsedQuery.success) return validationFailureCreate(context, "The project list query was invalid")
+    const orgContext = zitadelOrganizationContextCreate(
+      options.authentication.config.organizationMappings ?? [
+        {
+          ownerOrganizationId: options.authentication.config.organizationId,
+          customerOrganizationId: options.authentication.config.customerOrganizationId,
+        },
+      ],
+    )
     const isCustomer =
       authentication.principal.method === "human_session" &&
-      authentication.principal.organizationId === options.authentication.config.customerOrganizationId
+      orgContext.isCustomer(authentication.principal.organizationId)
     const zitadelProjectIds = isCustomer
       ? authentication.principal.grants
           .filter((grant) => grant.roles.includes("contributor"))
           .map((grant) => grant.projectId)
       : authentication.principal.grants.map((grant) => grant.projectId)
     const projectOrganizationId = isCustomer
-      ? options.authentication.config.organizationId
+      ? (orgContext.ownerForCustomerRead(authentication.principal.organizationId) ??
+        authentication.principal.organizationId)
       : authentication.principal.organizationId
     const organizationAdmin =
       authentication.principal.method === "human_session" &&
-      authentication.principal.organizationId === options.authentication.config.organizationId &&
+      orgContext.isOwner(authentication.principal.organizationId) &&
       authentication.principal.organizationAdmin
     const projects = options.projectRepository.projectsRead(projectOrganizationId, zitadelProjectIds, organizationAdmin)
     if (!projects.success) return failureFromRepositoryCreate(context)

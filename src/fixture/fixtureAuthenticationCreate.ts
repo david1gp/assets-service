@@ -20,6 +20,7 @@ const configCreate = (origin: string): ZitadelAuthConfig => ({
   audience: "assets-api-fixture",
   organizationId: "org-fixture",
   customerOrganizationId: "org-fixture-customers",
+  organizationMappings: [{ ownerOrganizationId: "org-fixture", customerOrganizationId: "org-fixture-customers" }],
   projectId: "zitadel-fixture",
   sessionCookieName: "assets_session",
   stateCookieName: "assets_state",

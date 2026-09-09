@@ -1,10 +1,19 @@
 import * as v from "valibot"
 
 import { type ZitadelAuthConfig, zitadelAuthConfigSchema } from "../authentication/zitadelAuthConfigSchema.js"
+import type { ZitadelOrganizationMapping } from "../authentication/zitadelOrganizationMappingSchema.js"
+import { zitadelOrganizationMappingsParse } from "./zitadelOrganizationMappingsParse.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 
 export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.env): Result<ZitadelAuthConfig> => {
+  let organizationMappings: readonly ZitadelOrganizationMapping[] | undefined
+  if (environment.ZITADEL_ORGANIZATION_MAPPINGS) {
+    const parsedMappings = zitadelOrganizationMappingsParse(environment.ZITADEL_ORGANIZATION_MAPPINGS)
+    if (!parsedMappings.success)
+      return resultErrorCreate("zitadelAuthConfigRead", parsedMappings.errorMessage, parsedMappings.rawData)
+    organizationMappings = parsedMappings.data
+  }
   const parsed = v.safeParse(zitadelAuthConfigSchema, {
     issuer: environment.ZITADEL_ISSUER,
     clientId: environment.ZITADEL_CLIENT_ID,
@@ -18,6 +27,7 @@ export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.e
     audience: environment.ZITADEL_AUDIENCE,
     organizationId: environment.ZITADEL_ORGANIZATION_ID,
     customerOrganizationId: environment.ZITADEL_CUSTOMER_ORGANIZATION_ID,
+    ...(organizationMappings !== undefined ? { organizationMappings: [...organizationMappings] } : {}),
     projectId: environment.ZITADEL_PROJECT_ID,
     sessionCookieName: environment.ASSETS_SESSION_COOKIE_NAME ?? "assets_session",
     stateCookieName: environment.ASSETS_STATE_COOKIE_NAME ?? "assets_state",

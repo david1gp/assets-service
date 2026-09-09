@@ -49,7 +49,8 @@ export const servicePatPrincipalValidate = async (
   if (!userBody.success) return userBody
   const user = v.safeParse(servicePatUserResponseSchema, userBody.data)
   if (!user.success) return resultErrorCreate(op, "The Zitadel user response was invalid")
-  if (user.output.user.details.resourceOwner !== options.organizationId)
+  const allowedOrganizationIds = options.allowedOrganizationIds ?? [options.organizationId]
+  if (!allowedOrganizationIds.includes(user.output.user.details.resourceOwner))
     return resultErrorCreate(op, "The JWT organization was invalid")
 
   let grantsResponse: Response
@@ -76,7 +77,7 @@ export const servicePatPrincipalValidate = async (
   const grants = []
   for (const grant of grantsParsed.output.result ?? []) {
     if (grant.state !== undefined && grant.state !== "USER_GRANT_STATE_ACTIVE") continue
-    if (grant.orgId !== undefined && grant.orgId !== options.organizationId) continue
+    if (grant.orgId !== undefined && !allowedOrganizationIds.includes(grant.orgId)) continue
     const roleKeys = [...(grant.roleKeys ?? []), ...(grant.roles ?? [])]
     const mappedRoleKeys = roleKeys.map((role) => {
       if (role === "assets.uploader") return "contributor"
@@ -94,7 +95,7 @@ export const servicePatPrincipalValidate = async (
   const isProjectProvisioner =
     Boolean(options.projectProvisionerSubjectId) &&
     user.output.user.id === options.projectProvisionerSubjectId &&
-    user.output.user.details.resourceOwner === options.organizationId
+    allowedOrganizationIds.includes(user.output.user.details.resourceOwner)
   if (!isProjectProvisioner && grants.length === 0)
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   if (options.projectId !== undefined && !grants.some((grant) => grant.projectId === options.projectId))
