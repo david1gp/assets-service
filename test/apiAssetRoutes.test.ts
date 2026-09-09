@@ -22,6 +22,7 @@ let lastUploaderId: string | undefined
 let lastNotificationEligible: boolean | undefined
 let lastUploadAssetId: string | undefined
 let lastReprocessEnvironmentId: string | undefined
+let lastIntegrationNoteSet: { projectId: string; assetId: string; integrationNote: string } | undefined
 const project = {
   id: "project-1",
   organizationId: "org-1",
@@ -165,6 +166,10 @@ const assetRepositoryCreate = (): AssetApiRepository => ({
   assetOutputRemove: () => ({ success: true, data: { asset: detail, workflowId: "workflow-output-1" } }),
   assetOutputsSet: () => ({ success: true, data: { asset: detail, workflowId: "workflow-output-1" } }),
   assetMetadataSet: () => ({ success: true, data: { asset: detail } }),
+  assetIntegrationNoteSet: (projectId, assetId, integrationNote) => {
+    lastIntegrationNoteSet = { projectId, assetId, integrationNote }
+    return { success: true, data: { asset: { ...detail, integrationNote } } }
+  },
   assetMetadataUnset: () => ({ success: true, data: { asset: detail } }),
   assetReprocess: (_projectId, _assetId, input) => {
     lastReprocessEnvironmentId = input.environmentId
@@ -219,6 +224,7 @@ const optionsCreate = (sessionId = "session-1"): ApiAppOptions => {
   lastNotificationEligible = undefined
   lastUploadAssetId = undefined
   lastReprocessEnvironmentId = undefined
+  lastIntegrationNoteSet = undefined
   const sessionStore = memorySessionStoreCreate({ sessionIdCreate: () => sessionId })
   const stateStore = memoryPkceStateStoreCreate({ now: () => now * 1000 })
   const authenticationConfig = {
@@ -627,6 +633,43 @@ describe("asset API routes", () => {
       deletionId: "deletion-1",
       workflowId: "workflow-deletion-1",
       status: "requested",
+    })
+  })
+
+  test("allows contributors and administrators to update project-scoped integration notes", async () => {
+    const contributorOptions = optionsCreate("integration-note-contributor")
+    const contributorApp = apiAppCreate(contributorOptions)
+    const contributor = await sessionCookieRead(contributorOptions, "contributor")
+    const contributorResponse = await contributorApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/integration-note", contributor, {
+        method: "PATCH",
+        body: JSON.stringify({ integrationNote: "Contributor note" }),
+      }),
+    )
+    const wrongProject = await contributorApp.fetch(
+      requestCreate("/api/v1/projects/other-project/assets/asset-1/integration-note", contributor, {
+        method: "PATCH",
+        body: JSON.stringify({ integrationNote: "Should not update" }),
+      }),
+    )
+
+    const adminOptions = optionsCreate("integration-note-admin")
+    const adminApp = apiAppCreate(adminOptions)
+    const admin = await sessionCookieRead(adminOptions, "admin")
+    const adminResponse = await adminApp.fetch(
+      requestCreate("/api/v1/projects/project-service/assets/asset-1/integration-note", admin, {
+        method: "PATCH",
+        body: JSON.stringify({ integrationNote: "Admin note" }),
+      }),
+    )
+
+    expect(contributorResponse.status).toBe(200)
+    expect(wrongProject.status).toBe(404)
+    expect(adminResponse.status).toBe(200)
+    expect(lastIntegrationNoteSet).toEqual({
+      projectId: "project-1",
+      assetId: "asset-1",
+      integrationNote: "Admin note",
     })
   })
 

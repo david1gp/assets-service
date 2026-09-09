@@ -42,6 +42,7 @@ import { catalogResponseSchema } from "./catalogResponseSchema.js"
 import { deletionRequestResponseSchema } from "./deletionRequestResponseSchema.js"
 import { deletionStatusResponseSchema } from "./deletionStatusResponseSchema.js"
 import { generatedListsResponseSchema } from "./generatedListsResponseSchema.js"
+import { integrationNoteSetRequestSchema } from "./integrationNoteSetRequestSchema.js"
 import { jobActionRequestSchema } from "./jobActionRequestSchema.js"
 import { jobListResponseSchema } from "./jobListResponseSchema.js"
 import { jobResponseSchema } from "./jobResponseSchema.js"
@@ -663,6 +664,16 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientAssetMetadataSet",
     })
 
+  const assetIntegrationNoteSet = (projectId: string, assetId: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/integration-note`,
+      method: "PATCH",
+      body: input,
+      bodySchema: integrationNoteSetRequestSchema,
+      responseSchema: assetDetailResponseSchema,
+      operation: "assetsApiClientAssetIntegrationNoteSet",
+    })
+
   const assetMetadataUnset = (projectId: string, assetId: string, input: unknown = { field: "alt" }) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/metadata/unset`,
@@ -1036,6 +1047,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     assetOutputsSet,
     assetOutputRemove,
     assetMetadataSet,
+    assetIntegrationNoteSet,
     assetMetadataUnset,
     assetMove,
     assetReprocess,

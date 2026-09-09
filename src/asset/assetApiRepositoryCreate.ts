@@ -467,6 +467,26 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
   const assetMetadataSet = (projectId: string, assetId: string, alt: string): Result<AssetApiMutation | null> =>
     assetMetadataChange(projectId, assetId, alt)
 
+  const assetIntegrationNoteSet = (
+    projectId: string,
+    assetId: string,
+    integrationNote: string,
+  ): Result<AssetApiMutation | null> => {
+    const op = "assetApiRepositoryIntegrationNoteSet"
+    try {
+      const updated = db
+        .update(assetTable)
+        .set({ integrationNote, updatedAt: new Date().toISOString() })
+        .where(and(eq(assetTable.projectId, projectId), eq(assetTable.id, assetId)))
+        .returning()
+        .get()
+      if (updated === undefined) return { success: true, data: null }
+      return assetMutationRead(projectId, assetId)
+    } catch (error) {
+      return resultErrorCreate(op, "The asset integration note could not be updated", error)
+    }
+  }
+
   const assetMetadataUnset = (projectId: string, assetId: string, field: "alt"): Result<AssetApiMutation | null> => {
     if (field !== "alt") return resultErrorCreate("assetApiRepositoryMetadataUnset", "The metadata field was invalid")
     return assetMetadataChange(projectId, assetId, null)
@@ -594,6 +614,7 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
     assetOutputsRead,
     assetOutputsSet,
     assetMetadataSet,
+    assetIntegrationNoteSet,
     assetMetadataUnset,
     assetReprocess,
     assetMove,

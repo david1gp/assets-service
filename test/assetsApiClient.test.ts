@@ -466,6 +466,45 @@ test("assets API client reprocesses an asset into an explicit environment", asyn
   expect(await request?.clone().json()).toEqual({ environmentId: "environment-production" })
 })
 
+test("assets API client updates an asset integration note", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken: "contributor-token",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({
+        id: "asset-1",
+        projectId: "project-1",
+        class: "image",
+        folders: [],
+        filename: "hero.jpg",
+        basename: "hero",
+        currentSourceRevisionId: "source-1",
+        integrationNote: "Usage note",
+        sourcePath: "hero.jpg",
+        sourceHistory: [],
+        outputHistory: [],
+        metadata: null,
+        createdAt: "2026-08-17T00:00:00.000Z",
+        updatedAt: "2026-08-17T00:00:00.000Z",
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const updated = await clientResult.data.assetIntegrationNoteSet("project-1", "asset-1", {
+    integrationNote: "Usage note",
+  })
+
+  expect(updated).toMatchObject({ success: true, data: { integrationNote: "Usage note" } })
+  expect(request?.method).toBe("PATCH")
+  expect(request?.url).toBe("https://assets.example.test/api/v1/projects/project-1/assets/asset-1/integration-note")
+  expect(request?.headers.get("authorization")).toBe("Bearer contributor-token")
+  expect(await request?.clone().json()).toEqual({ integrationNote: "Usage note" })
+})
+
 test("assets API client filters and validates storage migration workflows without asset ids", async () => {
   let request: Request | undefined
   const clientResult = assetsApiClientCreate({

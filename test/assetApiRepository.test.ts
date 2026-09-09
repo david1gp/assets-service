@@ -320,6 +320,31 @@ describe("asset API persistence", () => {
     }
   })
 
+  test("updates an absent integration note only within the asset project", () => {
+    const connection = databaseCreate()
+    try {
+      connection.db.update(assetTable).set({ integrationNote: null }).where(eq(assetTable.id, "asset-1")).run()
+      const repository = assetApiRepositoryCreate(connection.db)
+      const before = repository.assetRead("project-1", "asset-1")
+      if (!before.success || before.data === null) throw new Error("The test asset was not readable")
+
+      const updated = repository.assetIntegrationNoteSet("project-1", "asset-1", "Usage note")
+      expect(updated).toMatchObject({ success: true, data: { asset: { integrationNote: "Usage note" } } })
+      expect(updated.success && updated.data?.asset.updatedAt).not.toBe(before.data.updatedAt)
+      expect(connection.db.select().from(assetTable).get()?.integrationNote).toBe("Usage note")
+      expect(repository.assetIntegrationNoteSet("other-project", "asset-1", "Wrong project")).toEqual({
+        success: true,
+        data: null,
+      })
+      expect(repository.assetIntegrationNoteSet("project-1", "missing", "Missing asset")).toEqual({
+        success: true,
+        data: null,
+      })
+    } finally {
+      databaseClose(connection)
+    }
+  })
+
   test("reprocesses an existing asset into its requested environment without changing its source revision", () => {
     const connection = databaseCreate()
     try {

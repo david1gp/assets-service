@@ -3,6 +3,7 @@ import * as v from "valibot"
 import { assetReprocessRequestSchema } from "../api-client/assetReprocessRequestSchema.js"
 import { assetListQuerySchema } from "../api-client/assetListQuerySchema.js"
 import { deleteAssetRequestSchema } from "../api-client/deleteAssetRequestSchema.js"
+import { integrationNoteSetRequestSchema } from "../api-client/integrationNoteSetRequestSchema.js"
 import { metadataSetRequestSchema } from "../api-client/metadataSetRequestSchema.js"
 import { metadataUnsetRequestSchema } from "../api-client/metadataUnsetRequestSchema.js"
 import { moveAssetRequestSchema } from "../api-client/moveAssetRequestSchema.js"
@@ -229,6 +230,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/outputs$/, methods: ["GET", "POST", "PUT", "DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/outputs\/[^/]+$/, methods: ["DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata$/, methods: ["PATCH", "DELETE"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/integration-note$/, methods: ["PATCH"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/[^/]+$/, methods: ["DELETE"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/metadata\/unset$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/assets\/[^/]+\/move$/, methods: ["POST"] },
@@ -1301,6 +1303,30 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       if (!mutation.success) return domainFailureResponseCreate(context, mutation.errorMessage)
       if (mutation.data === null) return assetNotFoundResponseCreate(context)
       return outputMutationResponseCreate(context, mutation.data)
+    },
+  )
+
+  app.patch(
+    `${apiVersionPath}/projects/:projectId/assets/:assetId/integration-note`,
+    authenticationMiddleware,
+    uploaderMiddleware,
+    async (context) => {
+      if (options.assetApiRepository === undefined) return dependencyFailureCreate(context)
+      const assetId = v.safeParse(idSchema, context.req.param("assetId"))
+      if (!assetId.success) return validationFailureCreate(context, "The asset identifier was invalid")
+      const body = await requestBodyRead(context.req.raw)
+      const parsed = v.safeParse(integrationNoteSetRequestSchema, body)
+      if (!parsed.success) return validationFailureCreate(context, "The integration note update was invalid")
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const mutation = options.assetApiRepository.assetIntegrationNoteSet(
+        project.id,
+        assetId.output,
+        parsed.output.integrationNote,
+      )
+      if (!mutation.success) return domainFailureResponseCreate(context, mutation.errorMessage)
+      if (mutation.data === null) return assetNotFoundResponseCreate(context)
+      return successResponseCreate(context, mutation.data.asset)
     },
   )
 
