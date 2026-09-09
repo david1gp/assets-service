@@ -12,12 +12,19 @@ export type UiLinkButtonProps = ButtonCvaProps & {
   icon?: string
   class?: string
   children: JSXElement
+  title?: string
+  "aria-label"?: string
 }
 
 /** Button-styled internal router link for this SPA. */
 export function UiLinkButton(p: UiLinkButtonProps) {
   return (
-    <A href={p.href} class={buttonCva2(p.variant, p.size, classesButtonClickAnimation, p.class)}>
+    <A
+      href={p.href}
+      title={p.title}
+      aria-label={p["aria-label"]}
+      class={buttonCva2(p.variant, p.size, classesButtonClickAnimation, p.class)}
+    >
       <Show when={p.icon}>
         <Icon path={p.icon ?? ""} class={buttonIconCva(p.variant, "mr-2")} />
       </Show>

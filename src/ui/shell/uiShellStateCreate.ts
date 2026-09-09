@@ -2,6 +2,7 @@ import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { createMemo, onCleanup, onMount } from "solid-js"
 import * as v from "valibot"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import { assetDetailResponseSchema, type AssetDetailResponse } from "../../api-client/assetDetailResponseSchema.js"
 import { type Project, projectSchema } from "../../project/projectSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
@@ -15,6 +16,8 @@ import { uiSessionLogout } from "../session/uiSessionLogout.js"
 import { uiSessionRefresh } from "../session/uiSessionRefresh.js"
 import { uiSessionStore } from "../session/uiSessionStore.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
+import { uiAssetIdFromPathnameRead } from "./uiAssetIdFromPathnameRead.js"
+import { uiBreadcrumbPageRead } from "./uiBreadcrumbPageRead.js"
 import { uiNavigationActiveCheck } from "./uiNavigationActiveCheck.js"
 import { uiNavigationLinksRead } from "./uiNavigationLinksRead.js"
 import { uiProjectIdFromPathnameRead } from "./uiProjectIdFromPathnameRead.js"
@@ -64,6 +67,36 @@ export const uiShellStateCreate = () => {
   const isCurrent = (href: string) => uiNavigationActiveCheck(location.pathname, href)
   const isKnownRoute = createMemo(() => uiRouteIsKnown(location.pathname))
 
+  const assetId = createMemo(() => uiAssetIdFromPathnameRead(location.pathname) ?? "")
+  const assetQuery = uiQueryCreate<AssetDetailResponse | null>(
+    async () => {
+      const pid = projectId()
+      const aid = assetId()
+      if (pid === "" || aid === "") return { success: true, data: null }
+      if (session().status !== "authenticated") return { success: true, data: null }
+
+      const client = uiApiClientRead()
+      if (!client.success) return resultErrorCreate("uiShellAssetRead", client.errorMessage)
+      if (typeof client.data.assetRead !== "function") return { success: true, data: null }
+      return client.data.assetRead(pid, aid)
+    },
+    {
+      cacheKey: () =>
+        projectId() === "" || assetId() === ""
+          ? undefined
+          : uiQueryCacheKeyCreate("asset", `${projectId()}:${assetId()}`),
+      cacheSchema: v.nullable(assetDetailResponseSchema),
+    },
+  )
+  const projectPath = createMemo(() =>
+    projectId() === ""
+      ? ""
+      : routeMode() === "contributor"
+        ? uiPaths.contributor.project(projectId())
+        : uiPaths.admin.project(projectId()),
+  )
+  const breadcrumbPage = createMemo(() => uiBreadcrumbPageRead(location.pathname, assetQuery.data()?.filename))
+
   const logout = async () => {
     loggingOut.set(true)
     const result = await uiSessionLogout()
@@ -88,6 +121,9 @@ export const uiShellStateCreate = () => {
     accountId,
     accountLabel: () => accountName() || accountId(),
     projectLabel: () => projectName() || projectId(),
+    projectPath,
+    breadcrumbPage,
+    assetQuery,
     routeMode,
     canSwitchView: () => projectId() !== "" && session().principal?.mode === "admin",
     adminViewPath: () => uiPaths.admin.project(projectId()),

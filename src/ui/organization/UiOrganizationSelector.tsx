@@ -16,16 +16,16 @@ export function UiOrganizationSelector() {
         when={state.showSelector()}
         fallback={
           <Show when={state.showLabel()}>
-            <div class="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs dark:border-slate-800 dark:bg-slate-800/60">
-              <Icon path={mdiDomain} class="size-3.5 text-muted-foreground" />
+            <div class="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-sm dark:border-slate-800 dark:bg-slate-800/60">
+              <Icon path={mdiDomain} class="size-4 text-muted-foreground" />
               <span class="truncate font-medium max-w-[140px]">{state.currentOrganizationName()}</span>
             </div>
           </Show>
         }
       >
-        <div class="relative inline-flex items-center text-xs">
+        <div class="relative inline-flex items-center text-sm">
           <div class="pointer-events-none absolute left-2.5 flex items-center text-muted-foreground">
-            <Icon path={mdiDomain} class="size-3.5" />
+            <Icon path={mdiDomain} class="size-4" />
           </div>
           <select
             id="ui-organization-selector"
@@ -33,7 +33,7 @@ export function UiOrganizationSelector() {
             value={state.selectedOrganizationId()}
             disabled={state.isSwitching()}
             onChange={(event) => void state.switchOrganization(event.currentTarget.value)}
-            class="h-7 rounded-full border border-slate-200 bg-slate-100/70 pl-7 pr-6 py-0.5 text-xs font-medium text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-100 dark:focus:ring-slate-500 max-w-[130px] sm:max-w-[170px]"
+            class="h-8 rounded-full border border-slate-200 bg-slate-100/70 pl-8 pr-7 py-1 text-sm font-medium text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-100 dark:focus:ring-slate-500 max-w-[140px] sm:max-w-[180px]"
           >
             <For each={state.organizations()}>
               {(org) => (
@@ -48,8 +48,8 @@ export function UiOrganizationSelector() {
             </For>
           </select>
           <div class="pointer-events-none absolute right-2 flex items-center text-muted-foreground">
-            <Show when={state.isSwitching()} fallback={<Icon path={mdiChevronDown} class="size-3" />}>
-              <Icon path={mdiLoading} class="size-3 animate-spin" />
+            <Show when={state.isSwitching()} fallback={<Icon path={mdiChevronDown} class="size-3.5" />}>
+              <Icon path={mdiLoading} class="size-3.5 animate-spin" />
             </Show>
           </div>
         </div>

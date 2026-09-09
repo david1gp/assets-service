@@ -188,6 +188,7 @@ test("exposes project and account labels for the shell header", async () => {
     expect(state.projectId()).toBe("project-1")
     expect(state.accountName()).toBe("Ada Lovelace")
     expect(state.accountId()).toBe("subject-1")
+    expect(state.accountLabel()).toBe("Ada Lovelace")
     dispose()
   } finally {
     uiSessionStore.set(previousSession)
@@ -206,6 +207,55 @@ test("falls back to the subject ID for principals without a display name", async
 
     expect(state.accountName()).toBe("")
     expect(state.accountId()).toBe("subject-1")
+    expect(state.accountLabel()).toBe("subject-1")
+    dispose()
+  } finally {
+    uiSessionStore.set(previousSession)
+  }
+})
+
+test("resolves contributor project path to the two-card landing page", async () => {
+  const previousSession = uiSessionStore.get()
+  sessionSet()
+
+  try {
+    const { state, dispose } = stateCreate("/projects/project-1/contributor/assets", "project-1")
+    await flush()
+
+    expect(state.routeMode()).toBe("contributor")
+    expect(state.projectPath()).toBe("/projects/project-1/contributor")
+    expect(state.breadcrumbPage()).toBe("List")
+    dispose()
+  } finally {
+    uiSessionStore.set(previousSession)
+  }
+})
+
+test("resolves admin project path to admin root", async () => {
+  const previousSession = uiSessionStore.get()
+  uiSessionStore.set({
+    status: "authenticated",
+    principal: {
+      subjectId: "admin-1",
+      organizationId: "organization-1",
+      mode: "admin",
+      organizationAdmin: true,
+      method: "human_session",
+      grants: [{ projectId: "project-1", roles: ["admin"] }],
+      issuedAt: 1,
+      expiresAt: 2,
+    },
+    errorMessage: null,
+  })
+
+  try {
+    const { state, dispose } = stateCreate("/projects/project-1/admin/upload", "project-1")
+    await flush()
+
+    expect(state.routeMode()).toBe("admin")
+    expect(state.projectPath()).toBe("/projects/project-1/admin")
+    expect(state.breadcrumbPage()).toBe("Upload")
+    expect(state.canSwitchView()).toBe(true)
     dispose()
   } finally {
     uiSessionStore.set(previousSession)

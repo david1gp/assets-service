@@ -4,16 +4,18 @@ import { ThemeButton } from "#ui/interactive/theme/ThemeButton.jsx"
 import { Icon } from "#ui/static/icon/Icon.jsx"
 import { LoadingPage } from "#ui/static/loaders/LoadingPage.jsx"
 import { mdiAccount } from "@adaptive-ds/mdi/mdiAccount.js"
+import { mdiAccountOutline } from "@adaptive-ds/mdi/mdiAccountOutline.js"
 import { mdiArrowLeft } from "@adaptive-ds/mdi/mdiArrowLeft.js"
-import { mdiChevronRight } from "@adaptive-ds/mdi/mdiChevronRight.js"
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiFolderMultipleOutline } from "@adaptive-ds/mdi/mdiFolderMultipleOutline.js"
 import { mdiLogout } from "@adaptive-ds/mdi/mdiLogout.js"
 import { mdiMenu } from "@adaptive-ds/mdi/mdiMenu.js"
+import { mdiShieldAccountOutline } from "@adaptive-ds/mdi/mdiShieldAccountOutline.js"
 import type { RouteSectionProps } from "@solidjs/router"
 import { A } from "@solidjs/router"
 import { For, Match, Show, Switch } from "solid-js"
 import { classArr } from "#ui/utils/classArr.js"
+import { UiLinkButton } from "../common/UiLinkButton.jsx"
 import { UiLanguageToggle } from "../localization/UiLanguageToggle.jsx"
 import { ttc } from "../localization/ttc.js"
 import { UiOrganizationSelector } from "../organization/UiOrganizationSelector.jsx"
@@ -34,7 +36,7 @@ export function UiShell(p: RouteSectionProps) {
         {ttc("Skip to content", "Zum Inhalt springen")}
       </a>
 
-      <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
+      <header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 text-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
         <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6 sm:py-3 lg:px-8 md:flex-nowrap md:gap-4">
           <A
             href={uiPaths.projects}
@@ -48,9 +50,19 @@ export function UiShell(p: RouteSectionProps) {
           </A>
 
           <Show when={state.projectId()}>
-            <div class="order-3 flex w-full items-center gap-1.5 text-sm min-w-0 md:order-none md:w-auto">
-              <Icon path={mdiChevronRight} class="size-4 text-muted-foreground shrink-0" />
-              <div class="flex flex-col items-start leading-tight min-w-0">
+            <nav
+              aria-label={ttc("Breadcrumb", "Brotkrumennavigation")}
+              class="order-3 flex w-full items-center gap-1.5 text-sm min-w-0 md:order-none md:w-auto"
+            >
+              <span class="text-muted-foreground select-none shrink-0" aria-hidden="true">
+                /
+              </span>
+              <UiLinkButton
+                href={state.projectPath()}
+                variant="ghost"
+                class="h-auto py-1 px-2 text-left flex flex-col items-start leading-tight min-w-0"
+                aria-label={state.projectLabel()}
+              >
                 <Show when={state.projectName() !== ""}>
                   <span class="font-medium break-words">{state.projectName()}</span>
                 </Show>
@@ -61,19 +73,72 @@ export function UiShell(p: RouteSectionProps) {
                 >
                   {state.projectId()}
                 </span>
-              </div>
-            </div>
+              </UiLinkButton>
+
+              <Show when={state.breadcrumbPage()}>
+                <span class="text-muted-foreground select-none shrink-0" aria-hidden="true">
+                  /
+                </span>
+                <span class="font-medium truncate text-slate-700 dark:text-slate-300">{state.breadcrumbPage()}</span>
+              </Show>
+            </nav>
           </Show>
 
           <div class="order-2 flex items-center gap-2 shrink-0 ml-auto md:order-none">
             <Show when={state.session().status === "authenticated"}>
               <UiOrganizationSelector />
               <Show when={state.accountId() !== ""}>
-                <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-xs md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
-                  <Icon path={mdiAccount} class="size-3.5 text-muted-foreground" />
+                <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-sm md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
+                  <Icon path={mdiAccount} class="size-4 text-muted-foreground" />
                   <span class="flex max-w-[120px] min-w-0 flex-col leading-tight lg:max-w-[180px]">
-                    <span class="truncate font-medium">{state.accountLabel()}</span>
+                    <Show when={state.accountName() !== ""}>
+                      <span class="truncate font-medium">{state.accountName()}</span>
+                    </Show>
+                    <span
+                      class={`font-mono truncate ${
+                        state.accountName() === "" ? "font-medium" : "text-xs text-muted-foreground"
+                      }`}
+                    >
+                      {state.accountId()}
+                    </span>
                   </span>
+                </div>
+              </Show>
+
+              <Show when={state.canSwitchView()}>
+                <div
+                  class="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900"
+                  role="group"
+                  aria-label={ttc("Active view", "Aktive Ansicht")}
+                >
+                  <A
+                    href={state.contributorViewPath()}
+                    title={ttc("Contributor view", "Mitwirkendenansicht")}
+                    aria-label={ttc("Contributor view", "Mitwirkendenansicht")}
+                    aria-current={state.routeMode() === "contributor" ? "page" : undefined}
+                    class={classArr(
+                      "flex size-8 items-center justify-center rounded-md transition-colors",
+                      state.routeMode() === "contributor"
+                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white",
+                    )}
+                  >
+                    <Icon path={mdiAccountOutline} class="size-4" />
+                  </A>
+                  <A
+                    href={state.adminViewPath()}
+                    title={ttc("Admin view", "Adminansicht")}
+                    aria-label={ttc("Admin view", "Adminansicht")}
+                    aria-current={state.routeMode() === "admin" ? "page" : undefined}
+                    class={classArr(
+                      "flex size-8 items-center justify-center rounded-md transition-colors",
+                      state.routeMode() === "admin"
+                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white",
+                    )}
+                  >
+                    <Icon path={mdiShieldAccountOutline} class="size-4" />
+                  </A>
                 </div>
               </Show>
 
@@ -143,35 +208,17 @@ export function UiShell(p: RouteSectionProps) {
               <div class="flex min-w-0 items-center gap-2 border-b border-slate-200 pb-4 dark:border-slate-800">
                 <Icon path={mdiAccount} class="size-4 shrink-0 text-muted-foreground" />
                 <span class="flex min-w-0 flex-col leading-tight">
-                  <span class="truncate text-sm font-medium">{state.accountLabel()}</span>
+                  <Show when={state.accountName() !== ""}>
+                    <span class="truncate text-sm font-medium">{state.accountName()}</span>
+                  </Show>
+                  <span
+                    class={`font-mono truncate ${
+                      state.accountName() === "" ? "text-sm font-medium" : "text-xs text-muted-foreground"
+                    }`}
+                  >
+                    {state.accountId()}
+                  </span>
                 </span>
-              </div>
-            </Show>
-
-            <Show when={state.canSwitchView()}>
-              <div class="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold dark:bg-slate-800">
-                <A
-                  href={state.contributorViewPath()}
-                  onClick={state.closeMenu}
-                  class={`rounded-md px-2 py-2 text-center ${
-                    state.routeMode() === "contributor"
-                      ? "bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {ttc("Contributor view", "Mitwirkendenansicht")}
-                </A>
-                <A
-                  href={state.adminViewPath()}
-                  onClick={state.closeMenu}
-                  class={`rounded-md px-2 py-2 text-center ${
-                    state.routeMode() === "admin"
-                      ? "bg-white text-slate-900 shadow-xs dark:bg-slate-700 dark:text-white"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {ttc("Admin view", "Adminansicht")}
-                </A>
               </div>
             </Show>
 
@@ -234,34 +281,6 @@ export function UiShell(p: RouteSectionProps) {
                   {ttc("All projects", "Alle Projekte")}
                 </A>
               </div>
-
-              <Show when={state.canSwitchView()}>
-                <div
-                  class="grid grid-cols-2 rounded-lg bg-slate-100 p-1 text-xs font-semibold dark:bg-slate-900"
-                  aria-label={ttc("Active view", "Aktive Ansicht")}
-                >
-                  <A
-                    href={state.contributorViewPath()}
-                    class={`rounded-md px-2 py-2 text-center ${
-                      state.routeMode() === "contributor"
-                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
-                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    {ttc("Contributor view", "Mitwirkendenansicht")}
-                  </A>
-                  <A
-                    href={state.adminViewPath()}
-                    class={`rounded-md px-2 py-2 text-center ${
-                      state.routeMode() === "admin"
-                        ? "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
-                        : "text-muted-foreground hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    {ttc("Admin view", "Adminansicht")}
-                  </A>
-                </div>
-              </Show>
 
               <nav id="desktop-project-navigation" aria-label={ttc("Project sections", "Projektbereiche")}>
                 <ul class="flex flex-col gap-1">
