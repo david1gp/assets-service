@@ -80,7 +80,6 @@ export function UiAssetDetailReplacementUpload(props: {
       <div class="flex flex-wrap gap-2">
         <ButtonIcon
           type="submit"
-          size="sm"
           icon={mdiCloudUpload}
           isLoading={props.upload.isBusy()}
           disabled={!props.upload.canSubmit()}
@@ -89,7 +88,6 @@ export function UiAssetDetailReplacementUpload(props: {
         </ButtonIcon>
         <ButtonIcon
           type="button"
-          size="sm"
           variant="outline"
           icon={mdiRestart}
           disabled={props.upload.isBusy()}

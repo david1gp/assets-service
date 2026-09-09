@@ -62,7 +62,6 @@ export function UiUploadPage() {
               <h2 class="text-lg font-semibold">{ttc("Files", "Dateien")}</h2>
               <ButtonIcon
                 type="button"
-                size="sm"
                 variant="outline"
                 icon={mdiDelete}
                 disabled={state.hasActiveUploads()}

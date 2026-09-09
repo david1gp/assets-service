@@ -63,7 +63,6 @@ export function UiJobsPage() {
                     <Badge variant="subtle">{uiWorkflowStatusLabelRead(workflow.status)}</Badge>
                     <div class="flex gap-2">
                       <ButtonIcon
-                        size="sm"
                         variant="outline"
                         icon={mdiRefresh}
                         isLoading={state.pendingId() === workflow.id}
@@ -72,7 +71,6 @@ export function UiJobsPage() {
                         {ttc("Retry", "Wiederholen")}
                       </ButtonIcon>
                       <ButtonIcon
-                        size="sm"
                         variant="outlineRed"
                         class={uiDestructiveButtonClassesRead("outline")}
                         icon={mdiCancel}
@@ -128,7 +126,6 @@ export function UiJobsPage() {
                     <Badge variant="subtle">{uiWorkflowStatusLabelRead(job.status)}</Badge>
                     <div class="flex gap-2">
                       <ButtonIcon
-                        size="sm"
                         variant="outline"
                         icon={mdiRefresh}
                         isLoading={state.pendingId() === job.id}
@@ -137,7 +134,6 @@ export function UiJobsPage() {
                         {ttc("Retry", "Wiederholen")}
                       </ButtonIcon>
                       <ButtonIcon
-                        size="sm"
                         variant="outlineRed"
                         class={uiDestructiveButtonClassesRead("outline")}
                         icon={mdiCancel}

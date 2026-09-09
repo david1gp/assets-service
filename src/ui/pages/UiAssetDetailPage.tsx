@@ -89,7 +89,6 @@ export function UiAssetDetailPage() {
           <ButtonIcon
             icon={mdiShareVariant}
             variant="outline"
-            size="sm"
             onClick={() => {
               void navigator.clipboard?.writeText(
                 uiDeepLinkCreate(state.paths().asset(state.projectId(), state.assetId())),
@@ -269,26 +268,15 @@ export function UiAssetDetailPage() {
 
                   {/* Primary Action Controls */}
                   <div class="mt-4 flex flex-wrap gap-2 border-y border-slate-100 py-3 dark:border-slate-800">
-                    <ButtonIcon
-                      icon={mdiFolderMove}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => state.openDialogSet("move")}
-                    >
+                    <ButtonIcon icon={mdiFolderMove} variant="outline" onClick={() => state.openDialogSet("move")}>
                       {ttc("Move", "Verschieben")}
                     </ButtonIcon>
-                    <ButtonIcon
-                      icon={mdiTune}
-                      variant="filled"
-                      size="sm"
-                      onClick={() => state.openDialogSet("outputs")}
-                    >
+                    <ButtonIcon icon={mdiTune} variant="filled" onClick={() => state.openDialogSet("outputs")}>
                       {ttc("Edit outputs", "Ausgaben bearbeiten")}
                     </ButtonIcon>
                     <ButtonIcon
                       icon={mdiDelete}
                       variant="filledRed"
-                      size="sm"
                       class={uiDestructiveButtonClassesRead("filled")}
                       onClick={() => state.openDialogSet("delete")}
                     >
@@ -362,7 +350,7 @@ export function UiAssetDetailPage() {
                     )}
                   </p>
                 </div>
-                <ButtonIcon size="sm" variant="outline" icon={mdiTune} onClick={() => state.openDialogSet("outputs")}>
+                <ButtonIcon variant="outline" icon={mdiTune} onClick={() => state.openDialogSet("outputs")}>
                   {ttc("Edit output set", "Ausgabensatz bearbeiten")}
                 </ButtonIcon>
               </div>
@@ -910,7 +898,6 @@ export function UiAssetDetailPage() {
                         <ButtonIcon
                           class={classArr("mt-3", uiDestructiveButtonClassesRead("outline"))}
                           type="button"
-                          size="sm"
                           variant="outlineRed"
                           icon={mdiTrashCan}
                           disabled={state.outputDrafts.get().length <= 1}

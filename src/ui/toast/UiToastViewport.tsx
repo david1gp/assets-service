@@ -49,7 +49,6 @@ export function UiToastViewport() {
               </div>
               <ButtonIcon
                 variant="ghost"
-                size="sm"
                 class="text-current"
                 title={`${ttc("Dismiss", "Schließen")} ${toast.title}`}
                 icon={mdiClose}

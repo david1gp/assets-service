@@ -11,7 +11,6 @@ export function UiLanguageToggle() {
       type="button"
       icon={mdiTranslate}
       variant="outline"
-      size="sm"
       title={state.title()}
       aria-label={state.title()}
       onClick={state.toggle}

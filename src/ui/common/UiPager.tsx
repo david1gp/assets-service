@@ -14,16 +14,10 @@ export type UiPagerProps = {
 export function UiPager(p: UiPagerProps) {
   return (
     <nav aria-label={ttc("Pagination", "Seitennavigation")} class="mt-4 flex items-center gap-2">
-      <ButtonIcon icon={mdiPageFirst} variant="outline" size="sm" disabled={p.isFirstPage} onClick={p.onFirstPage}>
+      <ButtonIcon icon={mdiPageFirst} variant="outline" disabled={p.isFirstPage} onClick={p.onFirstPage}>
         {ttc("First page", "Erste Seite")}
       </ButtonIcon>
-      <ButtonIcon
-        iconRight={mdiChevronRight}
-        variant="outline"
-        size="sm"
-        disabled={p.nextCursor === null}
-        onClick={p.onNextPage}
-      >
+      <ButtonIcon iconRight={mdiChevronRight} variant="outline" disabled={p.nextCursor === null} onClick={p.onNextPage}>
         {ttc("Next page", "Nächste Seite")}
       </ButtonIcon>
     </nav>

@@ -84,7 +84,6 @@ export function UiShell(p: RouteSectionProps) {
                 icon={mdiLogout}
                 aria-label={ttc("Sign out", "Abmelden")}
                 variant="outline"
-                size="sm"
                 isLoading={state.isLoggingOut()}
                 onClick={() => void state.logout()}
               >
@@ -101,7 +100,6 @@ export function UiShell(p: RouteSectionProps) {
                 }
                 icon={state.menuOpen.get() ? mdiClose : mdiMenu}
                 variant="ghost"
-                size="sm"
                 class="md:hidden"
                 aria-expanded={state.menuOpen.get()}
                 aria-controls="mobile-project-navigation"
@@ -137,7 +135,6 @@ export function UiShell(p: RouteSectionProps) {
                 icon={mdiClose}
                 title={ttc("Close navigation", "Navigation schließen")}
                 variant="ghost"
-                size="sm"
                 onClick={state.closeMenu}
               />
             </div>

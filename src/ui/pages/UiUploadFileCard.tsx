@@ -112,7 +112,7 @@ export function UiUploadFileCard(p: UiUploadFileCardProps) {
       <Show when={p.file.assetId}>
         {(assetId) => (
           <div>
-            <UiLinkButton href={p.assetHref(assetId())} variant="outline" size="sm">
+            <UiLinkButton href={p.assetHref(assetId())} variant="outline">
               {ttc("Open asset", "Asset öffnen")}
             </UiLinkButton>
           </div>
