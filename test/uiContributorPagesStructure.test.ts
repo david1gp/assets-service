@@ -27,4 +27,12 @@ describe("contributor pages", () => {
     expect(detailSource).not.toContain("sourcePath")
     expect(detailSource).not.toContain("outputHistory")
   })
+
+  test("renders usage-note editor bound to state regardless of asset type or processing state", () => {
+    expect(detailSource).toContain("state.integrationNoteSubmit")
+    expect(detailSource).toContain("valueSignal={state.integrationNoteDraft}")
+    expect(detailSource).toContain('ttc("Usage note", "Hinweis zur Verwendung")')
+    expect(detailSource).toContain('ttc("Save usage note", "Hinweis speichern")')
+    expect(detailSource).not.toContain("<Show when={asset.integrationNote}>")
+  })
 })

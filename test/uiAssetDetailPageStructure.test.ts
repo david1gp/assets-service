@@ -23,6 +23,14 @@ describe("asset detail page structure", () => {
     expect(action).toContain('variant="filled"')
     expect(action).not.toContain('variant="outline"')
   })
+
+  test("renders usage-note editor bound to state with explicit save", () => {
+    expect(pageSource).toContain("state.integrationNoteSubmit")
+    expect(pageSource).toContain("valueSignal={state.integrationNoteDraft}")
+    expect(pageSource).toContain('ttc("Usage note", "Hinweis zur Verwendung")')
+    expect(pageSource).toContain('ttc("Save usage note", "Hinweis speichern")')
+    expect(pageSource).not.toContain("<Show when={asset.integrationNote}>")
+  })
 })
 
 describe("replacement upload area structure", () => {

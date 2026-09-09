@@ -1,8 +1,9 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useParams } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { type AssetDetailResponse, assetDetailResponseSchema } from "../../api-client/assetDetailResponseSchema.js"
+import { integrationNoteSetRequestSchema } from "../../api-client/integrationNoteSetRequestSchema.js"
 import { metadataSetRequestSchema } from "../../api-client/metadataSetRequestSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
@@ -16,6 +17,9 @@ import { uiToastAdd } from "../toast/uiToastAdd.js"
 import { uiSourceRevisionLatestImageRead } from "./uiSourceRevisionLatestImageRead.js"
 
 const contributorAltDraftSchema = v.strictObject({ value: metadataSetRequestSchema.entries.alt })
+const contributorIntegrationNoteDraftSchema = v.strictObject({
+  value: integrationNoteSetRequestSchema.entries.integrationNote,
+})
 
 /** Holds the simplified contributor preview and alternative-text edit. */
 export const uiContributorAssetDetailPageStateCreate = () => {
@@ -23,9 +27,11 @@ export const uiContributorAssetDetailPageStateCreate = () => {
   const projectId = createMemo(() => params.projectId)
   const assetId = createMemo(() => params.assetId)
   const altDraftState = createSignalObject("")
+  const integrationNoteDraftState = createSignalObject("")
   const pending = createSignalObject(false)
   const actionError = createSignalObject<string | null>(null)
   let draftActive = false
+  let integrationNoteDraftActive = false
 
   const query = uiQueryCreate<AssetDetailResponse>(
     async () => {
@@ -53,6 +59,20 @@ export const uiContributorAssetDetailPageStateCreate = () => {
     draftActive = true
   })
 
+  const integrationNoteDraftPersistence = uiFormDraftPersistenceCreate(
+    () => uiFormDraftKeyCreate("contributor-asset", `${projectId()}:${assetId()}`, "integration-note"),
+    contributorIntegrationNoteDraftSchema,
+    () => ({ value: integrationNoteDraftState.get() }),
+  )
+  const integrationNoteHydrated = integrationNoteDraftPersistence.hydrate()
+  if (integrationNoteHydrated.success && integrationNoteHydrated.data !== undefined) {
+    integrationNoteDraftActive = true
+    integrationNoteDraftState.set(integrationNoteHydrated.data.value)
+  }
+  const integrationNoteDraft = integrationNoteDraftPersistence.signalCreate(integrationNoteDraftState, () => {
+    integrationNoteDraftActive = true
+  })
+
   const altRead = (asset: AssetDetailResponse) => {
     const metadata = asset.metadata?.metadata
     return metadata && "alt" in metadata && typeof metadata.alt === "string" ? metadata.alt : ""
@@ -60,7 +80,9 @@ export const uiContributorAssetDetailPageStateCreate = () => {
 
   createEffect(() => {
     const asset = query.data()
-    if (asset !== null && !draftActive) altDraftState.set(altRead(asset))
+    if (asset === null) return
+    if (!draftActive) altDraftState.set(altRead(asset))
+    if (!integrationNoteDraftActive) integrationNoteDraftState.set(asset.integrationNote ?? "")
   })
 
   const latestOriginal = createMemo(() => {
@@ -136,10 +158,37 @@ export const uiContributorAssetDetailPageStateCreate = () => {
     uiToastAdd({ tone: "positive", title: ttc("Description removed", "Beschreibung entfernt") })
   }
 
+  const integrationNoteSave = async () => {
+    if (pending.get()) return
+    pending.set(true)
+    actionError.set(null)
+    const client = uiApiClientRead()
+    const result = client.success
+      ? await client.data.assetIntegrationNoteSet(projectId(), assetId(), {
+          integrationNote: integrationNoteDraftState.get(),
+        })
+      : resultErrorCreate("uiContributorAssetIntegrationNoteSave", client.errorMessage)
+    pending.set(false)
+    if (!result.success) {
+      actionError.set(result.errorMessage)
+      uiToastAdd({
+        tone: "negative",
+        title: ttc("Could not save usage note", "Hinweis zur Verwendung konnte nicht gespeichert werden"),
+        description: result.errorMessage,
+      })
+      return
+    }
+    await integrationNoteDraftPersistence.clear()
+    integrationNoteDraftActive = false
+    query.reload()
+    uiToastAdd({ tone: "positive", title: ttc("Usage note saved", "Hinweis zur Verwendung gespeichert") })
+  }
+
   return {
     query,
     pageTitle: () => query.data()?.filename ?? ttc("Asset details", "Asset-Details"),
     altDraft,
+    integrationNoteDraft,
     preview,
     latestOriginal,
     isPending: pending.get,
@@ -147,10 +196,15 @@ export const uiContributorAssetDetailPageStateCreate = () => {
     assetsPath: () => uiPaths.contributor.assets(projectId()),
     altSave,
     altRemove,
+    integrationNoteSave,
     altSubmit: (event: SubmitEvent) => {
       event.preventDefault()
       void altSave()
     },
     altRemoveClick: () => void altRemove(),
+    integrationNoteSubmit: (event: SubmitEvent) => {
+      event.preventDefault()
+      void integrationNoteSave()
+    },
   }
 }

@@ -3,6 +3,7 @@ import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { type AssetDetailResponse, assetDetailResponseSchema } from "../../api-client/assetDetailResponseSchema.js"
+import { integrationNoteSetRequestSchema } from "../../api-client/integrationNoteSetRequestSchema.js"
 import { metadataSetRequestSchema } from "../../api-client/metadataSetRequestSchema.js"
 import { assetFilenameSchema } from "../../asset/assetFilenameSchema.js"
 import { folderSegmentSchema } from "../../asset/folderSegmentSchema.js"
@@ -10,13 +11,13 @@ import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { uiPublicUrlFormat } from "../common/uiPublicUrlFormat.js"
+import { ttc } from "../localization/ttc.js"
 import { uiOutputDraftFromDefinition } from "../output/uiOutputDraftFromDefinition.js"
 import { type UiOutputDraft, uiOutputDraftSchema } from "../output/uiOutputDraftSchema.js"
 import { uiOutputDraftsInputsRead } from "../output/uiOutputDraftsInputsRead.js"
 import { uiOutputSetChangesRead } from "../output/uiOutputSetChangesRead.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
-import { ttc } from "../localization/ttc.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
@@ -31,6 +32,10 @@ import { uiSourceRevisionLatestImageRead } from "./uiSourceRevisionLatestImageRe
 
 const assetAltDraftSchema = v.strictObject({ value: metadataSetRequestSchema.entries.alt })
 
+const assetIntegrationNoteDraftSchema = v.strictObject({
+  value: integrationNoteSetRequestSchema.entries.integrationNote,
+})
+
 const assetMoveDraftSchema = v.strictObject({
   folder1: v.union([v.literal(""), folderSegmentSchema]),
   folder2: v.union([v.literal(""), folderSegmentSchema]),
@@ -41,12 +46,14 @@ const assetMoveDraftSchema = v.strictObject({
 const assetOutputsDraftSchema = v.strictObject({ drafts: v.array(uiOutputDraftSchema) })
 
 type UiAssetAltDraft = v.InferOutput<typeof assetAltDraftSchema>
+type UiAssetIntegrationNoteDraft = v.InferOutput<typeof assetIntegrationNoteDraftSchema>
 type UiAssetMoveDraft = v.InferOutput<typeof assetMoveDraftSchema>
 type UiAssetOutputsDraft = v.InferOutput<typeof assetOutputsDraftSchema>
 
 const uiAssetActionLabelRead = (label: string): string => {
   if (label === "Alt text") return ttc("Alt text", "Alternativtext")
   if (label === "Alt text removal") return ttc("Alt text removal", "Alternativtext entfernen")
+  if (label === "Usage note") return ttc("Usage note", "Hinweis zur Verwendung")
   if (label === "Output set") return ttc("Output set", "Ausgabensatz")
   if (label === "Move") return ttc("Move", "Verschieben")
   return ttc("Deletion", "Löschung")
@@ -82,6 +89,7 @@ export const uiAssetDetailPageStateCreate = () => {
   })
 
   const altDraft = createSignalObject("")
+  const integrationNoteDraft = createSignalObject("")
   const moveFolder1 = createSignalObject("")
   const moveFolder2 = createSignalObject("")
   const moveFolder3 = createSignalObject("")
@@ -96,6 +104,11 @@ export const uiAssetDetailPageStateCreate = () => {
     () => uiFormDraftKeyCreate("asset", `${projectId()}:${assetId()}`, "alt"),
     assetAltDraftSchema,
     () => ({ value: altDraft.get() }),
+  )
+  const integrationNoteDraftPersistence = uiFormDraftPersistenceCreate<UiAssetIntegrationNoteDraft>(
+    () => uiFormDraftKeyCreate("asset", `${projectId()}:${assetId()}`, "integration-note"),
+    assetIntegrationNoteDraftSchema,
+    () => ({ value: integrationNoteDraft.get() }),
   )
   const moveDraftPersistence = uiFormDraftPersistenceCreate<UiAssetMoveDraft>(
     () => uiFormDraftKeyCreate("asset", `${projectId()}:${assetId()}`, "move"),
@@ -113,6 +126,7 @@ export const uiAssetDetailPageStateCreate = () => {
     () => ({ drafts: [...outputDrafts.get()] }),
   )
   let altDraftActive = false
+  let integrationNoteDraftActive = false
   let moveDraftActive = false
   let outputsDraftActive = false
 
@@ -120,6 +134,11 @@ export const uiAssetDetailPageStateCreate = () => {
   if (altHydrated.success && altHydrated.data !== undefined) {
     altDraftActive = true
     altDraft.set(altHydrated.data.value)
+  }
+  const integrationNoteHydrated = integrationNoteDraftPersistence.hydrate()
+  if (integrationNoteHydrated.success && integrationNoteHydrated.data !== undefined) {
+    integrationNoteDraftActive = true
+    integrationNoteDraft.set(integrationNoteHydrated.data.value)
   }
   const moveHydrated = moveDraftPersistence.hydrate()
   if (moveHydrated.success && moveHydrated.data !== undefined) {
@@ -136,6 +155,9 @@ export const uiAssetDetailPageStateCreate = () => {
   }
   const altDraftSignal = altDraftPersistence.signalCreate(altDraft, () => {
     altDraftActive = true
+  })
+  const integrationNoteDraftSignal = integrationNoteDraftPersistence.signalCreate(integrationNoteDraft, () => {
+    integrationNoteDraftActive = true
   })
   const moveFolder1Draft = moveDraftPersistence.signalCreate(moveFolder1, () => {
     moveDraftActive = true
@@ -210,6 +232,7 @@ export const uiAssetDetailPageStateCreate = () => {
     const asset = query.data()
     if (asset === null) return
     if (!altDraftActive) altDraft.set(altValueRead(asset))
+    if (!integrationNoteDraftActive) integrationNoteDraft.set(asset.integrationNote ?? "")
     if (!moveDraftActive) {
       moveFilename.set(asset.filename)
       moveFolder1.set(asset.folders[0] ?? "")
@@ -283,6 +306,24 @@ export const uiAssetDetailPageStateCreate = () => {
     if (!applied) return
     altDraft.set("")
     await altDraftPersistence.clear()
+  }
+
+  const integrationNoteSet = async () => {
+    const applied = await run("Usage note", async () => {
+      const client = clientRead()
+      if (!client)
+        return resultErrorCreate(
+          "uiAssetDetailIntegrationNoteSet",
+          ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
+        )
+      return client.assetIntegrationNoteSet(projectId(), assetId(), {
+        integrationNote: integrationNoteDraft.get(),
+      })
+    })
+    if (applied) {
+      await integrationNoteDraftPersistence.clear()
+      integrationNoteDraftActive = false
+    }
   }
 
   const outputDraftSet = (id: string, field: keyof UiOutputDraft, value: string) => {
@@ -447,7 +488,12 @@ export const uiAssetDetailPageStateCreate = () => {
     )
     if (!applied) return
     confirmDeletion.set(false)
-    await Promise.all([altDraftPersistence.clear(), moveDraftPersistence.clear(), outputsDraftPersistence.clear()])
+    await Promise.all([
+      altDraftPersistence.clear(),
+      integrationNoteDraftPersistence.clear(),
+      moveDraftPersistence.clear(),
+      outputsDraftPersistence.clear(),
+    ])
     closeDialog()
   }
 
@@ -462,6 +508,7 @@ export const uiAssetDetailPageStateCreate = () => {
     query,
     activity,
     altDraft: altDraftSignal,
+    integrationNoteDraft: integrationNoteDraftSignal,
     moveFolder1: moveFolder1Draft,
     moveFolder2: moveFolder2Draft,
     moveFolder3: moveFolder3Draft,
@@ -496,6 +543,11 @@ export const uiAssetDetailPageStateCreate = () => {
     closeDialog,
     altSet,
     altUnset,
+    integrationNoteSet,
+    integrationNoteSubmit: (event: SubmitEvent) => {
+      event.preventDefault()
+      void integrationNoteSet()
+    },
     outputsSave,
     outputsReset: () => {
       const asset = query.data()

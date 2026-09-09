@@ -1,9 +1,3 @@
-import { Label } from "#ui/input/label/Label.jsx"
-import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
-import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
-import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
-import { Icon } from "#ui/static/icon/Icon.jsx"
-import { Img } from "#ui/static/img/Img.jsx"
 import { mdiArrowLeft } from "@adaptive-ds/mdi/mdiArrowLeft.js"
 import { mdiContentSaveOutline } from "@adaptive-ds/mdi/mdiContentSaveOutline.js"
 import { mdiDownloadOutline } from "@adaptive-ds/mdi/mdiDownloadOutline.js"
@@ -12,6 +6,12 @@ import { mdiImageOutline } from "@adaptive-ds/mdi/mdiImageOutline.js"
 import { mdiTrashCanOutline } from "@adaptive-ds/mdi/mdiTrashCanOutline.js"
 import { A } from "@solidjs/router"
 import { Show } from "solid-js"
+import { Label } from "#ui/input/label/Label.jsx"
+import { TextareaS } from "#ui/input/textarea/TextareaS.jsx"
+import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
+import { Icon } from "#ui/static/icon/Icon.jsx"
+import { Img } from "#ui/static/img/Img.jsx"
 import { UiNotice } from "../common/UiNotice.jsx"
 import { UiPageHeading } from "../common/UiPageHeading.jsx"
 import { UiQueryView } from "../common/UiQueryView.jsx"
@@ -83,14 +83,6 @@ export function UiContributorAssetDetailPage() {
                   {ttc("File", "Datei")}
                 </p>
                 <h2 class="mt-2 wrap-anywhere text-xl font-semibold">{asset.filename}</h2>
-                <Show when={asset.integrationNote}>
-                  {(note) => (
-                    <div class="mt-4 rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-950 dark:bg-blue-950/50 dark:text-blue-100">
-                      <p class="font-semibold">{ttc("Usage note", "Hinweis zur Verwendung")}</p>
-                      <p class="mt-1">{note()}</p>
-                    </div>
-                  )}
-                </Show>
                 <Show when={state.latestOriginal()}>
                   {(original) => (
                     <a
@@ -103,6 +95,34 @@ export function UiContributorAssetDetailPage() {
                     </a>
                   )}
                 </Show>
+              </CardWrapper>
+
+              <CardWrapper class="border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <form onSubmit={state.integrationNoteSubmit}>
+                  <Label for="contributor-asset-integration-note" class="font-semibold">
+                    {ttc("Usage note", "Hinweis zur Verwendung")}
+                  </Label>
+                  <p class="mt-1 text-sm leading-6 text-muted-foreground">
+                    {ttc("Where should this asset be included?", "Wo soll dieses Asset eingebunden werden?")}
+                  </p>
+                  <div class="mt-3">
+                    <TextareaS
+                      id="contributor-asset-integration-note"
+                      rows={4}
+                      maxLength={10000}
+                      valueSignal={state.integrationNoteDraft}
+                      placeholder={ttc(
+                        "Where and how should this asset be used…",
+                        "Wo und wie soll dieses Asset verwendet werden …",
+                      )}
+                    />
+                  </div>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <ButtonIcon type="submit" icon={mdiContentSaveOutline} isLoading={state.isPending()}>
+                      {ttc("Save usage note", "Hinweis speichern")}
+                    </ButtonIcon>
+                  </div>
+                </form>
               </CardWrapper>
 
               <Show when={asset.class === "image"}>

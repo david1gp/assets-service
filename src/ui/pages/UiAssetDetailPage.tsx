@@ -33,11 +33,11 @@ import { UiStatusBadge } from "../common/UiStatusBadge.jsx"
 import { uiAssetPathFormat } from "../common/uiAssetPathFormat.js"
 import { uiByteSizeFormat } from "../common/uiByteSizeFormat.js"
 import { uiDestructiveButtonClassesRead } from "../common/uiDestructiveButtonClassesRead.js"
-import { ttc } from "../localization/ttc.js"
 import { uiDeletionProgressRead } from "../deletion/uiDeletionProgressRead.js"
 import { uiDeletionStatusDetailRead } from "../deletion/uiDeletionStatusDetailRead.js"
 import { uiDeletionStatusLabelRead } from "../deletion/uiDeletionStatusLabelRead.js"
 import { uiDeletionStatusToneRead } from "../deletion/uiDeletionStatusToneRead.js"
+import { ttc } from "../localization/ttc.js"
 import { UiOutputTargetBadges } from "../output/UiOutputTargetBadges.jsx"
 import { uiAssetOutputTargetsRead } from "../output/uiAssetOutputTargetsRead.js"
 import { uiDeepLinkCreate } from "../routing/uiDeepLinkCreate.js"
@@ -284,16 +284,6 @@ export function UiAssetDetailPage() {
                     </ButtonIcon>
                   </div>
 
-                  {/* Integration note callout */}
-                  <Show when={asset.integrationNote}>
-                    <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200">
-                      <span class="font-semibold block mb-0.5">
-                        {ttc("Where should this asset be included?", "Wo soll dieses Asset eingebunden werden?")}
-                      </span>
-                      <span class="wrap-anywhere text-slate-700 dark:text-slate-300">{asset.integrationNote}</span>
-                    </div>
-                  </Show>
-
                   {/* Structured Details */}
                   <dl class="mt-4 flex flex-col divide-y divide-slate-100 text-xs dark:divide-slate-800">
                     <div class="flex justify-between py-2">
@@ -327,6 +317,47 @@ export function UiAssetDetailPage() {
                       </dd>
                     </div>
                   </dl>
+                </CardWrapper>
+
+                {/* Usage Note Card */}
+                <CardWrapper class="p-5">
+                  <form onSubmit={state.integrationNoteSubmit}>
+                    <div class="border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {ttc("Usage note", "Hinweis zur Verwendung")}
+                      </h2>
+                      <p class="mt-0.5 text-xs text-muted-foreground">
+                        {ttc("Where should this asset be included?", "Wo soll dieses Asset eingebunden werden?")}
+                      </p>
+                    </div>
+
+                    <div class="mt-3">
+                      <Label
+                        class="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+                        for="asset-integration-note"
+                      >
+                        {ttc("Usage note", "Hinweis zur Verwendung")}
+                      </Label>
+                      <div class="mt-1">
+                        <TextareaS
+                          id="asset-integration-note"
+                          rows={3}
+                          maxLength={10000}
+                          valueSignal={state.integrationNoteDraft}
+                          placeholder={ttc(
+                            "Where and how this asset should be used…",
+                            "Wo und wie dieses Asset verwendet werden soll …",
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <ButtonIcon type="submit" icon={mdiContentSave} isLoading={state.pendingLabel() === "Usage note"}>
+                        {ttc("Save usage note", "Hinweis speichern")}
+                      </ButtonIcon>
+                    </div>
+                  </form>
                 </CardWrapper>
               </div>
             </div>
