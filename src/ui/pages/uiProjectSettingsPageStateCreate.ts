@@ -15,6 +15,8 @@ import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
 import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
+import { uiSessionAutoSignInPreferenceRead } from "../session/uiSessionAutoSignInPreferenceRead.js"
+import { uiSessionAutoSignInPreferenceWrite } from "../session/uiSessionAutoSignInPreferenceWrite.js"
 import { ttc } from "../localization/ttc.js"
 
 export type UiEnvironmentDraft = {
@@ -72,6 +74,12 @@ export const uiProjectSettingsPageStateCreate = () => {
   const environments = createSignalObject<readonly UiEnvironmentDraft[]>([])
   const saving = createSignalObject(false)
   const formError = createSignalObject<string | null>(null)
+  const autoSignIn = createSignalObject(uiSessionAutoSignInPreferenceRead())
+
+  const autoSignInSet = (enabled: boolean) => {
+    autoSignIn.set(enabled)
+    uiSessionAutoSignInPreferenceWrite(enabled)
+  }
 
   const draftsLoad = (settings: ProjectSettings) => {
     name.set(settings.project.name)
@@ -223,5 +231,7 @@ export const uiProjectSettingsPageStateCreate = () => {
       }
       formError.set(null)
     },
+    autoSignIn: autoSignIn.get,
+    autoSignInSet,
   }
 }

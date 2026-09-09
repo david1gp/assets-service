@@ -1,4 +1,5 @@
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Checkbox } from "#ui/input/check/Checkbox.jsx"
 import { Input } from "#ui/input/input/Input.jsx"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
@@ -97,6 +98,21 @@ export function UiProjectSettingsPage() {
                     disabled={state.isSaving()}
                   />
                 </div>
+              </div>
+            </CardWrapper>
+
+            <CardWrapper class="p-4">
+              <h2 class="text-lg font-semibold">{ttc("Sign-in", "Anmeldung")}</h2>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {ttc(
+                  "Configure automatic sign-in for this browser.",
+                  "Konfigurieren Sie die automatische Anmeldung für diesen Browser.",
+                )}
+              </p>
+              <div class="mt-3">
+                <Checkbox id="settings-auto-sign-in" checked={state.autoSignIn()} onChange={state.autoSignInSet}>
+                  <span class="text-sm font-medium">{ttc("Sign in automatically", "Automatisch anmelden")}</span>
+                </Checkbox>
               </div>
             </CardWrapper>
 

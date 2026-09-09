@@ -2,6 +2,7 @@ import * as v from "valibot"
 import { authenticatedPrincipalSchema } from "../../authentication/authenticatedPrincipalSchema.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
+import { uiSessionAutoSignInAttemptsReset } from "./uiSessionAutoSignInAttemptsReset.js"
 import { uiSessionStore } from "./uiSessionStore.js"
 
 /** Reloads the current session from the service and updates the session store. */
@@ -33,4 +34,5 @@ export const uiSessionRefresh = async (): Promise<void> => {
     return
   }
   uiSessionStore.set({ status: "authenticated", principal: principal.output, errorMessage: null })
+  uiSessionAutoSignInAttemptsReset()
 }

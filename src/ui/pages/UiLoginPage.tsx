@@ -1,4 +1,5 @@
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
+import { Checkbox } from "#ui/input/check/Checkbox.jsx"
 import { CardWrapper } from "#ui/static/card/CardWrapper.jsx"
 import { SetPageTitle } from "#ui/static/meta/SetPageTitle.jsx"
 import { mdiLogin } from "@adaptive-ds/mdi/mdiLogin.js"
@@ -34,12 +35,17 @@ export function UiLoginPage() {
           )}
         </Show>
         <div class="mt-6 flex flex-wrap gap-3">
-          <ButtonIcon icon={mdiLogin} isLoading={state.isPending()} onClick={state.loginClick}>
+          <ButtonIcon icon={mdiLogin} variant="contrast" isLoading={state.isPending()} onClick={state.loginClick}>
             {ttc("Sign in", "Anmelden")}
           </ButtonIcon>
-          <ButtonIcon icon={mdiRefresh} variant="outline" onClick={state.retrySession}>
+          <ButtonIcon icon={mdiRefresh} variant="subtle" onClick={state.retrySession}>
             {ttc("Check session", "Sitzung prüfen")}
           </ButtonIcon>
+        </div>
+        <div class="mt-4">
+          <Checkbox id="login-auto-sign-in" checked={state.autoSignIn()} onChange={state.autoSignInToggle}>
+            <span class="text-sm font-medium">{ttc("Sign in automatically", "Automatisch anmelden")}</span>
+          </Checkbox>
         </div>
       </CardWrapper>
     </>
