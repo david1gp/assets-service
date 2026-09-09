@@ -3,10 +3,10 @@ import * as v from "valibot"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { type AuthenticatedPrincipal, authenticatedPrincipalSchema } from "./authenticatedPrincipalSchema.js"
-import { authenticationRoleSchema } from "./authenticationRoleSchema.js"
 import { servicePatGrantSearchResponseSchema } from "./servicePatGrantSearchResponseSchema.js"
 import type { ServicePatPrincipalValidateOptions } from "./servicePatPrincipalValidateOptions.js"
 import { servicePatUserResponseSchema } from "./servicePatUserResponseSchema.js"
+import { userGrantsNormalize } from "./userGrantsNormalize.js"
 
 const jsonBodyRead = async (response: Response, op: string): Promise<Result<unknown>> => {
   try {
@@ -74,24 +74,9 @@ export const servicePatPrincipalValidate = async (
   const grantsParsed = v.safeParse(servicePatGrantSearchResponseSchema, grantsBody.data)
   if (!grantsParsed.success) return resultErrorCreate(op, "The Zitadel grant response was invalid")
 
-  const grants = []
-  for (const grant of grantsParsed.output.result ?? []) {
-    if (grant.state !== undefined && grant.state !== "USER_GRANT_STATE_ACTIVE") continue
-    if (grant.orgId !== undefined && !allowedOrganizationIds.includes(grant.orgId)) continue
-    const roleKeys = [...(grant.roleKeys ?? []), ...(grant.roles ?? [])]
-    const mappedRoleKeys = roleKeys.map((role) => {
-      if (role === "assets.uploader") return "contributor"
-      if (role === "assets.admin") return "admin"
-      return role
-    })
-    const roles = [
-      ...new Set(
-        mappedRoleKeys.filter((role): role is "admin" | "contributor" => v.is(authenticationRoleSchema, role)),
-      ),
-    ].sort()
-    if (roles.length === 0) continue
-    grants.push({ projectId: grant.projectId, roles })
-  }
+  const grants = userGrantsNormalize(grantsParsed.output.result ?? [], {
+    allowedOrganizationIds,
+  })
   const isProjectProvisioner =
     Boolean(options.projectProvisionerSubjectId) &&
     user.output.user.id === options.projectProvisionerSubjectId &&

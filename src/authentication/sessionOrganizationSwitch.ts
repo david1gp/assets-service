@@ -9,6 +9,7 @@ import type { ProjectGrant } from "./projectGrantSchema.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
 import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
+import { userGrantsNormalize } from "./userGrantsNormalize.js"
 import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
 type SessionOrganizationSwitchOptions = {
@@ -62,7 +63,14 @@ export const sessionOrganizationSwitch = async (
   const isReturningToOriginal = targetOrganizationId === originalOrgId
 
   let grants: ProjectGrant[]
-  if (isReturningToOriginal) {
+  if (options.oidcClient.userGrantsRead !== undefined) {
+    const userGrantsResult = await options.oidcClient.userGrantsRead(accessToken)
+    if (!userGrantsResult.success) return userGrantsResult
+    grants = userGrantsNormalize(userGrantsResult.data, {
+      organizationId: targetOrganizationId,
+      allowedRoles: isCustomer ? ["contributor"] : undefined,
+    })
+  } else if (isReturningToOriginal) {
     grants = session.identityGrants ?? []
   } else {
     const parsedJwt = await jwtTokenParse(accessToken)

@@ -11,10 +11,12 @@ import { oidcIdTokenDisplayNameExtract } from "./oidcIdTokenDisplayNameExtract.j
 import type { PkceCallbackRequest } from "./pkceCallbackRequestSchema.js"
 import { pkceCallbackRequestSchema } from "./pkceCallbackRequestSchema.js"
 import type { PkceStateStore } from "./pkceStateStore.js"
+import type { ProjectGrant } from "./projectGrantSchema.js"
 import { sessionCookieCreate } from "./sessionCookieCreate.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { SessionStore } from "./sessionStore.js"
 import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
+import { userGrantsNormalize } from "./userGrantsNormalize.js"
 import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
 import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
@@ -163,14 +165,26 @@ export const humanLoginCallback = async (
     }
   }
 
-  const grants = isCustomerOrganization
-    ? principal.data.grants
-        .map((grant) => ({
-          ...grant,
-          roles: grant.roles.filter((role) => role === "contributor"),
-        }))
-        .filter((grant) => grant.roles.length > 0)
-    : principal.data.grants
+  let grants: ProjectGrant[]
+  if (options.oidcClient.userGrantsRead !== undefined) {
+    const userGrantsResult = await options.oidcClient.userGrantsRead(token.data.access_token)
+    if (!userGrantsResult.success) return userGrantsResult
+    const discoveredGrants = userGrantsNormalize(userGrantsResult.data, {
+      organizationId: principal.data.organizationId,
+      allowedRoles: isCustomerOrganization ? ["contributor"] : undefined,
+    })
+    grants = discoveredGrants
+  } else {
+    grants = isCustomerOrganization
+      ? principal.data.grants
+          .map((grant) => ({
+            ...grant,
+            roles: grant.roles.filter((role) => role === "contributor"),
+          }))
+          .filter((grant) => grant.roles.length > 0)
+      : principal.data.grants
+  }
+
   if (isCustomerOrganization && grants.length === 0) {
     return resultErrorCreate(op, "The JWT did not contain the required project grant")
   }

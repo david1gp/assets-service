@@ -3,6 +3,7 @@ import type { TokenResponse } from "../../authentication/tokenResponseSchema.js"
 import type { Result } from "../../schemas/resultSchema.js"
 import type { ZitadelOidcDiscovery } from "./zitadelOidcDiscoverySchema.js"
 import type { ZitadelOrganizationMembership } from "./zitadelOrganizationMembershipSchema.js"
+import type { ZitadelUserGrant } from "./zitadelUserGrantSchema.js"
 
 export type ZitadelOidcClient = {
   discoveryRead: () => Promise<Result<ZitadelOidcDiscovery>>
@@ -14,4 +15,5 @@ export type ZitadelOidcClient = {
     accessToken: string,
     organizationId: string,
   ) => Promise<Result<ZitadelOrganizationMembership>>
+  userGrantsRead?: (accessToken: string) => Promise<Result<readonly ZitadelUserGrant[]>>
 }

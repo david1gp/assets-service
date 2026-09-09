@@ -2,12 +2,15 @@ import type { ProjectRepository } from "../project/projectRepository.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { ZitadelOidcClient } from "../infrastructure/zitadel/zitadelOidcClient.js"
+import type { ZitadelUserGrant } from "../infrastructure/zitadel/zitadelUserGrantSchema.js"
 import { jwtProjectGrantsRead } from "./jwtProjectGrantsRead.js"
 import { jwtTokenParse } from "./jwtTokenParse.js"
+import type { ProjectGrant } from "./projectGrantSchema.js"
 import type { SessionOrganizationItem, SessionOrganizationsReadResponse } from "./sessionOrganizationItemSchema.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
 import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
 import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
+import { userGrantsNormalize } from "./userGrantsNormalize.js"
 import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
 type SessionOrganizationsReadOptions = {
@@ -48,6 +51,13 @@ export const sessionOrganizationsRead = async (
     if (parsed.success) jwtClaims = parsed.data.payload
   }
 
+  let discoveredUserGrants: readonly ZitadelUserGrant[] | undefined
+  if (accessToken && options.oidcClient.userGrantsRead !== undefined) {
+    const grantsResult = await options.oidcClient.userGrantsRead(accessToken)
+    if (!grantsResult.success) return grantsResult
+    discoveredUserGrants = grantsResult.data
+  }
+
   for (const orgId of orgContext.allowedOrganizationIds) {
     let isMember = false
     let isAdmin = false
@@ -74,11 +84,16 @@ export const sessionOrganizationsRead = async (
 
     if (isCustomer) {
       const candidateGrants =
-        orgId === session.identityOrganizationId
-          ? (session.identityGrants ?? session.principal.grants)
-          : jwtClaims
-            ? jwtProjectGrantsRead(jwtClaims, orgId, options.config.projectId)
-            : []
+        discoveredUserGrants !== undefined
+          ? userGrantsNormalize(discoveredUserGrants, {
+              organizationId: orgId,
+              allowedRoles: ["contributor"],
+            })
+          : orgId === session.identityOrganizationId
+            ? (session.identityGrants ?? session.principal.grants)
+            : jwtClaims
+              ? jwtProjectGrantsRead(jwtClaims, orgId, options.config.projectId)
+              : []
       const projectOrganizationId = orgContext.ownerForCustomerRead(orgId) ?? orgId
       const projectIds = options.projectRepository?.projectGrantIdsRead?.(projectOrganizationId)
       if (projectIds === undefined || !projectIds.success) continue

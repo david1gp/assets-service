@@ -9,6 +9,8 @@ import type { ZitadelOidcClient } from "./zitadelOidcClient.js"
 import { type ZitadelOidcDiscovery, zitadelOidcDiscoverySchema } from "./zitadelOidcDiscoverySchema.js"
 import { zitadelMembershipSearchResponseSchema } from "./zitadelMembershipSearchResponseSchema.js"
 import type { ZitadelOrganizationMembership } from "./zitadelOrganizationMembershipSchema.js"
+import type { ZitadelUserGrant } from "./zitadelUserGrantSchema.js"
+import { zitadelUserGrantSearchResponseSchema } from "./zitadelUserGrantSearchResponseSchema.js"
 
 const organizationAdministratorRoles = new Set([
   "ORG_OWNER",
@@ -188,5 +190,106 @@ export const zitadelOidcClientCreate = (options: ZitadelOidcClientOptions): Zita
     }
   }
 
-  return { discoveryRead, authorizationUrlCreate, authorizationCodeExchange, organizationMembershipRead }
+  const userGrantsRead = async (accessToken: string): Promise<Result<readonly ZitadelUserGrant[]>> => {
+    const op = "zitadelUserGrantsRead"
+    let grantsUri: string
+    try {
+      const base = options.config.issuer.endsWith("/") ? options.config.issuer : `${options.config.issuer}/`
+      grantsUri = new URL("auth/v1/usergrants/me/_search", base).toString()
+    } catch (error) {
+      return resultErrorCreate(op, "The configured issuer URL was invalid", error)
+    }
+
+    const pageLimit = 100
+    const maxPages = 100
+    const maxResults = 10000
+    let offset = 0
+    let pageNumber = 0
+    let totalResult: number | undefined
+    const allGrants: ZitadelUserGrant[] = []
+
+    while (true) {
+      pageNumber += 1
+      if (pageNumber > maxPages) {
+        return resultErrorCreate(op, "Zitadel user grant search exceeded page limit")
+      }
+
+      let response: Response
+      try {
+        response = await fetcher(grantsUri, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            query: {
+              offset,
+              limit: pageLimit,
+              asc: true,
+            },
+          }),
+        })
+      } catch (error) {
+        return resultErrorCreate(op, "Unable to reach the Zitadel grant endpoint", error, { retryable: true })
+      }
+
+      if (!response.ok) {
+        return resultErrorCreate(
+          op,
+          "The Zitadel grant lookup failed",
+          { status: response.status },
+          { retryable: response.status === 429 || response.status >= 500 },
+        )
+      }
+
+      const body = await responseBodyRead(response, op)
+      if (!body.success) return body
+
+      const parsed = v.safeParse(zitadelUserGrantSearchResponseSchema, body.data)
+      if (!parsed.success) {
+        return resultErrorCreate(op, "The Zitadel grant response was invalid", parsed.issues)
+      }
+
+      const pageItems = parsed.output.result ?? []
+      if (pageItems.length > pageLimit) {
+        return resultErrorCreate(op, "The Zitadel grant response exceeded the requested page limit")
+      }
+      allGrants.push(...pageItems)
+      if (allGrants.length > maxResults) {
+        return resultErrorCreate(op, "Zitadel user grant search exceeded maximum result limit")
+      }
+
+      const rawTotalResult = parsed.output.details?.totalResult
+      if (rawTotalResult === undefined) {
+        return resultErrorCreate(op, "The Zitadel grant response did not include pagination details")
+      }
+      const parsedTotal = Number(rawTotalResult)
+      if (!Number.isSafeInteger(parsedTotal) || parsedTotal < 0) {
+        return resultErrorCreate(op, "The Zitadel grant response had invalid pagination details")
+      }
+      if (totalResult === undefined) {
+        totalResult = parsedTotal
+      } else if (totalResult !== parsedTotal) {
+        return resultErrorCreate(op, "The Zitadel grant response changed its pagination total")
+      }
+
+      if (offset + pageItems.length >= totalResult || pageItems.length === 0) {
+        break
+      }
+
+      offset += pageItems.length
+    }
+
+    return { success: true, data: allGrants }
+  }
+
+  return {
+    discoveryRead,
+    authorizationUrlCreate,
+    authorizationCodeExchange,
+    organizationMembershipRead,
+    userGrantsRead,
+  }
 }
