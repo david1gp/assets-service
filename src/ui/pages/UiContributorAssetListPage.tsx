@@ -25,10 +25,10 @@ export function UiContributorAssetListPage() {
   return (
     <>
       <UiPageHeading
-        title={ttc("Choose an asset", "Asset auswählen")}
+        title={ttc("Choose an asset", "Medium auswählen")}
         subtitle={ttc(
           "Find an existing asset to preview or update.",
-          "Finden Sie ein bestehendes Asset zur Vorschau oder Bearbeitung.",
+          "Finden Sie ein bestehendes Medium zur Vorschau oder Bearbeitung.",
         )}
         actions={
           <UiLinkButton href={state.uploadPath()} icon={mdiCloudUploadOutline}>
@@ -45,7 +45,7 @@ export function UiContributorAssetListPage() {
             maxLength={255}
             valueSignal={state.searchDraft}
             placeholder={ttc("Search by filename…", "Nach Dateiname suchen …")}
-            aria-label={ttc("Search assets by filename", "Assets nach Dateiname suchen")}
+            aria-label={ttc("Search assets by filename", "Medien nach Dateiname suchen")}
           />
         </div>
         <ButtonIcon type="submit" icon={mdiMagnify}>
@@ -64,7 +64,7 @@ export function UiContributorAssetListPage() {
         </Show>
       </form>
 
-      <UiQueryView query={state.query} loadingItem={ttc("assets", "Assets")}>
+      <UiQueryView query={state.query} loadingItem={ttc("assets", "Medien")}>
         {(data) => (
           <Show
             when={data.assets.length > 0}
@@ -75,8 +75,8 @@ export function UiContributorAssetListPage() {
                 </div>
                 <h2 class="mt-4 text-lg font-semibold">
                   {state.hasSearch()
-                    ? ttc("No matching assets", "Keine passenden Assets")
-                    : ttc("No assets yet", "Noch keine Assets")}
+                    ? ttc("No matching assets", "Keine passenden Medien")
+                    : ttc("No assets yet", "Noch keine Medien")}
                 </h2>
                 <p class="mt-2 max-w-md text-sm text-muted-foreground">
                   {state.hasSearch()
@@ -86,12 +86,12 @@ export function UiContributorAssetListPage() {
                       )
                     : ttc(
                         "Upload your first asset to get started.",
-                        "Laden Sie Ihr erstes Asset hoch, um zu beginnen.",
+                        "Laden Sie Ihr erstes Medium hoch, um zu beginnen.",
                       )}
                 </p>
                 <Show when={!state.hasSearch()}>
                   <UiLinkButton href={state.uploadPath()} icon={mdiCloudUploadOutline} class="mt-5">
-                    {ttc("Upload first asset", "Erstes Asset hochladen")}
+                    {ttc("Upload first asset", "Erstes Medium hochladen")}
                   </UiLinkButton>
                 </Show>
               </CardWrapper>

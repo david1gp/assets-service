@@ -33,7 +33,7 @@ export function UiStructureFolder(p: UiStructureFolderProps) {
           <span class="truncate">{p.node.folder.name}</span>
         </h3>
         <Badge variant="subtle" class="shrink-0 font-mono text-xs">
-          {p.node.assets.length} {p.node.assets.length === 1 ? ttc("asset", "Asset") : ttc("assets", "Assets")}
+          {p.node.assets.length} {p.node.assets.length === 1 ? ttc("asset", "Medium") : ttc("assets", "Medien")}
         </Badge>
       </div>
 

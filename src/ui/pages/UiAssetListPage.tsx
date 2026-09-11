@@ -69,7 +69,7 @@ const columnsCreate = (
   const columns: TableColumnDef<AssetListItem>[] = [
     {
       id: "path",
-      name: ttc("Asset", "Asset"),
+      name: ttc("Asset", "Medium"),
       data: (asset) => (showFolders() ? uiAssetPathFormat(asset.folders, asset.filename) : asset.filename),
       cell: (asset) => {
         const preview = () => (showPreviews() ? previewSourceRead(asset) : null)
@@ -188,14 +188,14 @@ export function UiAssetListPage() {
   return (
     <>
       <UiPageHeading
-        title={ttc("Assets", "Assets")}
+        title={ttc("Assets", "Medien")}
         subtitle={ttc(
           "Every asset in this project, filtered by class, folder, or name.",
-          "Alle Assets dieses Projekts, gefiltert nach Klasse, Ordner oder Name.",
+          "Alle Medien dieses Projekts, gefiltert nach Klasse, Ordner oder Name.",
         )}
         actions={
           <UiLinkButton href={state.paths().upload(state.projectId())} icon={mdiCloudUpload}>
-            {ttc("Upload asset", "Asset hochladen")}
+            {ttc("Upload asset", "Medium hochladen")}
           </UiLinkButton>
         }
       />
@@ -203,7 +203,7 @@ export function UiAssetListPage() {
       {/* Controls: View switcher, display options & search/filters */}
       <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label={ttc("Asset views", "Asset-Ansichten")} class={tablistClass}>
+          <div role="tablist" aria-label={ttc("Asset views", "Medienansichten")} class={tablistClass}>
             <For each={uiAssetViewTabs}>
               {(value) => {
                 const active = () => state.tabSignal.get() === value
@@ -452,7 +452,7 @@ export function UiAssetListPage() {
         tabIndex={0}
       >
         <Show when={state.tabSignal.get() === "list"}>
-          <UiQueryView query={state.query} loadingItem={ttc("assets", "Assets")}>
+          <UiQueryView query={state.query} loadingItem={ttc("assets", "Medien")}>
             {(data) => (
               <Show
                 when={(data?.assets.length ?? 0) > 0}
@@ -466,18 +466,18 @@ export function UiAssetListPage() {
                     </div>
                     <h3 class="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">
                       {state.hasFilters()
-                        ? ttc("No matching assets", "Keine passenden Assets")
-                        : ttc("No assets in this project", "Keine Assets in diesem Projekt")}
+                        ? ttc("No matching assets", "Keine passenden Medien")
+                        : ttc("No assets in this project", "Keine Medien in diesem Projekt")}
                     </h3>
                     <p class="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
                       {state.hasFilters()
                         ? ttc(
                             "No assets matched your search or filter criteria. Try adjusting or clearing your filters.",
-                            "Keine Assets entsprechen deiner Suche oder deinen Filterkriterien. Passe die Filter an oder leere sie.",
+                            "Keine Medien entsprechen deiner Suche oder deinen Filterkriterien. Passe die Filter an oder leere sie.",
                           )
                         : ttc(
                             "Upload your first image, video, font, or document to populate this project's asset inventory.",
-                            "Lade dein erstes Bild, Video, deine erste Schrift oder dein erstes Dokument hoch, um das Asset-Inventar zu füllen.",
+                            "Lade dein erstes Bild, Video, deine erste Schrift oder dein erstes Dokument hoch, um das Medieninventar zu füllen.",
                           )}
                     </p>
                     <div class="mt-5">
@@ -485,7 +485,7 @@ export function UiAssetListPage() {
                         when={state.hasFilters()}
                         fallback={
                           <UiLinkButton href={state.paths().upload(state.projectId())} icon={mdiCloudUpload}>
-                            {ttc("Upload asset", "Asset hochladen")}
+                            {ttc("Upload asset", "Medium hochladen")}
                           </UiLinkButton>
                         }
                       >

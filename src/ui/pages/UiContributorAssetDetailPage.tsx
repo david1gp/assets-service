@@ -29,7 +29,7 @@ export function UiContributorAssetDetailPage() {
         class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-slate-900 dark:hover:text-slate-100"
       >
         <Icon path={mdiArrowLeft} class="size-4" />
-        {ttc("Back to assets", "Zurück zu den Assets")}
+        {ttc("Back to assets", "Zurück zu den Medien")}
       </A>
       <UiPageHeading
         title={state.pageTitle()}
@@ -50,7 +50,7 @@ export function UiContributorAssetDetailPage() {
         )}
       </Show>
 
-      <UiQueryView query={state.query} loadingItem={ttc("asset", "Asset")}>
+      <UiQueryView query={state.query} loadingItem={ttc("asset", "Medium")}>
         {(asset) => (
           <div class="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.8fr)]">
             <CardWrapper class="overflow-hidden border border-slate-200 bg-white p-0 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -103,7 +103,7 @@ export function UiContributorAssetDetailPage() {
                     {ttc("Usage note", "Hinweis zur Verwendung")}
                   </Label>
                   <p class="mt-1 text-sm leading-6 text-muted-foreground">
-                    {ttc("Where should this asset be included?", "Wo soll dieses Asset eingebunden werden?")}
+                    {ttc("Where should this asset be included?", "Wo soll dieses Medium eingebunden werden?")}
                   </p>
                   <div class="mt-3">
                     <TextareaS
@@ -113,7 +113,7 @@ export function UiContributorAssetDetailPage() {
                       valueSignal={state.integrationNoteDraft}
                       placeholder={ttc(
                         "Where and how should this asset be used…",
-                        "Wo und wie soll dieses Asset verwendet werden …",
+                        "Wo und wie soll dieses Medium verwendet werden …",
                       )}
                     />
                   </div>

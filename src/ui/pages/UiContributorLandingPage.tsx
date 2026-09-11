@@ -18,7 +18,7 @@ export function UiContributorLandingPage() {
         title={ttc("What would you like to do?", "Was möchten Sie tun?")}
         subtitle={ttc(
           "Add something new or choose an existing asset to update.",
-          "Fügen Sie etwas Neues hinzu oder wählen Sie ein bestehendes Asset zur Bearbeitung aus.",
+          "Fügen Sie etwas Neues hinzu oder wählen Sie ein bestehendes Medium zur Bearbeitung aus.",
         )}
       />
 
@@ -62,11 +62,11 @@ export function UiContributorLandingPage() {
               <p class="mt-2 text-sm leading-6 text-muted-foreground">
                 {ttc(
                   "Browse your existing assets, preview them, and update their customer-facing details.",
-                  "Durchsuchen Sie bestehende Assets, zeigen Sie Vorschauen an und bearbeiten Sie sichtbare Angaben.",
+                  "Durchsuchen Sie bestehende Medien, zeigen Sie Vorschauen an und bearbeiten Sie sichtbare Angaben.",
                 )}
               </p>
               <span class="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-violet-700 dark:text-violet-300">
-                {ttc("Choose an asset", "Asset auswählen")}
+                {ttc("Choose an asset", "Medium auswählen")}
                 <Icon path={mdiArrowRight} class="size-4 transition-transform group-hover:translate-x-1" />
               </span>
             </div>

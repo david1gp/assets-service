@@ -15,13 +15,13 @@ export function UiLoginPage() {
 
   return (
     <>
-      <SetPageTitle title={ttc("Sign in · Assets service", "Anmelden · Asset-Service")} />
+      <SetPageTitle title={ttc("Sign in · Assets service", "Anmelden · Medien-Service")} />
       <CardWrapper class="mx-auto mt-10 max-w-md p-6">
         <h1 class="text-2xl font-semibold">{ttc("Sign in", "Anmelden")}</h1>
         <p class="mt-2 text-muted-foreground">
           {ttc(
             "Sign in to access your projects and assets.",
-            "Melden Sie sich an, um auf Ihre Projekte und Assets zuzugreifen.",
+            "Melden Sie sich an, um auf Ihre Projekte und Medien zuzugreifen.",
           )}
         </p>
         <Show when={state.errorMessage()}>

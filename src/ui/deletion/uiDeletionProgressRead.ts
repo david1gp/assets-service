@@ -56,7 +56,7 @@ export const uiDeletionProgressRead = (state: DeletionState): UiDeletionProgress
       totalSteps,
       removedObjects: 0,
       pendingObjects,
-      label: `0 ${ttc("of", "von")} ${totalSteps} ${ttc("steps done", "Schritte abgeschlossen")}. ${ttc("Queued, so the asset and its objects are still in place until the workflow runs.", "Eingereiht; das Asset und seine Objekte bleiben bestehen, bis der Workflow ausgeführt wird.")}`,
+      label: `0 ${ttc("of", "von")} ${totalSteps} ${ttc("steps done", "Schritte abgeschlossen")}. ${ttc("Queued, so the asset and its objects are still in place until the workflow runs.", "Eingereiht; das Medium und seine Objekte bleiben bestehen, bis der Workflow ausgeführt wird.")}`,
     }
 
   if (state.status === "failed")

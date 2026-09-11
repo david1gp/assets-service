@@ -26,7 +26,7 @@ export type UiStructureDropAreaProps = {
 export function UiStructureDropArea(p: UiStructureDropAreaProps) {
   return (
     <ul
-      aria-label={`${ttc("Assets in", "Assets in")} ${p.label}`}
+      aria-label={`${ttc("Assets in", "Medien in")} ${p.label}`}
       class={classArr(
         "flex min-h-48 flex-wrap items-start gap-4 sm:gap-5 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 p-4 transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/30",
         p.class,
@@ -57,7 +57,7 @@ export function UiStructureDropArea(p: UiStructureDropAreaProps) {
       <Show when={p.assets.length === 0}>
         <li class="flex items-center gap-2 p-2 text-xs font-medium text-slate-400 dark:text-slate-500">
           <Icon path={mdiFolderUploadOutline} class="size-4 shrink-0" />
-          <span>{ttc("Drop assets here", "Assets hier ablegen")}</span>
+          <span>{ttc("Drop assets here", "Medien hier ablegen")}</span>
         </li>
       </Show>
     </ul>

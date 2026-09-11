@@ -23,9 +23,9 @@ export function UiProjectCard(p: UiProjectCardProps) {
       <dl class="flex flex-wrap gap-x-6 gap-y-2 text-muted-foreground text-sm">
         <div class="flex items-center gap-2">
           <Icon path={mdiFileMultiple} class="size-4" />
-          <dt class="sr-only">{ttc("Assets", "Assets")}</dt>
+          <dt class="sr-only">{ttc("Assets", "Medien")}</dt>
           <dd>
-            {p.project.assetCount.toLocaleString("en-US")} {ttc("assets", "Assets")}
+            {p.project.assetCount.toLocaleString("en-US")} {ttc("assets", "Medien")}
           </dd>
         </div>
         <div class="flex items-center gap-2">

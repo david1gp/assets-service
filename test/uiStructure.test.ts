@@ -113,7 +113,7 @@ test("keeps the structure presentation and list request at the intended boundari
   expect(folder).toContain("<CardWrapper")
   expect(folder).toContain("rounded-lg border border-slate-200")
   expect(dropArea).toContain("Drop assets here")
-  expect(dropArea).toContain('aria-label={`${ttc("Assets in", "Assets in")} ${p.label}`}')
+  expect(dropArea).toContain('aria-label={`${ttc("Assets in", "Medien in")} ${p.label}`}')
   expect(view).toContain("<UiPager")
   // The summary text itself is derived in the state factory, the view only renders it next to the pager.
   expect(view).toContain("p.state.pageSummaryText()")
@@ -129,7 +129,7 @@ test("keeps the structure presentation and list request at the intended boundari
 test("associates each asset view tab with its hidden tabpanel", async () => {
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 
-  expect(page).toContain('role="tablist" aria-label={ttc("Asset views", "Asset-Ansichten")}')
+  expect(page).toContain('role="tablist" aria-label={ttc("Asset views", "Medienansichten")}')
   expect(page).toContain("id={`asset-view-tab-${value}`}")
   expect(page).toContain("aria-controls={`asset-view-panel-${value}`}")
   expect(page).toContain('id="asset-view-panel-structure"')

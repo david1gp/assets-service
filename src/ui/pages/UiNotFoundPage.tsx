@@ -8,7 +8,7 @@ import { uiPaths } from "../routing/uiPaths.js"
 export function UiNotFoundPage() {
   return (
     <>
-      <SetPageTitle title={ttc("Page not found · Assets service", "Seite nicht gefunden · Asset-Service")} />
+      <SetPageTitle title={ttc("Page not found · Assets service", "Seite nicht gefunden · Medien-Service")} />
       <ErrorPage
         title={ttc("Page not found", "Seite nicht gefunden")}
         subtitle={ttc(

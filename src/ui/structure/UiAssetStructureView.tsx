@@ -53,7 +53,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
             <p class="text-xs text-slate-500 dark:text-slate-400">
               {ttc(
                 "Moving an asset here changes its structure folder only, never its canonical path.",
-                "Das Verschieben eines Assets ändert nur seinen Strukturordner, niemals seinen kanonischen Pfad.",
+                "Das Verschieben eines Mediums ändert nur seinen Strukturordner, niemals seinen kanonischen Pfad.",
               )}
             </p>
           </div>
@@ -78,10 +78,10 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
             <Show
               when={p.showFolders()}
               fallback={
-                <section aria-label={ttc("Assets", "Assets")} class="flex flex-col gap-3">
+                <section aria-label={ttc("Assets", "Medien")} class="flex flex-col gap-3">
                   <UiStructureDropArea
                     folderId={null}
-                    label={ttc("Assets", "Assets")}
+                    label={ttc("Assets", "Medien")}
                     assets={uiStructureTreeAssetsRead(p.state.tree())}
                     projectId={p.projectId}
                     showPreviews={p.showPreviews}
@@ -118,7 +118,7 @@ export function UiAssetStructureView(p: UiAssetStructureViewProps) {
                     </h2>
                     <Badge variant="subtle" class="font-mono text-xs">
                       {p.state.tree().unassigned.length}{" "}
-                      {p.state.tree().unassigned.length === 1 ? ttc("asset", "Asset") : ttc("assets", "Assets")}
+                      {p.state.tree().unassigned.length === 1 ? ttc("asset", "Medium") : ttc("assets", "Medien")}
                     </Badge>
                   </div>
                   <UiStructureDropArea

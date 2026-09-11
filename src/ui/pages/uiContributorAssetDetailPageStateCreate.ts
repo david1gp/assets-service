@@ -186,7 +186,7 @@ export const uiContributorAssetDetailPageStateCreate = () => {
 
   return {
     query,
-    pageTitle: () => query.data()?.filename ?? ttc("Asset details", "Asset-Details"),
+    pageTitle: () => query.data()?.filename ?? ttc("Asset details", "Mediendetails"),
     altDraft,
     integrationNoteDraft,
     preview,

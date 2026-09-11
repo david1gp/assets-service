@@ -15,7 +15,7 @@ export function UiUploadPage() {
   return (
     <>
       <UiPageHeading
-        title={ttc("Upload assets", "Assets hochladen")}
+        title={ttc("Upload assets", "Medien hochladen")}
         subtitle={ttc(
           "Drop files here to upload them right away; folders can be set once an upload finished.",
           "Lege Dateien hier ab, um sie sofort hochzuladen; Ordner lassen sich nach Abschluss setzen.",

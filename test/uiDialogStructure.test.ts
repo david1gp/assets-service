@@ -25,9 +25,9 @@ describe("UiDialog structure", () => {
   test("routes the move, output, and delete dialogs through the shared structure", async () => {
     const source = await readFile("src/ui/pages/UiAssetDetailPage.tsx", "utf8")
     const titles = [
-      'title={ttc("Move asset", "Asset verschieben")}',
+      'title={ttc("Move asset", "Medium verschieben")}',
       'title={ttc("Edit output set", "Ausgabensatz bearbeiten")}',
-      'title={ttc("Request deletion of this asset?", "Löschung dieses Assets anfordern?")}',
+      'title={ttc("Request deletion of this asset?", "Löschung dieses Mediums anfordern?")}',
     ]
 
     expect(source.match(/<UiDialog\b/g)).toHaveLength(titles.length)

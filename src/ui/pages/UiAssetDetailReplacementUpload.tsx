@@ -33,7 +33,7 @@ export function UiAssetDetailReplacementUpload(props: {
         hintId="replacement-file-hint"
         hint={ttc(
           "The replacement must resolve to the same asset class and keeps the current path.",
-          "Die Ersatzdatei muss derselben Asset-Klasse entsprechen und behält den aktuellen Pfad.",
+          "Die Ersatzdatei muss derselben Medienklasse entsprechen und behält den aktuellen Pfad.",
         )}
       />
 

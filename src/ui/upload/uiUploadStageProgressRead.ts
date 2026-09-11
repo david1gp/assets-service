@@ -17,7 +17,7 @@ const stageLabelRead = (stage: UiUploadStage): string => {
   if (stage === "hashing") return ttc("Checksumming the file", "Datei wird geprüft")
   if (stage === "requesting") return ttc("Requesting an upload slot", "Upload-Platz wird angefordert")
   if (stage === "transferring") return ttc("Transferring to storage", "Übertragung in den Speicher")
-  if (stage === "completing") return ttc("Registering the asset", "Asset wird erfasst")
+  if (stage === "completing") return ttc("Registering the asset", "Medium wird erfasst")
   if (stage === "done") return ttc("Upload finished", "Upload abgeschlossen")
   return ttc("Upload failed", "Upload fehlgeschlagen")
 }

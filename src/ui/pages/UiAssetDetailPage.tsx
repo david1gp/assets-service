@@ -75,12 +75,12 @@ export function UiAssetDetailPage() {
           class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
         >
           <Icon path={mdiArrowLeft} class="size-4" />
-          <span>{ttc("Back to assets", "Zurück zu den Assets")}</span>
+          <span>{ttc("Back to assets", "Zurück zu den Medien")}</span>
         </A>
       </div>
 
       <UiPageHeading
-        title={ttc("Asset", "Asset")}
+        title={ttc("Asset", "Medium")}
         subtitle={ttc(
           "Source revisions, generated outputs, metadata, processing status, and destructive actions.",
           "Quellrevisionen, generierte Ausgaben, Metadaten, Verarbeitungsstatus und destruktive Aktionen.",
@@ -95,7 +95,7 @@ export function UiAssetDetailPage() {
               )
               uiToastAdd({
                 tone: "positive",
-                title: ttc("Asset link copied to clipboard", "Asset-Link in die Zwischenablage kopiert"),
+                title: ttc("Asset link copied to clipboard", "Medienlink in die Zwischenablage kopiert"),
               })
             }}
           >
@@ -112,7 +112,7 @@ export function UiAssetDetailPage() {
         )}
       </Show>
 
-      <UiQueryView query={state.query} loadingItem={ttc("asset", "Asset")}>
+      <UiQueryView query={state.query} loadingItem={ttc("asset", "Medium")}>
         {(asset) => (
           <div class="flex flex-col gap-6">
             {/* Primary Hero Section: Preview + Alt Text / Metadata & Asset Identity */}
@@ -145,7 +145,7 @@ export function UiAssetDetailPage() {
                         <p>
                           {ttc(
                             "No image preview available for this asset.",
-                            "Für dieses Asset ist keine Bildvorschau verfügbar.",
+                            "Für dieses Medium ist keine Bildvorschau verfügbar.",
                           )}
                         </p>
                       </div>
@@ -327,7 +327,7 @@ export function UiAssetDetailPage() {
                         {ttc("Usage note", "Hinweis zur Verwendung")}
                       </h2>
                       <p class="mt-0.5 text-xs text-muted-foreground">
-                        {ttc("Where should this asset be included?", "Wo soll dieses Asset eingebunden werden?")}
+                        {ttc("Where should this asset be included?", "Wo soll dieses Medium eingebunden werden?")}
                       </p>
                     </div>
 
@@ -346,7 +346,7 @@ export function UiAssetDetailPage() {
                           valueSignal={state.integrationNoteDraft}
                           placeholder={ttc(
                             "Where and how this asset should be used…",
-                            "Wo und wie dieses Asset verwendet werden soll …",
+                            "Wo und wie dieses Medium verwendet werden soll …",
                           )}
                         />
                       </div>
@@ -614,12 +614,12 @@ export function UiAssetDetailPage() {
                 <p class="mt-0.5 text-xs text-muted-foreground">
                   {ttc(
                     "Workflow execution logs, backup receipts, and asset deletion status.",
-                    "Workflow-Protokolle, Sicherungsbelege und Löschstatus des Assets.",
+                    "Workflow-Protokolle, Sicherungsbelege und Löschstatus des Mediums.",
                   )}
                 </p>
               </div>
 
-              <UiQueryView query={state.activity} loadingItem={ttc("asset status", "Asset-Status")}>
+              <UiQueryView query={state.activity} loadingItem={ttc("asset status", "Medienstatus")}>
                 {(activity) => (
                   <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
                     {/* Workflows Column */}
@@ -644,7 +644,7 @@ export function UiAssetDetailPage() {
                             <li class="text-slate-400">
                               {ttc(
                                 "No workflow has run for this asset.",
-                                "Für dieses Asset wurde noch kein Workflow ausgeführt.",
+                                "Für dieses Medium wurde noch kein Workflow ausgeführt.",
                               )}
                             </li>
                           }
@@ -788,7 +788,7 @@ export function UiAssetDetailPage() {
 
             {/* Dialogs */}
             <UiDialog
-              title={ttc("Move asset", "Asset verschieben")}
+              title={ttc("Move asset", "Medium verschieben")}
               open={state.openDialog() === "move"}
               onClose={state.closeDialog}
             >
@@ -816,7 +816,7 @@ export function UiAssetDetailPage() {
                   <InputS id="move-filename" required valueSignal={state.moveFilename} />
                 </div>
                 <ButtonIcon type="submit" isLoading={state.pendingLabel() === "Move"}>
-                  {ttc("Move asset", "Asset verschieben")}
+                  {ttc("Move asset", "Medium verschieben")}
                 </ButtonIcon>
               </form>
             </UiDialog>
@@ -918,7 +918,7 @@ export function UiAssetDetailPage() {
                                 }
                               >
                                 <option value="inherit">
-                                  {ttc("Follow the asset metadata", "Asset-Metadaten übernehmen")}
+                                  {ttc("Follow the asset metadata", "Medienmetadaten übernehmen")}
                                 </option>
                                 <option value="on">{ttc("Always draw the label", "Label immer anzeigen")}</option>
                                 <option value="off">{ttc("Never draw the label", "Label nie anzeigen")}</option>
@@ -1017,7 +1017,7 @@ export function UiAssetDetailPage() {
             </UiDialog>
 
             <UiDialog
-              title={ttc("Request deletion of this asset?", "Löschung dieses Assets anfordern?")}
+              title={ttc("Request deletion of this asset?", "Löschung dieses Mediums anfordern?")}
               description={ttc(
                 "Deletion runs in the background. Nothing is removed until the deletion workflow finishes.",
                 "Die Löschung läuft im Hintergrund. Nichts wird entfernt, bevor der Lösch-Workflow abgeschlossen ist.",
@@ -1051,7 +1051,7 @@ export function UiAssetDetailPage() {
                     <span>
                       {ttc(
                         "I understand that this asset is deleted permanently once the workflow completes.",
-                        "Ich verstehe, dass dieses Asset nach Abschluss des Workflows dauerhaft gelöscht ist.",
+                        "Ich verstehe, dass dieses Medium nach Abschluss des Workflows dauerhaft gelöscht ist.",
                       )}
                     </span>
                   </label>

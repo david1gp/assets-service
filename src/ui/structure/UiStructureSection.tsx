@@ -30,7 +30,7 @@ export function UiStructureSection(p: UiStructureSectionProps) {
         </h2>
         <Badge variant="subtle" class="font-mono text-xs">
           {p.node.assets.length}{" "}
-          {p.node.assets.length === 1 ? ttc("direct asset", "direktes Asset") : ttc("direct assets", "direkte Assets")}
+          {p.node.assets.length === 1 ? ttc("direct asset", "direktes Medium") : ttc("direct assets", "direkte Medien")}
         </Badge>
       </div>
 

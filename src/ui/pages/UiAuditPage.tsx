@@ -16,9 +16,9 @@ import { uiTableMobileClassesRead } from "../table/uiTableMobileClassesRead.js"
 import { uiAuditPageStateCreate } from "./uiAuditPageStateCreate.js"
 
 const auditActionLabelRead = (action: string): string => {
-  if (action === "asset.created") return ttc("Asset created", "Asset erstellt")
-  if (action === "asset.deletion_requested") return ttc("Asset deletion requested", "Asset-Löschung angefordert")
-  if (action === "asset.deleted") return ttc("Asset deleted", "Asset gelöscht")
+  if (action === "asset.created") return ttc("Asset created", "Medium erstellt")
+  if (action === "asset.deletion_requested") return ttc("Asset deletion requested", "Medienlöschung angefordert")
+  if (action === "asset.deleted") return ttc("Asset deleted", "Medium gelöscht")
   return action
 }
 

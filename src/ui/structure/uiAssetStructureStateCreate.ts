@@ -177,7 +177,7 @@ export const uiAssetStructureStateCreate = (input: {
         })
         return
       }
-      uiToastAdd({ tone: "positive", title: ttc("Asset moved", "Asset verschoben") })
+      uiToastAdd({ tone: "positive", title: ttc("Asset moved", "Medium verschoben") })
       // Reloading while other moves are in flight would render their pre-move
       // server state; the last finishing move reloads for all of them.
       if (pendingAssetIds.get().size === 0) query.reload()

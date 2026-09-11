@@ -113,7 +113,7 @@ export function UiUploadFileCard(p: UiUploadFileCardProps) {
         {(assetId) => (
           <div>
             <UiLinkButton href={p.assetHref(assetId())} variant="outline">
-              {ttc("Open asset", "Asset öffnen")}
+              {ttc("Open asset", "Medium öffnen")}
             </UiLinkButton>
           </div>
         )}

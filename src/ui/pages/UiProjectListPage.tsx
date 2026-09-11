@@ -21,7 +21,7 @@ export function UiProjectListPage() {
     <>
       <UiPageHeading
         title={ttc("Projects", "Projekte")}
-        subtitle={ttc("Pick a project to manage its assets.", "Wähle ein Projekt, um seine Assets zu verwalten.")}
+        subtitle={ttc("Pick a project to manage its assets.", "Wähle ein Projekt, um seine Medien zu verwalten.")}
       />
 
       <form
@@ -67,7 +67,7 @@ export function UiProjectListPage() {
               <For each={data.projects}>{(project) => <UiProjectCard project={project} />}</For>
             </div>
             <p class="text-muted-foreground text-sm" data-testid="project-list-totals">
-              {uiProjectListTotalsRead(data.projects).assetCount.toLocaleString("en-US")} {ttc("assets", "Assets")} ·{" "}
+              {uiProjectListTotalsRead(data.projects).assetCount.toLocaleString("en-US")} {ttc("assets", "Medien")} ·{" "}
               {uiByteSizeFormat(uiProjectListTotalsRead(data.projects).totalFileSize)}{" "}
               {ttc("space used", "Speicher verwendet")}
             </p>

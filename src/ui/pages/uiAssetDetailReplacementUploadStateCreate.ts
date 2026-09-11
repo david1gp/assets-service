@@ -56,7 +56,7 @@ export const uiAssetDetailReplacementUploadStateCreate = (input: {
       return fail(ttc("Select a replacement file before uploading", "Wähle vor dem Upload eine Ersatzdatei aus"))
     const asset = input.asset()
     if (asset === null)
-      return fail(ttc("The asset details are not available", "Die Asset-Details sind nicht verfügbar"))
+      return fail(ttc("The asset details are not available", "Die Mediendetails sind nicht verfügbar"))
 
     const folders = uiUploadFoldersRead(asset.folders)
     if (!folders.success) return fail(folders.errorMessage)

@@ -53,7 +53,7 @@ export function UiBackupsPage() {
         title={ttc("Backups", "Sicherungen")}
         subtitle={ttc(
           "Verified copies written before any asset was published.",
-          "Verifizierte Kopien, die vor der Veröffentlichung eines Assets geschrieben wurden.",
+          "Verifizierte Kopien, die vor der Veröffentlichung eines Mediums geschrieben wurden.",
         )}
       />
       <UiQueryView

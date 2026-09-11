@@ -14,10 +14,10 @@ export type UiPageSummaryInput = {
 export const uiPageSummaryTextRead = (input: UiPageSummaryInput): string => {
   const shown = input.shownCount
   const total = input.page?.total
-  const noun = (count: number) => (count === 1 ? ttc("asset", "Asset") : ttc("assets", "Assets"))
+  const noun = (count: number) => (count === 1 ? ttc("asset", "Medium") : ttc("assets", "Medien"))
   if (total === undefined || total === 0)
     return shown === 0
-      ? `${ttc("Showing", "Angezeigt")} 0 ${ttc("assets", "Assets")}`
+      ? `${ttc("Showing", "Angezeigt")} 0 ${ttc("assets", "Medien")}`
       : `${ttc("Showing", "Angezeigt")} ${shown.toLocaleString("en-US")} ${noun(shown)}`
 
   const limit = input.page?.limit ?? shown
