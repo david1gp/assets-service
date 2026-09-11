@@ -1555,6 +1555,40 @@ test("config show reports effective local configuration without creating an API 
   }
 })
 
+test("config show reports the selected environment file inside a project .env directory", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-config-directory-home-"))
+  const root = await mkdtemp(join(tmpdir(), "assets-config-directory-root-"))
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await mkdir(join(root, ".env"))
+    await writeFile(
+      join(root, ".env", "production"),
+      "ASSETS_ORGANIZATION=contentoren\nASSETS_PROJECT=semesterkur\nASSETS_API_URL=https://assets.example.test\n",
+    )
+    await writeFile(join(root, "assets.config.json"), JSON.stringify({ image: "images" }))
+    const output: string[] = []
+    const exitCode = await assetsCliMain(["config", "show", root, "--json"], {
+      env: { HOME: homeDirectory, PWD: root, ASSETS_ENVIRONMENT: "production" },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(output[0] ?? "")).toMatchObject({
+      ok: true,
+      data: {
+        environmentFile: { path: join(root, ".env", "production"), source: "command-root", loaded: true },
+        project: { value: "semesterkur", source: "env-file" },
+        environment: { value: "production", source: "process-environment" },
+        apiUrl: { value: "https://assets.example.test", source: "env-file" },
+      },
+    })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("config show reports compatibility fallback and directory-mapped organization without API settings", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "assets-config-show-home-"))
   const root = await mkdtemp(join(tmpdir(), "assets-config-show-root-"))

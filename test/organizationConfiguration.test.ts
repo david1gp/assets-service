@@ -105,6 +105,33 @@ test("environment configuration lets exported process values override other env-
   }
 })
 
+test("environment configuration selects the requested file from a project .env directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-env-directory-"))
+  try {
+    await mkdir(join(root, ".env"))
+    await writeFile(join(root, ".env", "production"), "ASSETS_PROJECT=semesterkur\n")
+    const result = await environmentConfigurationResolve({
+      env: { ASSETS_ENVIRONMENT: "production", PWD: root },
+      commandRoot: root,
+    })
+    expect(result).toEqual({
+      success: true,
+      data: {
+        environment: {
+          ASSETS_ENVIRONMENT: "production",
+          ASSETS_PROJECT: "semesterkur",
+          PWD: root,
+        },
+        fileEnvironment: { ASSETS_PROJECT: "semesterkur" },
+        envFilePath: join(root, ".env", "production"),
+        envFileLoaded: true,
+      },
+    })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("environment configuration gives any process alias precedence over any env-file alias", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-env-alias-precedence-"))
   try {
