@@ -28,6 +28,7 @@ import { cliCommandHelp } from "../asset-cli/cliCommandHelp.js"
 import { cliHelpFormat } from "../asset-cli/cliHelpFormat.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
 import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
+import { assetsCliVersionMetadataRender } from "../assetsCliVersionMetadataRender.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
 import {
@@ -213,6 +214,7 @@ const flagNames = new Set([
   "write",
   "delete",
   "version",
+  "verbose",
 ])
 
 const diffSourceDirectoryOptionNames = new Set([
@@ -2953,8 +2955,9 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
   const stderr = options.stderr ?? ((text: string) => process.stderr.write(text))
   const parsed = parsedCommandRead(args)
   if (!parsed.success) return outputWrite({ result: parsed }, args.includes("--json"), stdout, stderr)
-  if (flagRead(parsed.data, "version")) {
-    stdout(`assets ${packageVersion}\n`)
+  const versionRequested = flagRead(parsed.data, "version") || parsed.data.command === "version"
+  if (versionRequested) {
+    stdout(flagRead(parsed.data, "verbose") ? assetsCliVersionMetadataRender() : `assets ${packageVersion}\n`)
     return 0
   }
   if (flagRead(parsed.data, "help") || parsed.data.command === "help")

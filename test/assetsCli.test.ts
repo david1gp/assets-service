@@ -1911,6 +1911,33 @@ test("reports the package version before reading configuration", async () => {
   expect(errors).toEqual([])
 })
 
+test("reports verbose package metadata before reading configuration", async () => {
+  const output: string[] = []
+  const errors: string[] = []
+  const exitCode = await assetsCliMain(["version", "--verbose"], {
+    env: { ASSETS_CONFIG_FILE: join(tmpdir(), "assets-cli-invalid-config.json") },
+    stdout: (text) => output.push(text),
+    stderr: (text) => errors.push(text),
+  })
+
+  expect(exitCode).toBe(0)
+  const rendered = output.join("")
+  expect(rendered).toStartWith(`assets ${pkg.version}\n`)
+  expect(rendered).toContain(`user agent: ${pkg.name}/${pkg.version}`)
+  expect(rendered).toMatch(/executable: .+\nexecutable target: .+\n/)
+  expect(rendered).toContain(`version: ${pkg.version}`)
+  expect(rendered).toContain(`description: ${pkg.description}`)
+  expect(rendered).toContain("author: David Siewert — https://david-siewert.com/")
+  expect(rendered).toContain(`license: ${pkg.license}`)
+  expect(rendered).toContain(`project: ${pkg.homepage}`)
+  expect(rendered).toContain("installation type: development checkout")
+  expect(rendered).toContain("runtime: bun ")
+  expect(rendered).toContain("runtime requirements: node >=22, bun >=1.3.0")
+  expect(rendered).toContain(`platform: ${process.platform} ${process.arch} (OS release `)
+  expect(rendered).not.toContain("build details:")
+  expect(errors).toEqual([])
+})
+
 test("bulk project resolution gives an explicit project precedence over package.json.name", async () => {
   const root = await mkdtemp(join(tmpdir(), "assets-cli-project-explicit-"))
   try {
