@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdir, rm } from "node:fs/promises"
 
+import { assetsApiClientCreate } from "../src/api-client/assetsApiClientCreate.js"
 import type { AssetListItem } from "../src/api-client/assetListItemSchema.js"
 import type { FixtureServer } from "../src/fixture/fixtureServerCreate.js"
 import { fixtureServerCreate } from "../src/fixture/fixtureServerCreate.js"
@@ -38,6 +39,25 @@ describe("fixture server", () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { data: { assets: { class: string }[] } }
     expect(body.data.assets.map((asset) => asset.class).sort()).toEqual(["document", "font", "image", "video"])
+  })
+
+  test("validates the fixture asset-list response including its filtered total", async () => {
+    const clientResult = assetsApiClientCreate({
+      apiUrl: origin,
+      sessionCookie: cookie,
+      fetcher: (input, init) => server.fetch(new Request(String(input), init)),
+    })
+    expect(clientResult.success).toBe(true)
+    if (!clientResult.success) return
+
+    const assets = await clientResult.data.assetListRead(server.seed.serviceProjectId, {
+      include: "outputs,metadata,history",
+    })
+
+    expect(assets).toMatchObject({
+      success: true,
+      data: { assets: expect.any(Array), page: { limit: 50, nextCursor: null, total: 4 } },
+    })
   })
 
   test("includes representative image history needed for previews", async () => {
