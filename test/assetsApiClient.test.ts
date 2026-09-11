@@ -59,6 +59,90 @@ test("assets API client validates the server-derived session mode", async () => 
   })
 })
 
+test("assets API client returns safe network diagnostics", async () => {
+  const token = "network-secret-token"
+  const accessToken = "configured-api-token"
+  const signedUrl = `https://upload.example.test/object?X-Amz-Signature=${token}`
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken,
+    fetcher: async () => {
+      throw new Error(`Failed to fetch ${signedUrl} with ${accessToken} and Bearer ${token}`)
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const result = await clientResult.data.healthRead()
+
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result).toMatchObject({
+    op: "assetsApiClientHealthRead",
+    errorMessage: "The assets service could not be reached",
+    diagnostics: {
+      operation: "assetsApiClientHealthRead",
+      kind: "network",
+      context: { method: "GET", phase: "request", target: "https://assets.example.test/api/v1/health" },
+    },
+  })
+  expect(JSON.stringify(result)).not.toContain(token)
+  expect(JSON.stringify(result)).not.toContain(accessToken)
+  expect(JSON.stringify(result)).not.toContain("X-Amz-Signature")
+})
+
+test("assets API client returns bounded redacted HTTP diagnostics", async () => {
+  const token = "http-secret-token"
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () =>
+      new Response(`upstream token=${token} ${"detail ".repeat(200)}`, {
+        status: 503,
+        statusText: "Service Unavailable",
+      }),
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const result = await clientResult.data.healthRead()
+
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result).toMatchObject({
+    errorMessage: "The assets service returned an error",
+    diagnostics: {
+      kind: "http",
+      status: 503,
+      context: { statusText: "Service Unavailable" },
+    },
+  })
+  const diagnostics = result.diagnostics as { responseDetail?: string }
+  expect(diagnostics.responseDetail?.length).toBeLessThanOrEqual(500)
+  expect(JSON.stringify(result)).not.toContain(token)
+})
+
+test("assets API client returns safe diagnostics for malformed responses", async () => {
+  const token = "malformed-secret-token"
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () => new Response(`not-json token=${token} ${"x".repeat(1000)}`, { status: 200 }),
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const result = await clientResult.data.healthRead()
+
+  expect(result.success).toBe(false)
+  if (result.success) return
+  expect(result).toMatchObject({
+    errorMessage: "The assets service returned invalid JSON",
+    diagnostics: { kind: "invalid-response", status: 200, cause: "invalid-json" },
+  })
+  const diagnostics = result.diagnostics as { responseDetail?: string }
+  expect(diagnostics.responseDetail?.length).toBeLessThanOrEqual(500)
+  expect(JSON.stringify(result)).not.toContain(token)
+})
+
 test("assets API client reads organizations and switches organization", async () => {
   const requests: Request[] = []
   const clientResult = assetsApiClientCreate({
@@ -638,7 +722,11 @@ test("direct uploads use the signed intent without the service bearer", async ()
       url: "https://upload.example.test/staging/object",
       key: "staging/object",
       expiresAt: "2026-08-17T12:00:00.000Z",
-      headers: { "content-type": "image/jpeg" },
+      headers: {
+        "content-type": "image/jpeg",
+        "content-length": "3",
+        "x-amz-meta-sha256": "signed-checksum",
+      },
       mediaType: "image/jpeg",
       byteSize: 3,
     },
@@ -647,6 +735,58 @@ test("direct uploads use the signed intent without the service bearer", async ()
   expect(uploaded).toEqual({ success: true, data: true })
   expect(requests[0]?.url).toBe("https://upload.example.test/staging/object")
   expect(requests[0]?.headers.get("authorization")).toBeNull()
+  expect(requests[0]?.headers.get("content-type")).toBe("image/jpeg")
+  expect(requests[0]?.headers.get("content-length")).toBeNull()
+  expect(requests[0]?.headers.get("x-amz-meta-sha256")).toBe("signed-checksum")
+})
+
+test("direct uploads return safe diagnostics for network and HTTP failures", async () => {
+  const token = "direct-upload-secret"
+  const intent = {
+    method: "PUT" as const,
+    url: `https://upload.example.test/staging/object?X-Amz-Signature=${token}`,
+    key: "staging/object",
+    expiresAt: "2026-08-17T12:00:00.000Z",
+    headers: { "content-type": "image/jpeg" },
+    mediaType: "image/jpeg",
+    byteSize: 3,
+  }
+
+  const networkClientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () => {
+      throw new Error(`Network failed for ${intent.url} token=${token}`)
+    },
+  })
+  expect(networkClientResult.success).toBe(true)
+  if (!networkClientResult.success) return
+  const networkResult = await networkClientResult.data.uploadObjectPut(intent, new Uint8Array([1, 2, 3]))
+  expect(networkResult.success).toBe(false)
+  if (networkResult.success) return
+  expect(networkResult).toMatchObject({
+    errorMessage: "The direct upload could not be reached",
+    diagnostics: { operation: "assetsApiClientUploadObjectPut", kind: "network" },
+  })
+  expect(JSON.stringify(networkResult)).not.toContain(token)
+
+  const httpClientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () =>
+      new Response(`{"headers":{"authorization":"${token}"},"token":"${token}"}`, {
+        status: 403,
+        statusText: "Forbidden",
+      }),
+  })
+  expect(httpClientResult.success).toBe(true)
+  if (!httpClientResult.success) return
+  const httpResult = await httpClientResult.data.uploadObjectPut(intent, new Uint8Array([1, 2, 3]))
+  expect(httpResult.success).toBe(false)
+  if (httpResult.success) return
+  expect(httpResult).toMatchObject({
+    diagnostics: { kind: "http", status: 403 },
+  })
+  expect(httpResult.errorMessage).toStartWith("The direct upload was rejected (403): ")
+  expect(JSON.stringify(httpResult)).not.toContain(token)
 })
 
 test("assets API client reads exact source revision deletion eligibility", async () => {

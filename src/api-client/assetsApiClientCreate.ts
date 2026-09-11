@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import { apiClientErrorCreate } from "./apiClientErrorCreate.js"
 import { assetReprocessRequestSchema } from "./assetReprocessRequestSchema.js"
 import { assetReprocessResponseSchema } from "./assetReprocessResponseSchema.js"
 import type { DeletionState } from "../deletion/deletionStateSchema.js"
@@ -66,7 +67,6 @@ import { uploadCompletionRequestSchema } from "./uploadCompletionRequestSchema.j
 import { uploadCompletionResponseSchema } from "./uploadCompletionResponseSchema.js"
 import { uploadIntentRequestSchema } from "./uploadIntentRequestSchema.js"
 import { uploadIntentResponseSchema } from "./uploadIntentResponseSchema.js"
-import { uploadListQuerySchema } from "./uploadListQuerySchema.js"
 import { uploadListResponseSchema } from "./uploadListResponseSchema.js"
 import { workflowActionRequestSchema } from "./workflowActionRequestSchema.js"
 import { workflowListResponseSchema } from "./workflowListResponseSchema.js"
@@ -153,6 +153,45 @@ const outputMutationResponseSchema = v.strictObject({
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
   resultErrorCreate(op, message, rawData)
 
+const browserForbiddenRequestHeaders = new Set([
+  "accept-charset",
+  "accept-encoding",
+  "access-control-request-headers",
+  "access-control-request-method",
+  "connection",
+  "content-length",
+  "cookie",
+  "cookie2",
+  "date",
+  "dnt",
+  "expect",
+  "host",
+  "keep-alive",
+  "origin",
+  "referer",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "via",
+])
+
+const uploadRequestHeadersCreate = (headers: Record<string, string>, mediaType: string): Record<string, string> => {
+  const forwarded = Object.fromEntries(
+    Object.entries(headers).filter(([name]) => {
+      const normalizedName = name.toLowerCase()
+      return (
+        normalizedName !== "authorization" &&
+        normalizedName !== "content-type" &&
+        !browserForbiddenRequestHeaders.has(normalizedName) &&
+        !normalizedName.startsWith("proxy-") &&
+        !normalizedName.startsWith("sec-")
+      )
+    }),
+  )
+  return { ...forwarded, "content-type": mediaType }
+}
+
 const schemaParse = <T>(schema: Schema, input: unknown, op: string, message: string): Result<T> => {
   const parsed = v.safeParse(schema, input)
   if (!parsed.success) return resultFailure(op, message, v.summarize(parsed.issues))
@@ -186,10 +225,10 @@ const baseUrlCreate = (apiUrl: string): Result<string> => {
   return { success: true, data: value }
 }
 
-const errorRawDataRead = (response: Response, body: unknown): Record<string, unknown> => ({
+const errorRawDataRead = (response: Response, body?: unknown): Record<string, unknown> => ({
   status: response.status,
   requestId: response.headers.get("x-request-id") ?? undefined,
-  ...(body && typeof body === "object" ? { body } : {}),
+  ...(body === undefined ? {} : { body }),
 })
 
 export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
@@ -202,6 +241,11 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     options.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
   const pollIntervalMilliseconds = options.pollIntervalMilliseconds ?? 1000
   const maxPolls = options.maxPolls ?? 60
+  const clientErrorCreate = (input: Parameters<typeof apiClientErrorCreate>[0]) =>
+    apiClientErrorCreate({
+      ...input,
+      redactionSecrets: [options.accessToken, options.sessionCookie],
+    })
 
   const apiUrlCreate = (path: string, query: Query = {}): string =>
     `${baseUrl.data}/api/v1${path}${queryStringCreate(query)}`
@@ -235,28 +279,62 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       headers.set("content-type", "application/json; charset=UTF-8")
     }
 
+    const target = apiUrlCreate(request.path, request.query)
     let response: Response
     try {
-      response = await fetcher(apiUrlCreate(request.path, request.query), {
+      response = await fetcher(target, {
         method,
         headers,
         ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
       })
-    } catch {
-      return resultFailure(request.operation, "The assets service could not be reached", {
-        code: "service_unavailable",
+    } catch (error) {
+      return clientErrorCreate({
+        operation: request.operation,
+        message: "The assets service could not be reached",
+        kind: "network",
+        method,
+        phase: "request",
+        target,
+        cause: error,
+        rawData: { code: "service_unavailable" },
+      })
+    }
+
+    let bodyText: string
+    try {
+      bodyText = await response.text()
+    } catch (error) {
+      return clientErrorCreate({
+        operation: request.operation,
+        message: "The assets service response could not be read",
+        kind: "network",
+        method,
+        phase: "response-read",
+        target,
+        status: response.status,
+        statusText: response.statusText,
+        cause: error,
+        rawData: errorRawDataRead(response),
       })
     }
 
     let body: unknown
     try {
-      body = await response.json()
+      body = JSON.parse(bodyText)
     } catch {
-      return resultFailure(
-        request.operation,
-        "The assets service returned invalid JSON",
-        errorRawDataRead(response, undefined),
-      )
+      return clientErrorCreate({
+        operation: request.operation,
+        message: response.ok ? "The assets service returned invalid JSON" : "The assets service returned an error",
+        kind: response.ok ? "invalid-response" : "http",
+        method,
+        phase: "response-parse",
+        target,
+        status: response.status,
+        statusText: response.statusText,
+        cause: response.ok ? "invalid-json" : undefined,
+        responseDetail: bodyText,
+        rawData: errorRawDataRead(response, bodyText),
+      })
     }
 
     const envelope = v.safeParse(
@@ -276,28 +354,74 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       body,
     )
     if (!envelope.success)
-      return resultFailure(
-        request.operation,
-        "The assets service returned an invalid envelope",
-        errorRawDataRead(response, body),
-      )
+      return clientErrorCreate({
+        operation: request.operation,
+        message: response.ok
+          ? "The assets service returned an invalid envelope"
+          : "The assets service returned an error",
+        kind: response.ok ? "invalid-response" : "http",
+        method,
+        phase: "response-validate",
+        target,
+        status: response.status,
+        statusText: response.statusText,
+        cause: response.ok ? "invalid-envelope" : "invalid-error-envelope",
+        responseDetail: body,
+        rawData: errorRawDataRead(response, body),
+      })
     if (!response.ok || !envelope.output.ok) {
       if (!envelope.output.ok) {
-        return resultFailure(request.operation, envelope.output.error.message, {
+        return clientErrorCreate({
+          operation: request.operation,
+          message: envelope.output.error.message,
+          kind: "http",
+          method,
+          phase: "response-error",
+          target,
           status: response.status,
-          requestId: envelope.output.requestId,
-          error: envelope.output.error,
+          statusText: response.statusText,
+          cause: envelope.output.error.code,
+          responseDetail: envelope.output.error,
+          rawData: {
+            status: response.status,
+            requestId: envelope.output.requestId,
+            error: envelope.output.error,
+          },
         })
       }
-      return resultFailure(request.operation, "The assets service returned an error", errorRawDataRead(response, body))
+      return clientErrorCreate({
+        operation: request.operation,
+        message: "The assets service returned an error",
+        kind: "http",
+        method,
+        phase: "response-status",
+        target,
+        status: response.status,
+        statusText: response.statusText,
+        responseDetail: body,
+        rawData: errorRawDataRead(response, body),
+      })
     }
 
-    return schemaParse<T>(
-      request.responseSchema,
-      envelope.output.data,
-      request.operation,
-      "The response data was invalid",
-    )
+    const parsedData = v.safeParse(request.responseSchema, envelope.output.data)
+    if (!parsedData.success)
+      return clientErrorCreate({
+        operation: request.operation,
+        message: "The response data was invalid",
+        kind: "invalid-response",
+        method,
+        phase: "response-data",
+        target,
+        status: response.status,
+        statusText: response.statusText,
+        cause: v.summarize(parsedData.issues),
+        responseDetail: envelope.output.data,
+        rawData: {
+          ...errorRawDataRead(response),
+          validation: v.summarize(parsedData.issues),
+        },
+      })
+    return { success: true, data: parsedData.output as T }
   }
 
   const pageReadAll = async <T>(
@@ -497,27 +621,56 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     if (bytes.byteLength !== parsed.data.byteSize)
       return resultFailure("assetsApiClientUploadObjectPut", "The upload size did not match the upload intent")
 
+    const operation = "assetsApiClientUploadObjectPut"
     let response: Response
     try {
       response = await fetcher(parsed.data.url, {
         method: parsed.data.method,
-        headers: { "content-type": parsed.data.mediaType },
+        headers: uploadRequestHeadersCreate(parsed.data.headers, parsed.data.mediaType),
         body: bytes as unknown as ArrayBuffer,
       })
-    } catch {
-      return resultFailure("assetsApiClientUploadObjectPut", "The direct upload could not be reached", {
-        code: "service_unavailable",
+    } catch (error) {
+      return clientErrorCreate({
+        operation,
+        message: "The direct upload could not be reached",
+        kind: "network",
+        method: parsed.data.method,
+        phase: "request",
+        target: parsed.data.url,
+        cause: error,
+        rawData: { code: "service_unavailable" },
       })
     }
     if (!response.ok) {
-      const body = await response.text().catch(() => "")
-      return resultFailure(
-        "assetsApiClientUploadObjectPut",
-        `The direct upload was rejected (${response.status}): ${body.slice(0, 500)}`,
-        {
+      let body = ""
+      try {
+        body = await response.text()
+      } catch (error) {
+        return clientErrorCreate({
+          operation,
+          message: "The direct upload response could not be read",
+          kind: "network",
+          method: parsed.data.method,
+          phase: "response-read",
+          target: parsed.data.url,
           status: response.status,
-        },
-      )
+          statusText: response.statusText,
+          cause: error,
+          rawData: errorRawDataRead(response),
+        })
+      }
+      return clientErrorCreate({
+        operation,
+        message: `The direct upload was rejected (${response.status}): ${body.slice(0, 500)}`,
+        kind: "http",
+        method: parsed.data.method,
+        phase: "response-status",
+        target: parsed.data.url,
+        status: response.status,
+        statusText: response.statusText,
+        responseDetail: body,
+        rawData: errorRawDataRead(response, body),
+      })
     }
     return { success: true, data: true }
   }
