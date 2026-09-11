@@ -21,13 +21,13 @@ export const uiNavigationLinksRead = (
       { href: uiPaths.contributor.upload(projectId), label: ttc("Upload new", "Neu hochladen"), icon: mdiCloudUpload },
       {
         href: uiPaths.contributor.assets(projectId),
-        label: ttc("View/edit existing", "Bestehende ansehen/bearbeiten"),
+        label: ttc("View/edit existing", "Medien ansehen/bearbeiten"),
         icon: mdiImageMultiple,
       },
     ]
   }
   return [
-    { href: uiPaths.admin.assets(projectId), label: ttc("Assets", "Assets"), icon: mdiImageMultiple },
+    { href: uiPaths.admin.assets(projectId), label: ttc("Assets", "Medien"), icon: mdiImageMultiple },
     { href: uiPaths.admin.upload(projectId), label: ttc("Upload", "Hochladen"), icon: mdiCloudUpload },
     { href: uiPaths.admin.jobs(projectId), label: ttc("Jobs", "Aufträge"), icon: mdiPlaylistCheck },
     { href: uiPaths.admin.backups(projectId), label: ttc("Backups", "Sicherungen"), icon: mdiDatabaseArrowUp },

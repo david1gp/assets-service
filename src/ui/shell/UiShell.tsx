@@ -40,13 +40,13 @@ export function UiShell(p: RouteSectionProps) {
         <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 sm:px-6 sm:py-3 lg:px-8 md:flex-nowrap md:gap-4">
           <A
             href={uiPaths.projects}
-            aria-label={ttc("Assets service", "Asset-Service")}
+            aria-label={ttc("Assets service", "Medien-Service")}
             class="group flex items-center gap-2.5 rounded-lg text-sm font-semibold tracking-tight transition-colors hover:text-slate-700 dark:hover:text-slate-200 shrink-0"
           >
             <div class="flex size-7 items-center justify-center rounded-md bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900">
               <Icon path={mdiFolderMultipleOutline} class="size-4" />
             </div>
-            <span class="font-bold hidden sm:inline">{ttc("Assets service", "Asset-Service")}</span>
+            <span class="font-bold hidden sm:inline">{ttc("Assets service", "Medien-Service")}</span>
           </A>
 
           <Show when={state.projectId()}>
@@ -66,13 +66,18 @@ export function UiShell(p: RouteSectionProps) {
                 <Show when={state.projectName() !== ""}>
                   <span class="font-medium break-words">{state.projectName()}</span>
                 </Show>
-                <span
-                  class={`font-mono break-all ${
-                    state.projectName() === "" ? "font-medium" : "text-xs text-muted-foreground"
-                  }`}
-                >
-                  {state.projectId()}
-                </span>
+                <Show when={state.routeMode() === "admin"}>
+                  <span
+                    class={`font-mono break-all ${
+                      state.projectName() === "" ? "font-medium" : "text-xs text-muted-foreground"
+                    }`}
+                  >
+                    {state.projectId()}
+                  </span>
+                </Show>
+                <Show when={state.routeMode() === "contributor" && state.projectName() === ""}>
+                  <span class="font-medium">{ttc("Project", "Projekt")}</span>
+                </Show>
               </UiLinkButton>
 
               <Show when={state.breadcrumbPage()}>
@@ -87,7 +92,7 @@ export function UiShell(p: RouteSectionProps) {
           <div class="order-2 flex items-center gap-2 shrink-0 ml-auto md:order-none">
             <Show when={state.session().status === "authenticated"}>
               <UiOrganizationSelector />
-              <Show when={state.accountId() !== ""}>
+              <Show when={state.accountId() !== "" && state.routeMode() === "admin"}>
                 <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-sm md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
                   <Icon path={mdiAccount} class="size-4 text-muted-foreground" />
                   <span class="flex max-w-[120px] min-w-0 flex-col leading-tight lg:max-w-[180px]">
@@ -156,7 +161,7 @@ export function UiShell(p: RouteSectionProps) {
               </ButtonIcon>
             </Show>
 
-            <Show when={state.links().length > 0}>
+            <Show when={state.routeMode() === "admin" && state.links().length > 0}>
               <ButtonIconOnly
                 title={
                   state.menuOpen.get()
@@ -176,7 +181,7 @@ export function UiShell(p: RouteSectionProps) {
       </header>
 
       {/* Mobile Drawer Navigation */}
-      <Show when={state.menuOpen.get() && state.links().length > 0}>
+      <Show when={state.routeMode() === "admin" && state.menuOpen.get() && state.links().length > 0}>
         <div
           class="fixed inset-0 z-50 md:hidden"
           role="dialog"
@@ -270,9 +275,48 @@ export function UiShell(p: RouteSectionProps) {
         </div>
       </Show>
 
-      <div class="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 md:flex-row">
+      <div
+        class={classArr(
+          "mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8",
+          state.routeMode() === "admin" && "md:flex-row",
+        )}
+      >
+        <Show when={state.routeMode() === "contributor" && state.links().length > 0}>
+          <nav aria-label={ttc("Contributor navigation", "Navigation für Mitwirkende")}>
+            <ul class="flex flex-wrap items-center gap-2">
+              <For each={state.links()}>
+                {(link) => {
+                  const active = () => state.isCurrent(link.href)
+                  return (
+                    <li>
+                      <A
+                        href={link.href}
+                        aria-current={active() ? "page" : undefined}
+                        class={classArr(
+                          "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                          active()
+                            ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-900"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
+                        )}
+                      >
+                        <Icon path={link.icon} class="size-4" />
+                        <span>{link.label}</span>
+                      </A>
+                    </li>
+                  )
+                }}
+              </For>
+              <li class="ml-1 border-l border-slate-200 pl-3 dark:border-slate-800">
+                <A href={uiPaths.projects} class="text-sm text-muted-foreground hover:underline">
+                  {ttc("All projects", "Alle Projekte")}
+                </A>
+              </li>
+            </ul>
+          </nav>
+        </Show>
+
         {/* Desktop Sidebar Navigation */}
-        <Show when={state.links().length > 0}>
+        <Show when={state.routeMode() === "admin" && state.links().length > 0}>
           <aside class="hidden md:block md:w-56 md:shrink-0">
             <div class="sticky top-20 flex flex-col gap-4">
               <div class="flex items-center justify-between px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -335,6 +379,27 @@ export function UiShell(p: RouteSectionProps) {
           </Switch>
         </main>
       </div>
+
+      <Show
+        when={
+          state.routeMode() === "contributor" && state.session().status === "authenticated" && state.projectId() !== ""
+        }
+      >
+        <footer class="mx-auto w-full max-w-7xl px-4 pb-5 text-[11px] text-slate-400 sm:px-6 lg:px-8 dark:text-slate-600">
+          <dl class="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-200/70 pt-3 dark:border-slate-800/70">
+            <div class="flex min-w-0 gap-1.5">
+              <dt>{ttc("Project ID", "Projekt-ID")}:</dt>
+              <dd class="break-all font-mono">{state.projectId()}</dd>
+            </div>
+            <Show when={state.accountId() !== ""}>
+              <div class="flex min-w-0 gap-1.5">
+                <dt>{ttc("Account ID", "Konto-ID")}:</dt>
+                <dd class="break-all font-mono">{state.accountId()}</dd>
+              </div>
+            </Show>
+          </dl>
+        </footer>
+      </Show>
     </div>
   )
 }
