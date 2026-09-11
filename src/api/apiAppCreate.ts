@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import * as v from "valibot"
-import { assetReprocessRequestSchema } from "../api-client/assetReprocessRequestSchema.js"
 import { assetListQuerySchema } from "../api-client/assetListQuerySchema.js"
+import { assetReprocessRequestSchema } from "../api-client/assetReprocessRequestSchema.js"
 import { deleteAssetRequestSchema } from "../api-client/deleteAssetRequestSchema.js"
 import { integrationNoteSetRequestSchema } from "../api-client/integrationNoteSetRequestSchema.js"
 import { metadataSetRequestSchema } from "../api-client/metadataSetRequestSchema.js"
@@ -23,11 +23,11 @@ import { organizationSwitchRequestSchema } from "../authentication/organizationS
 import { pkceCallbackRequestSchema } from "../authentication/pkceCallbackRequestSchema.js"
 import { pkceLoginRequestSchema } from "../authentication/pkceLoginRequestSchema.js"
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
+import { sessionAccessTokenStoreCreate } from "../authentication/sessionAccessTokenStoreCreate.js"
 import { sessionCookieCreate } from "../authentication/sessionCookieCreate.js"
 import { sessionCookieRead } from "../authentication/sessionCookieRead.js"
-import { sessionOrganizationsRead } from "../authentication/sessionOrganizationsRead.js"
 import { sessionOrganizationSwitch } from "../authentication/sessionOrganizationSwitch.js"
-import { sessionAccessTokenStoreCreate } from "../authentication/sessionAccessTokenStoreCreate.js"
+import { sessionOrganizationsRead } from "../authentication/sessionOrganizationsRead.js"
 import { zitadelOrganizationContextCreate } from "../authentication/zitadelOrganizationContextCreate.js"
 import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
@@ -48,6 +48,7 @@ import { apiDeletionStatusRoutesRegister } from "./apiDeletionStatusRoutesRegist
 import { apiErrorResponseCreate } from "./apiErrorResponseCreate.js"
 import { apiProjectRoleMiddlewareCreate } from "./apiProjectRoleMiddlewareCreate.js"
 import { apiRequestAuthenticationRead } from "./apiRequestAuthenticationRead.js"
+import { apiRequestFailureLogWrite } from "./apiRequestFailureLogWrite.js"
 import { apiRequestIdCreate } from "./apiRequestIdCreate.js"
 import { apiResponseCreate } from "./apiResponseCreate.js"
 import { apiSourceRevisionDeletionEligibilityRoutesRegister } from "./apiSourceRevisionDeletionEligibilityRoutesRegister.js"
@@ -310,6 +311,16 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     const requestId = (options.requestIdCreate ?? apiRequestIdCreate)(context.req.raw)
     context.set("requestId", requestId)
     await next()
+    if (context.res.status >= 400 && context.get("apiFailureLogged") !== true) {
+      const requestUrl = new URL(context.req.url)
+      await apiRequestFailureLogWrite({
+        requestId,
+        method: context.req.method,
+        path: requestUrl.pathname,
+        status: context.res.status,
+        response: context.res,
+      })
+    }
     const headers = new Headers(context.res.headers)
     headers.set("x-request-id", requestId)
     context.res = new Response(context.res.body, {
@@ -378,16 +389,6 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       },
     )
     if (!callback.success) {
-      const errorMessage =
-        callback.errorMessage === "The exact organization membership was missing"
-          ? callback.errorMessage
-          : "The login callback failed"
-      console.error("[auth/callback failed]", {
-        requestId: requestIdRead(context),
-        op: callback.op,
-        errorMessage,
-        ...(callback.diagnostics === undefined ? {} : { diagnostics: callback.diagnostics }),
-      })
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 401,
@@ -1559,8 +1560,16 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     })
   })
 
-  app.onError((error, context) => {
-    void error
+  app.onError(async (error, context) => {
+    context.set("apiFailureLogged", true)
+    await apiRequestFailureLogWrite({
+      requestId: requestIdRead(context),
+      method: context.req.method,
+      path: new URL(context.req.url).pathname,
+      status: 500,
+      code: "internal_error",
+      error,
+    })
     return apiErrorResponseCreate({
       requestId: requestIdRead(context),
       status: 500,

@@ -14,6 +14,17 @@ import type { ProjectRepository } from "../src/project/projectRepository.js"
 
 const now = 1_700_000_000
 
+const consoleErrorsCapture = async <T>(operation: () => Promise<T>) => {
+  const originalError = console.error
+  const entries: unknown[][] = []
+  console.error = (...args) => entries.push(args)
+  try {
+    return { result: await operation(), entries }
+  } finally {
+    console.error = originalError
+  }
+}
+
 const base64UrlEncode = (value: Uint8Array | string): string =>
   Buffer.from(typeof value === "string" ? value : value).toString("base64url")
 
@@ -223,6 +234,83 @@ describe("HTTP API", () => {
     expect(method.status).toBe(405)
     expect(method.headers.get("allow")).toBe("GET")
     expect(await method.json()).toMatchObject({ ok: false, error: { code: "method_not_allowed" } })
+  })
+
+  test("logs handled client and server failures with safe request fields", async () => {
+    const app = apiAppCreate(optionsCreate())
+    const readinessApp = apiAppCreate({
+      ...optionsCreate(),
+      readinessCheck: () => ({ success: false as const, op: "test", errorMessage: "offline" }),
+    })
+    const signedQueryToken = "signed-query-token"
+    const captured = await consoleErrorsCapture(async () => ({
+      client: await app.fetch(
+        new Request(`https://assets.example.test/api/v1/nope?X-Amz-Signature=${signedQueryToken}`, {
+          headers: { cookie: "session-cookie" },
+        }),
+      ),
+      server: await readinessApp.fetch(new Request("https://assets.example.test/api/v1/ready")),
+    }))
+
+    expect(captured.result.client.status).toBe(404)
+    expect(captured.result.server.status).toBe(503)
+    expect(captured.entries).toHaveLength(2)
+    expect(captured.entries[0]?.[0]).toBe("[api/request failed]")
+    expect(captured.entries[0]?.[1]).toMatchObject({
+      requestId: "request-1",
+      method: "GET",
+      path: "/api/v1/nope",
+      status: 404,
+      code: "not_found",
+      message: "The requested route was not found",
+    })
+    expect(captured.entries[1]?.[1]).toMatchObject({
+      status: 503,
+      code: "service_unavailable",
+      message: "The service is not ready",
+    })
+    expect(JSON.stringify(captured.entries)).not.toContain(signedQueryToken)
+    expect(JSON.stringify(captured.entries)).not.toContain("session-cookie")
+  })
+
+  test("logs unexpected exceptions safely without exposing them in the response", async () => {
+    const secret = "unexpected-secret-token"
+    const options = optionsCreate()
+    const app = apiAppCreate({
+      ...options,
+      projectRepository: {
+        ...options.projectRepository,
+        projectsRead: () => {
+          throw new Error(
+            `database failure at https://db.example.test/query?token=${secret} Bearer ${secret} cookie=${secret}`,
+            { cause: { authorization: secret, cookie: secret, detail: `token=${secret}` } },
+          )
+        },
+      },
+    })
+    const cookie = await sessionCreate(options)
+    const captured = await consoleErrorsCapture(async () =>
+      app.fetch(new Request("https://assets.example.test/api/v1/projects", { headers: { cookie } })),
+    )
+
+    expect(captured.result.status).toBe(500)
+    expect(await captured.result.json()).toEqual({
+      ok: false,
+      error: { code: "internal_error", message: "An internal error occurred", retryable: true },
+      requestId: "request-1",
+    })
+    expect(captured.entries).toHaveLength(1)
+    expect(captured.entries[0]?.[1]).toMatchObject({
+      requestId: "request-1",
+      method: "GET",
+      path: "/api/v1/projects",
+      status: 500,
+      code: "internal_error",
+      errorName: "Error",
+    })
+    expect(JSON.stringify(captured.entries)).toContain("database failure")
+    expect(JSON.stringify(captured.entries)).not.toContain(secret)
+    expect(JSON.stringify(captured.result)).not.toContain("database failure")
   })
 
   test("maps readiness and handler failures to technical envelopes", async () => {
