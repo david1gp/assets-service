@@ -20,6 +20,8 @@ import {
   cliOutputsRemoveCommand,
   cliOutputsSetCommand,
   cliProjectsCreateCommand,
+  cliProjectsArchiveCommand,
+  cliProjectsUnarchiveCommand,
   cliReprocessCommand,
   cliSettingsMigrateCommand,
   cliSettingsReadCommand,
@@ -71,6 +73,8 @@ test("command definitions have parameters, documentation, and camelCase flags", 
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("productionR2Bucket")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("productionR2Prefix")
   expect(cliProjectsCreateCommand.parameters.flags).toHaveProperty("productionPublicBaseUrl")
+  expect(cliProjectsArchiveCommand.brief).toBeTruthy()
+  expect(cliProjectsUnarchiveCommand.brief).toBeTruthy()
 
   expect(cliUploadAllCommand.parameters.flags).toHaveProperty("integrationNote")
   expect(cliUploadAllCommand.parameters.flags).toHaveProperty("dryRun")

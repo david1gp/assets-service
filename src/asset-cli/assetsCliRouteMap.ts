@@ -15,6 +15,8 @@ import { cliOutputsListCommand } from "./cliOutputsListCommand.js"
 import { cliOutputsRemoveCommand } from "./cliOutputsRemoveCommand.js"
 import { cliOutputsSetCommand } from "./cliOutputsSetCommand.js"
 import { cliProjectsCreateCommand } from "./cliProjectsCreateCommand.js"
+import { cliProjectsArchiveCommand } from "./cliProjectsArchiveCommand.js"
+import { cliProjectsUnarchiveCommand } from "./cliProjectsUnarchiveCommand.js"
 import { cliReprocessCommand } from "./cliReprocessCommand.js"
 import { cliSettingsMigrateCommand } from "./cliSettingsMigrateCommand.js"
 import { cliSettingsReadCommand } from "./cliSettingsReadCommand.js"
@@ -39,6 +41,8 @@ export const assetsCliRouteMap = buildRouteMap({
       docs: { brief: "Project administration commands" },
       routes: {
         create: cliProjectsCreateCommand,
+        archive: cliProjectsArchiveCommand,
+        unarchive: cliProjectsUnarchiveCommand,
       },
     }),
     config: buildRouteMap({

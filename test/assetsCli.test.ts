@@ -400,6 +400,56 @@ test("projects create sends the complete registration to the service", async () 
   }
 })
 
+test("projects archive and unarchive use the project flag and support JSON and human output", async () => {
+  const output: string[] = []
+  const requests: Request[] = []
+  const project = apiProjectCreate({ id: "project-1", name: "Example project" })
+  const fetcher = async (input: string | URL, init?: RequestInit) => {
+    const request = new Request(input, init)
+    requests.push(request)
+    const path = new URL(request.url).pathname
+    if (path.endsWith("/archive"))
+      return envelopeResponseCreate({ project, deletedBuckets: ["bucket-1"], deletedObjectCount: 3 })
+    if (path.endsWith("/unarchive"))
+      return envelopeResponseCreate({
+        project,
+        createdBuckets: ["bucket-1"],
+        restoredOriginalCount: 2,
+        regeneratedOutputCount: 3,
+      })
+    return envelopeResponseCreate(project)
+  }
+
+  const archiveExitCode = await assetsCliMain(["projects", "archive", "--project", "project-1", "--json"], {
+    env: cliEnvironment,
+    fetcher,
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+  const unarchiveExitCode = await assetsCliMain(["projects", "unarchive", "--project", "project-1"], {
+    env: cliEnvironment,
+    fetcher,
+    stdout: (text) => output.push(text),
+    stderr: () => undefined,
+  })
+
+  expect(archiveExitCode).toBe(0)
+  expect(unarchiveExitCode).toBe(0)
+  expect(requests.map((request) => [request.method, new URL(request.url).pathname])).toEqual([
+    ["GET", "/api/v1/projects/project-1"],
+    ["POST", "/api/v1/projects/project-1/archive"],
+    ["GET", "/api/v1/projects/project-1"],
+    ["POST", "/api/v1/projects/project-1/unarchive"],
+  ])
+  expect(JSON.parse(output[0] ?? "")).toMatchObject({
+    ok: true,
+    data: { project: { id: "project-1" }, deletedObjectCount: 3 },
+  })
+  expect(output[1]).toBe(
+    "Project Example project unarchived. Restored 2 originals and regenerated 3 optimized assets.\n",
+  )
+})
+
 test("projects create creates a Zitadel project when its ID is omitted", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-zitadel-home-"))
   const output: string[] = []

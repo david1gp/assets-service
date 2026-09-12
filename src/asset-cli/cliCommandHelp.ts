@@ -19,6 +19,8 @@ export type CliCommandHelp = {
 const commands: readonly string[] = [
   "auth login",
   "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> [--zitadel-project-id <id>] --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url>",
+  "projects archive --project <id-or-name>",
+  "projects unarchive --project <id-or-name>",
   "config show [root]",
   "doctor --environment <development|production>",
   "diff [root]",
@@ -68,6 +70,8 @@ const subcommands: Record<string, readonly string[]> = {
     "--production-r2-prefix",
     "--production-public-base-url",
   ],
+  "projects archive": ["--project"],
+  "projects unarchive": ["--project"],
   "config show": [],
   doctor: ["--environment"],
   diff: [

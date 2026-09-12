@@ -909,6 +909,7 @@ const projectAndEnvironmentRead = async (
   projectRoot?: string,
   environmentSelection: ProjectEnvironmentSelection = "configured",
   organizationId?: string,
+  includeArchived = false,
 ): Promise<Result<{ projectId: string; environment?: string }>> => {
   let projectId = optionRead(parsed, "project") ?? config.project
   let projectDefaultEnvironment: string | undefined
@@ -918,7 +919,7 @@ const projectAndEnvironmentRead = async (
     if (directProject.data !== null) {
       projectDefaultEnvironment = directProject.data.defaultEnvironment
     } else {
-      const projects = await client.projectsReadAll()
+      const projects = await client.projectsReadAll({ includeArchived })
       if (!projects.success) return projects
       if (!projects.data.some((project) => project.id === projectId)) {
         const scopedMatches = projects.data.filter(
@@ -936,7 +937,7 @@ const projectAndEnvironmentRead = async (
     }
   }
   if (projectId === undefined) {
-    const projects = await client.projectsReadAll()
+    const projects = await client.projectsReadAll({ includeArchived })
     if (!projects.success) return projects
     const scopedProjects =
       organizationId === undefined
@@ -2544,7 +2545,40 @@ const commandRun = async (
   }
 
   if (parsed.command === "projects") {
-    if (parsed.subcommand !== "create") return { result: resultFailure("assetsCliProjects", "Use projects create") }
+    if (parsed.subcommand === "archive" || parsed.subcommand === "unarchive") {
+      if (parsed.positionals.length !== 0)
+        return {
+          result: resultFailure("assetsCliProjects", "The project archive command takes no positional arguments"),
+        }
+      const allowed = optionAllowed(parsed, [])
+      if (!allowed.success) return { result: allowed }
+      const selected = await projectAndEnvironmentRead(
+        client,
+        parsed,
+        config,
+        undefined,
+        "project-default",
+        organizationId,
+        true,
+      )
+      if (!selected.success) return { result: selected }
+      if (parsed.subcommand === "archive") {
+        const result = await client.projectArchive(selected.data.projectId)
+        if (!result.success) return { result }
+        return {
+          result,
+          humanOutput: `Project ${result.data.project.name} archived. Deleted ${result.data.deletedObjectCount} R2 objects and ${result.data.deletedBuckets.length} buckets.\n`,
+        }
+      }
+      const result = await client.projectUnarchive(selected.data.projectId)
+      if (!result.success) return { result }
+      return {
+        result,
+        humanOutput: `Project ${result.data.project.name} unarchived. Restored ${result.data.restoredOriginalCount} originals and regenerated ${result.data.regeneratedOutputCount} optimized assets.\n`,
+      }
+    }
+    if (parsed.subcommand !== "create")
+      return { result: resultFailure("assetsCliProjects", "Use projects create, archive, or unarchive") }
     const input = projectCreateInputRead(parsed, organization)
     if (!input.success) return { result: input }
     let projectInput = input.data
