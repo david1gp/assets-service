@@ -139,6 +139,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     projectRepository,
     projectArchiveWorkflow,
     projectUnarchiveWorkflow,
+    r2BucketCredentialRepository: credentialRepository,
     storageMigrationRepository,
     storageMigrationWorkflowEnqueue: (input) => storageMigrationWorkflowEnqueue(connection.data.db, input),
     assetApiRepository,

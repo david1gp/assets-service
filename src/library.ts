@@ -105,6 +105,8 @@ export type { ProjectListResponse } from "./api-client/projectListResponseSchema
 export { projectListResponseSchema } from "./api-client/projectListResponseSchema.js"
 export type { ProjectUnarchiveResponse } from "./api-client/projectUnarchiveResponseSchema.js"
 export { projectUnarchiveResponseSchema } from "./api-client/projectUnarchiveResponseSchema.js"
+export type { R2BucketCredentialStatusResponse } from "./api-client/r2BucketCredentialStatusResponseSchema.js"
+export { r2BucketCredentialStatusResponseSchema } from "./api-client/r2BucketCredentialStatusResponseSchema.js"
 export type { SourceRevisionDeletionEligibilityResponse } from "./api-client/sourceRevisionDeletionEligibilityResponseSchema.js"
 export { sourceRevisionDeletionEligibilityResponseSchema } from "./api-client/sourceRevisionDeletionEligibilityResponseSchema.js"
 export type { StorageMigrationPlanRequest } from "./api-client/storageMigrationPlanRequestSchema.js"

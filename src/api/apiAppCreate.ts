@@ -898,6 +898,39 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     },
   )
 
+  app.get(
+    `${apiVersionPath}/projects/:projectId/environments/:environment/r2-credential/status`,
+    authenticationMiddleware,
+    adminMiddleware,
+    (context) => {
+      if (options.r2BucketCredentialRepository === undefined) return dependencyFailureCreate(context)
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const parsedEnvironment = v.safeParse(idSchema, context.req.param("environment"))
+      if (!parsedEnvironment.success) return validationFailureCreate(context, "The environment identifier was invalid")
+      const environment = options.projectRepository.environmentRead(project.id, parsedEnvironment.output)
+      if (!environment.success) return failureFromRepositoryCreate(context)
+      if (!environment.data) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The environment was not found",
+        })
+      }
+      const binding = storageBindingResolve(environment.data, project.id)
+      if (!binding.success) return failureFromRepositoryCreate(context)
+      const credential = options.r2BucketCredentialRepository.r2BucketCredentialRead(binding.data.bucket)
+      if (!credential.success) return failureFromRepositoryCreate(context)
+      return successResponseCreate(context, {
+        projectId: binding.data.projectId,
+        environment: binding.data.environment,
+        bucket: binding.data.bucket,
+        registered: credential.data !== null,
+      })
+    },
+  )
+
   app.post(
     `${apiVersionPath}/projects/:projectId/uploads/intent`,
     authenticationMiddleware,

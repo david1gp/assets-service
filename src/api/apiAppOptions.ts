@@ -7,6 +7,7 @@ import type { DeletionApiRepository } from "../deletion/deletionApiRepository.js
 import type { ProjectRepository } from "../project/projectRepository.js"
 import type { ProjectArchiveWorkflow } from "../project/projectArchiveWorkflow.js"
 import type { ProjectUnarchiveWorkflow } from "../project/projectUnarchiveWorkflow.js"
+import type { R2BucketCredentialRepository } from "../r2/r2BucketCredentialRepository.js"
 import type { StorageMigrationRepository } from "../migration/storageMigrationRepository.js"
 import type { StorageMigrationCreateInput } from "../migration/storageMigrationCreateInputSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -20,6 +21,7 @@ export type ApiAppOptions = {
   projectRepository: ProjectRepository
   projectArchiveWorkflow?: ProjectArchiveWorkflow
   projectUnarchiveWorkflow?: ProjectUnarchiveWorkflow
+  r2BucketCredentialRepository?: Pick<R2BucketCredentialRepository, "r2BucketCredentialRead">
   storageMigrationRepository?: StorageMigrationRepository
   storageMigrationWorkflowEnqueue?: (
     input: StorageMigrationCreateInput,

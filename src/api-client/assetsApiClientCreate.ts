@@ -59,6 +59,7 @@ import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectArchiveResponseSchema } from "./projectArchiveResponseSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
 import { projectUnarchiveResponseSchema } from "./projectUnarchiveResponseSchema.js"
+import { r2BucketCredentialStatusResponseSchema } from "./r2BucketCredentialStatusResponseSchema.js"
 import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
 import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
 import { storageMigrationPlanRequestSchema } from "./storageMigrationPlanRequestSchema.js"
@@ -598,6 +599,13 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}`,
       responseSchema: environmentSchema,
       operation: "assetsApiClientEnvironmentRead",
+    })
+
+  const r2BucketCredentialStatusRead = (projectId: string, environment: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/r2-credential/status`,
+      responseSchema: r2BucketCredentialStatusResponseSchema,
+      operation: "assetsApiClientR2BucketCredentialStatusRead",
     })
 
   const storageMigrationPlan = (projectId: string, environment: string, input: unknown = {}) =>
@@ -1209,6 +1217,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     projectSettingsWrite,
     environmentsRead,
     environmentRead,
+    r2BucketCredentialStatusRead,
     storageMigrationPlan,
     storageMigrationStart,
     storageMigrationStatusRead,
