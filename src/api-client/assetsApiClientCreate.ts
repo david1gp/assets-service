@@ -1255,6 +1255,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     projectRead,
     projectArchive,
     projectUnarchive,
+    r2BucketCredentialBackfill,
     projectSettingsRead,
     projectSettingsWrite,
     environmentsRead,
