@@ -64,6 +64,7 @@ import { outputRemoveRequestSchema } from "./outputRemoveRequestSchema.js"
 import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectArchiveResponseSchema } from "./projectArchiveResponseSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
+import { projectSettingsResponseSchema } from "./projectSettingsResponseSchema.js"
 import { projectUnarchiveResponseSchema } from "./projectUnarchiveResponseSchema.js"
 import { r2BucketCredentialRegisterRequestSchema } from "./r2BucketCredentialRegisterRequestSchema.js"
 import { r2BucketCredentialRegisterResponseSchema } from "./r2BucketCredentialRegisterResponseSchema.js"
@@ -616,6 +617,13 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     })
 
   const projectSettingsRead = (projectId: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/settings`,
+      responseSchema: projectSettingsResponseSchema,
+      operation: "assetsApiClientProjectSettingsRead",
+    })
+
+  const projectSettingsReadStrict = (projectId: string) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/settings`,
       responseSchema: projectSettingsSchema,
@@ -1272,6 +1280,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     r2BucketCredentialBackfill,
     r2BucketCredentialRepair,
     projectSettingsRead,
+    projectSettingsReadStrict,
     projectSettingsWrite,
     environmentsRead,
     environmentRead,

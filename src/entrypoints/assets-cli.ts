@@ -11,6 +11,8 @@ import { apiSuccessEnvelopeCreate } from "../api/apiSuccessEnvelopeCreate.js"
 import { jsonEnvelopeStringify } from "../api/jsonEnvelopeStringify.js"
 import { assetsApiClientCreate } from "../api-client/assetsApiClientCreate.js"
 import { assetsApiResultOptionalRead } from "../api-client/assetsApiResultOptionalRead.js"
+import type { EnvironmentResponse } from "../api-client/environmentResponseSchema.js"
+import type { ProjectSettingsResponse } from "../api-client/projectSettingsResponseSchema.js"
 import type { OutputDefinitionInput } from "../api-client/outputDefinitionInputSchema.js"
 import type { StorageMigrationStatusResponse } from "../api-client/storageMigrationStatusResponseSchema.js"
 import { assetFilenameSchema } from "../asset/assetFilenameSchema.js"
@@ -58,7 +60,6 @@ import type { OutputDefinition } from "../output/outputDefinitionSchema.js"
 import { packageVersion } from "../packageVersion.js"
 import type { ProjectCreate } from "../project/projectCreateSchema.js"
 import { projectCreateSchema } from "../project/projectCreateSchema.js"
-import type { ProjectSettings } from "../project/projectSettingsSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { r2PrefixSchema } from "../project/r2PrefixSchema.js"
 import { contentSha256Create } from "../schemas/contentSha256Create.js"
@@ -93,6 +94,19 @@ type CliConfig = {
 }
 
 type ProjectEnvironmentSelection = "configured" | "project-default"
+
+type ProjectSettingsEnvironment = ProjectSettingsResponse["environments"][number]
+type ProjectSettingsEnvironmentWithStorage = Extract<EnvironmentResponse, { r2Bucket: string }>
+
+const projectSettingsEnvironmentWithStorageIs = (
+  environment: ProjectSettingsEnvironment,
+): environment is ProjectSettingsEnvironmentWithStorage =>
+  "r2Bucket" in environment &&
+  typeof environment.r2Bucket === "string" &&
+  "r2Prefix" in environment &&
+  typeof environment.r2Prefix === "string" &&
+  "publicBaseUrl" in environment &&
+  typeof environment.publicBaseUrl === "string"
 
 type CliSession = {
   accessToken: string
@@ -2015,13 +2029,15 @@ type ProjectSettingsEnvironmentChanges = {
 }
 
 const projectSettingsEnvironmentRead = (
-  settings: ProjectSettings,
+  settings: ProjectSettingsResponse,
   environmentName: string,
   op: string,
 ): Result<ProjectSettingsEnvironmentOutput> => {
   const environment = settings.environments.find((candidate) => candidate.name === environmentName)
   if (environment === undefined)
     return resultFailure(op, `The ${environmentName} environment is not configured for this project`)
+  if (!projectSettingsEnvironmentWithStorageIs(environment))
+    return resultFailure(op, `The ${environmentName} environment storage settings were incomplete`)
   return {
     success: true,
     data: {
@@ -2034,23 +2050,32 @@ const projectSettingsEnvironmentRead = (
 }
 
 const projectSettingsUpdateRead = (
-  settings: ProjectSettings,
+  settings: ProjectSettingsResponse,
   environmentName: string,
   changes: ProjectSettingsEnvironmentChanges,
 ): Result<ProjectSettingsUpdate> => {
   const selected = projectSettingsEnvironmentRead(settings, environmentName, "assetsCliSettingsUpdate")
   if (!selected.success) return selected
+  const environments: ProjectSettingsUpdate["environments"] = []
   const update = {
     name: settings.project.name,
     defaultEnvironment: settings.project.defaultEnvironment,
     binding:
-      settings.binding === null
+      settings.binding === null || settings.binding === undefined
         ? null
         : {
             zitadelProjectId: settings.binding.zitadelProjectId,
             serviceProjectId: settings.binding.serviceProjectId,
           },
-    environments: settings.environments.map((environment) => ({
+    environments,
+  }
+  for (const environment of settings.environments) {
+    if (!projectSettingsEnvironmentWithStorageIs(environment))
+      return resultFailure(
+        "assetsCliSettingsUpdate",
+        `The ${environment.name} environment storage settings were incomplete`,
+      )
+    update.environments.push({
       name: environment.name,
       r2Bucket:
         environment.name === environmentName ? (changes.r2Bucket ?? environment.r2Bucket) : environment.r2Bucket,
@@ -2060,7 +2085,7 @@ const projectSettingsUpdateRead = (
         environment.name === environmentName
           ? (changes.publicBaseUrl ?? environment.publicBaseUrl)
           : environment.publicBaseUrl,
-    })),
+    })
   }
   const parsed = v.safeParse(projectSettingsUpdateSchema, update)
   if (!parsed.success)

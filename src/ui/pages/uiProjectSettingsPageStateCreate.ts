@@ -144,7 +144,7 @@ export const uiProjectSettingsPageStateCreate = () => {
           "uiProjectSettingsPageRead",
           ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
         )
-      return client.data.projectSettingsRead(projectId())
+      return client.data.projectSettingsReadStrict(projectId())
     },
     {
       cacheKey: () => uiQueryCacheKeyCreate("project-settings", projectId()),

@@ -2144,6 +2144,49 @@ test("settings read returns only the selected environment binding", async () => 
   })
 })
 
+test("settings read accepts the legacy films environment projection", async () => {
+  const output: string[] = []
+  const exitCode = await assetsCliMain(
+    ["settings", "read", "--project", "films-project", "--environment", "production", "--json"],
+    {
+      env: cliEnvironment,
+      fetcher: async () =>
+        envelopeResponseCreate({
+          project: { id: "films-project", name: "assets-internal-films-project", defaultEnvironment: "production" },
+          organization: { id: "organization-contentoren", name: "Contentoren", slug: "contentoren" },
+          binding: { serviceProjectId: "leo-assets", zitadelProjectId: "zitadel-films" },
+          environments: [
+            {
+              name: "development",
+              r2Bucket: "contentoren-assets-service-public",
+              r2Prefix: "/filmschauspielschule-v2-development",
+              publicBaseUrl: "https://assets.example.test",
+            },
+            {
+              name: "production",
+              r2Bucket: "contentoren-assets-service-public",
+              r2Prefix: "/filmschauspielschule-v2",
+              publicBaseUrl: "https://assets.example.test",
+            },
+          ],
+        }),
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    },
+  )
+
+  expect(exitCode).toBe(0)
+  expect(JSON.parse(output[0] ?? "")).toEqual({
+    ok: true,
+    data: {
+      environment: "production",
+      r2Bucket: "contentoren-assets-service-public",
+      r2Prefix: "/filmschauspielschule-v2",
+      publicBaseUrl: "https://assets.example.test",
+    },
+  })
+})
+
 test("settings read defaults to the project environment instead of the configured CLI environment", async () => {
   const output: string[] = []
   const requests: Request[] = []

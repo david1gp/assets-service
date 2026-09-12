@@ -493,6 +493,96 @@ test("assets API client sends session cookie for project registration when confi
   expect(request?.headers.get("cookie")).toBe("human-session-cookie")
 })
 
+test("assets API client reads both legacy films and canonical semesterkur environment responses", async () => {
+  const legacyFilmsSettings = {
+    project: { id: "films-project", name: "assets-internal-films-project", defaultEnvironment: "production" },
+    organization: { id: "organization-contentoren", name: "Contentoren", slug: "contentoren" },
+    binding: { serviceProjectId: "leo-assets", zitadelProjectId: "zitadel-films" },
+    environments: [
+      {
+        name: "development",
+        r2Bucket: "contentoren-assets-service-public",
+        r2Prefix: "/filmschauspielschule-v2-development",
+        publicBaseUrl: "https://assets.example.test",
+      },
+      {
+        name: "production",
+        r2Bucket: "contentoren-assets-service-public",
+        r2Prefix: "/filmschauspielschule-v2",
+        publicBaseUrl: "https://assets.example.test",
+      },
+    ],
+  }
+  const canonicalSemesterkurSettings = {
+    project: {
+      id: "semesterkur-project",
+      organizationId: "organization-semesterkur",
+      name: "semesterkur-v2",
+      slug: "semesterkur-v2",
+      defaultEnvironment: "production",
+      createdAt: "2026-09-12T00:00:00.000Z",
+      updatedAt: "2026-09-12T00:00:00.000Z",
+    },
+    organization: null,
+    binding: {
+      id: "binding-semesterkur",
+      projectId: "semesterkur-project",
+      organizationId: "organization-semesterkur",
+      zitadelProjectId: "zitadel-semesterkur",
+      serviceProjectId: "semesterkur-v2",
+      createdAt: "2026-09-12T00:00:00.000Z",
+      updatedAt: "2026-09-12T00:00:00.000Z",
+    },
+    environments: [
+      {
+        id: "environment-semesterkur-production",
+        projectId: "semesterkur-project",
+        name: "production",
+        r2Bucket: "semesterkur-assets",
+        r2Prefix: "",
+        publicBaseUrl: "https://assets.example.test",
+        createdAt: "2026-09-12T00:00:00.000Z",
+        updatedAt: "2026-09-12T00:00:00.000Z",
+      },
+    ],
+  }
+  let response: unknown = legacyFilmsSettings
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () => envelopeResponseCreate(response),
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const legacy = await clientResult.data.projectSettingsRead("films-project")
+  expect(legacy).toMatchObject({
+    success: true,
+    data: { environments: [{ name: "development" }, { name: "production", r2Prefix: "/filmschauspielschule-v2" }] },
+  })
+
+  response = canonicalSemesterkurSettings
+  const canonical = await clientResult.data.projectSettingsRead("semesterkur-project")
+  expect(canonical).toMatchObject({ success: true, data: { environments: [{ r2Prefix: "" }] } })
+})
+
+test("assets API client keeps strict storage validation for legacy environment responses", async () => {
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async () =>
+      envelopeResponseCreate({
+        project: { id: "films-project", name: "films", defaultEnvironment: "production" },
+        binding: { serviceProjectId: "leo-assets", zitadelProjectId: "zitadel-films" },
+        environments: [{ name: "production", r2Bucket: "contentoren-assets-service-public" }],
+      }),
+  })
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+
+  const invalid = await clientResult.data.projectSettingsRead("films-project")
+  expect(invalid.success).toBe(false)
+})
+
 test("assets API client rejects project registration without both environments before fetching", async () => {
   let fetchCount = 0
   const clientResult = assetsApiClientCreate({
