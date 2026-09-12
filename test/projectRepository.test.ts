@@ -28,6 +28,7 @@ const project = {
   name: "Example project",
   slug: "example-project",
   defaultEnvironment: "development" as const,
+  archiveState: "active" as const,
   createdAt: timestamp,
   updatedAt: timestamp,
 }
@@ -302,6 +303,91 @@ describe("projectRepository.projectsRead", () => {
       expect(secondGrant.success && secondGrant.data.map((item) => item.id)).toEqual(["project-2"])
       expect(combinedGrants.success && combinedGrants.data.map((item) => item.id)).toEqual(["project-1", "project-2"])
       expect(foreignGrant.success && foreignGrant.data).toEqual([])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("hides non-active projects by default and never lets a grant opt into them", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      recordInsertRequired(connection.db, projectTable, {
+        ...project,
+        id: "project-archived",
+        name: "Archived project",
+        slug: "archived-project",
+        archiveState: "archived",
+      })
+      recordInsertRequired(connection.db, projectBindingTable, {
+        id: "binding-archived",
+        projectId: "project-archived",
+        organizationId: "org-1",
+        zitadelProjectId: "zitadel-archived",
+        serviceProjectId: "service-project-archived",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+
+      const defaultAdministrator = repository.projectsRead("org-1", [], true)
+      const administratorWithArchived = repository.projectsRead("org-1", [], true, true)
+      const contributorWithArchived = repository.projectsRead("org-1", ["zitadel-archived"], false, true)
+
+      expect(defaultAdministrator.success && defaultAdministrator.data.map((item) => item.id)).toEqual(["project-1"])
+      expect(administratorWithArchived.success && administratorWithArchived.data.map((item) => item.id)).toEqual([
+        "project-archived",
+        "project-1",
+      ])
+      expect(contributorWithArchived.success && contributorWithArchived.data).toEqual([])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+})
+
+describe("projectRepository.projectArchiveStateWrite", () => {
+  test("persists resumable archive and unarchive lifecycle transitions", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      const archiving = repository.projectArchiveStateWrite?.("project-1", "archiving")
+      expect(archiving?.success && archiving.data?.archiveState).toBe("archiving")
+
+      const archived = repository.projectArchiveStateWrite?.("project-1", "archived")
+      expect(archived?.success && archived.data?.archiveState).toBe("archived")
+
+      const hidden = repository.projectsRead("org-1", ["zitadel-1"])
+      const visible = repository.projectsRead("org-1", [], true, true)
+      expect(hidden.success && hidden.data).toEqual([])
+      expect(visible.success && visible.data.map((item) => item.archiveState)).toEqual(["archived"])
+
+      const unarchiving = repository.projectArchiveStateWrite?.("project-1", "unarchiving")
+      const active = repository.projectArchiveStateWrite?.("project-1", "active")
+      expect(unarchiving?.success && unarchiving.data?.archiveState).toBe("unarchiving")
+      expect(active?.success && active.data?.archiveState).toBe("active")
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("rejects lifecycle transitions that skip a storage phase", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      const written = repository.projectArchiveStateWrite?.("project-1", "archived")
+      expect(written).toMatchObject({ success: false })
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("rejects a lifecycle transition when the expected state changed", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      const written = repository.projectArchiveStateWrite?.("project-1", "archiving", "archived")
+      expect(written).toMatchObject({
+        success: false,
+        errorMessage: "The project archive state transition was not allowed",
+      })
+      const current = repository.projectRead("project-1")
+      expect(current.success && current.data?.archiveState).toBe("active")
     } finally {
       await cleanup(databasePath, connection)
     }

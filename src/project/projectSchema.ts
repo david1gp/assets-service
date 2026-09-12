@@ -3,6 +3,7 @@ import * as v from "valibot"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { isoDateSchema } from "../schemas/isoDateSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
+import { projectArchiveStateSchema } from "./projectArchiveStateSchema.js"
 
 export const projectSchema = v.strictObject({
   id: idSchema,
@@ -10,6 +11,7 @@ export const projectSchema = v.strictObject({
   name: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   slug: v.pipe(v.string(), v.slug()),
   defaultEnvironment: environmentNameSchema,
+  archiveState: v.optional(projectArchiveStateSchema),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
 })

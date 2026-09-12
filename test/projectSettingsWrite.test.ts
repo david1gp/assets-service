@@ -131,6 +131,25 @@ describe("projectRepository.projectSettingsWrite", () => {
     }
   })
 
+  test("rejects settings changes during archive lifecycle operations", async () => {
+    const databasePath = databasePathCreate()
+    const { connection, repository } = await repositoryCreate(databasePath)
+    try {
+      const transitioned = repository.projectArchiveStateWrite?.("project-1", "archiving", "active")
+      expect(transitioned?.success).toBe(true)
+      const written = repository.projectSettingsWrite("project-1", update)
+      expect(written).toMatchObject({
+        success: false,
+        errorMessage: "Project settings cannot be changed during archive lifecycle operations",
+      })
+    } finally {
+      databaseClose(connection)
+      await rm(databasePath, { force: true })
+      await rm(`${databasePath}-wal`, { force: true })
+      await rm(`${databasePath}-shm`, { force: true })
+    }
+  })
+
   test("lists all projects in an organization only for an organization administrator", async () => {
     const databasePath = databasePathCreate()
     const { connection, repository } = await repositoryCreate(databasePath)

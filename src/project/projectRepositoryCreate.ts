@@ -15,11 +15,14 @@ import { storageMigrationRepositoryCreate } from "../migration/storageMigrationR
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { storageMutationAssert } from "../storage/storageMutationAssert.js"
+import { storageBindingResolve } from "../storage/storageBindingResolve.js"
+import type { StorageBinding } from "../storage/storageBindingSchema.js"
 import { type Environment, environmentSchema } from "./environmentSchema.js"
 import { type Organization, organizationSchema } from "./organizationSchema.js"
 import { type ProjectBinding, projectBindingSchema } from "./projectBindingSchema.js"
 import type { ProjectCreateResult } from "./projectCreateResultSchema.js"
 import { type ProjectCreate, projectCreateSchema } from "./projectCreateSchema.js"
+import { type ProjectArchiveState, projectArchiveStateSchema } from "./projectArchiveStateSchema.js"
 import type { ProjectRepository } from "./projectRepository.js"
 import { type Project, projectSchema } from "./projectSchema.js"
 import { type ProjectSettings, projectSettingsSchema } from "./projectSettingsSchema.js"
@@ -155,7 +158,18 @@ const bindingRead = (record: ProjectBindingRecord): Result<ProjectBinding> => {
   return { success: true, data: parsed.output }
 }
 
-export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository => {
+const projectArchiveStateTransitionAllowed = (current: ProjectArchiveState, next: ProjectArchiveState): boolean =>
+  current === next ||
+  (current === "active" && next === "archiving") ||
+  (current === "archiving" && next === "archived") ||
+  (current === "archived" && next === "unarchiving") ||
+  (current === "unarchiving" && next === "active")
+
+type ProjectRepositoryImplementation = ProjectRepository & {
+  projectArchiveStateWrite: NonNullable<ProjectRepository["projectArchiveStateWrite"]>
+}
+
+export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImplementation => {
   const storageMigrationRepository = storageMigrationRepositoryCreate(db)
   const projectRecordRead = (projectIdentifier: string): Result<ProjectRecord | null> => {
     try {
@@ -233,12 +247,18 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     organizationId: string,
     zitadelProjectIds: readonly string[],
     organizationAdmin = false,
+    includeArchived = false,
+    projectAdministrator = false,
   ): Result<readonly ProjectListItem[]> => {
     if (!organizationAdmin && zitadelProjectIds.length === 0) return { success: true, data: [] }
     try {
       const projectFilter = organizationAdmin
         ? undefined
         : inArray(projectBindingTable.zitadelProjectId, [...zitadelProjectIds])
+      const archiveFilter =
+        (organizationAdmin || projectAdministrator) && includeArchived
+          ? undefined
+          : eq(projectTable.archiveState, "active")
       const records = db
         .select({
           project: projectTable,
@@ -259,6 +279,7 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
           and(
             eq(projectTable.organizationId, organizationId),
             eq(projectBindingTable.organizationId, organizationId),
+            ...(archiveFilter === undefined ? [] : [archiveFilter]),
             ...(projectFilter === undefined ? [] : [projectFilter]),
           ),
         )
@@ -277,6 +298,36 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     }
   }
 
+  const projectArchiveStateWrite = (
+    projectIdentifier: string,
+    archiveState: ProjectArchiveState,
+    expectedArchiveState?: ProjectArchiveState,
+  ): Result<Project | null> => {
+    const op = "projectRepositoryProjectArchiveStateWrite"
+    const parsed = v.safeParse(projectArchiveStateSchema, archiveState)
+    if (!parsed.success) return resultErrorCreate(op, "The project archive state was invalid", archiveState)
+    const record = projectRecordRead(projectIdentifier)
+    if (!record.success) return record
+    if (!record.data) return { success: true, data: null }
+    if (expectedArchiveState !== undefined && record.data.archiveState !== expectedArchiveState)
+      return resultErrorCreate(op, "The project archive state transition was not allowed")
+    if (!projectArchiveStateTransitionAllowed(record.data.archiveState, parsed.output))
+      return resultErrorCreate(op, "The project archive state transition was not allowed")
+    const transitionExpectedArchiveState = expectedArchiveState ?? record.data.archiveState
+    try {
+      const updated = db
+        .update(projectTable)
+        .set({ archiveState: parsed.output, updatedAt: new Date().toISOString() })
+        .where(and(eq(projectTable.id, record.data.id), eq(projectTable.archiveState, transitionExpectedArchiveState)))
+        .returning({ id: projectTable.id })
+        .get()
+      if (updated === undefined) return resultErrorCreate(op, "The project archive state transition was not allowed")
+      return projectReadByIdentifier(record.data.id)
+    } catch (error) {
+      return resultErrorCreate(op, "The project archive state could not be written", error)
+    }
+  }
+
   const projectGrantIdsRead = (organizationId: string): Result<readonly string[]> => {
     try {
       const records = db
@@ -287,6 +338,23 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
       return { success: true, data: records.map((record) => record.zitadelProjectId) }
     } catch (error) {
       return resultErrorCreate("projectRepositoryProjectGrantIdsRead", "The project grants could not be read", error)
+    }
+  }
+
+  const storageBindingsRead = (): Result<readonly StorageBinding[]> => {
+    try {
+      const records = db.select().from(environmentTable).all()
+      const bindings: StorageBinding[] = []
+      for (const record of records) {
+        const environment = environmentRead(record)
+        if (!environment.success) return environment
+        const binding = storageBindingResolve(environment.data)
+        if (!binding.success) return binding
+        bindings.push(binding.data)
+      }
+      return { success: true, data: bindings }
+    } catch (error) {
+      return resultErrorCreate("projectRepositoryStorageBindingsRead", "The storage bindings could not be read", error)
     }
   }
 
@@ -359,6 +427,8 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     if (!record.data) return { success: true, data: null }
 
     const project = record.data
+    if (project.archiveState !== "active")
+      return resultErrorCreate(op, "Project settings cannot be changed during archive lifecycle operations")
     const environments = db.select().from(environmentTable).where(eq(environmentTable.projectId, project.id)).all()
     const changedEnvironmentIds = parsed.output.environments.flatMap((environment) => {
       const current = environments.find((candidate) => candidate.name === environment.name)
@@ -583,8 +653,10 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepository =>
     environmentRead: environmentReadByIdentifier,
     projectSettingsRead,
     projectSettingsWrite,
+    projectArchiveStateWrite,
     projectCreate,
     organizationRead: organizationReadById,
     projectGrantIdsRead,
+    storageBindingsRead,
   }
 }
