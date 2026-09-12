@@ -13,15 +13,19 @@ import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
 import { r2StorageAdapterCreate } from "../infrastructure/storage/r2StorageAdapter.js"
+import { rcloneBackupRestoreAdapterProduction } from "../infrastructure/rclone/rcloneBackupRestoreAdapterProduction.js"
 import { zitadelJwksClientCreate } from "../infrastructure/zitadel/zitadelJwksClientCreate.js"
 import { zitadelOidcClientCreate } from "../infrastructure/zitadel/zitadelOidcClientCreate.js"
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
+import { projectArchiveWorkflowCreate } from "../project/projectArchiveWorkflowCreate.js"
+import { projectUnarchiveWorkflowCreate } from "../project/projectUnarchiveWorkflowCreate.js"
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { storageMigrationWorkflowEnqueue } from "../migration/storageMigrationWorkflowEnqueue.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
 import { workflowApiRepositoryCreate } from "../workflow/workflowApiRepositoryCreate.js"
+import { wranglerCommandRunnerProduction } from "../wrangler/wranglerCommandRunnerProduction.js"
 import type { ApiComposition } from "./apiComposition.js"
 
 export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiComposition> => {
@@ -59,6 +63,31 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const catalogApiRepository = catalogApiRepositoryCreate(connection.data.db)
   const catalogPublicationService = catalogPublicationServiceCreate(connection.data.db, storage)
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
+  const wranglerRunner = wranglerCommandRunnerProduction
+  const storageBindingsRead = () =>
+    projectRepository.storageBindingsRead?.() ?? {
+      success: false as const,
+      op: "apiCompositionStorageBindingsRead",
+      errorMessage: "Storage binding reads are not configured",
+    }
+  const projectArchiveWorkflow = projectArchiveWorkflowCreate({
+    projectRepository,
+    assetApiRepository,
+    backupApiRepository,
+    storage,
+    storageBindingsRead,
+    wranglerRunner,
+  })
+  const projectUnarchiveWorkflow = projectUnarchiveWorkflowCreate({
+    projectRepository,
+    assetApiRepository,
+    backupApiRepository,
+    restore: rcloneBackupRestoreAdapterProduction(config.service),
+    storage,
+    storageBindingsRead,
+    wranglerRunner,
+    workflowApiRepository,
+  })
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })
   const organizationContext = zitadelOrganizationContextCreate(
@@ -90,6 +119,8 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
 
   const app = apiAppCreate({
     projectRepository,
+    projectArchiveWorkflow,
+    projectUnarchiveWorkflow,
     storageMigrationRepository,
     storageMigrationWorkflowEnqueue: (input) => storageMigrationWorkflowEnqueue(connection.data.db, input),
     assetApiRepository,

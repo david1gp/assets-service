@@ -508,13 +508,12 @@ export const assetApiRepositoryCreate = (db: AssetDatabase): AssetApiRepository 
       const detail = assetRead(projectId, assetId)
       if (!detail.success) return detail
       if (detail.data === null) return { success: true, data: null }
-      const workflowId = assetReprocessWorkflowIdCreate(
-        projectId,
-        assetId,
-        environment.id,
-        detail.data.currentSourceRevisionId,
-      )
-      return assetMutationRead(projectId, assetId, workflowId, {
+      const workflowId =
+        input.workflowId ??
+        assetReprocessWorkflowIdCreate(projectId, assetId, environment.id, detail.data.currentSourceRevisionId)
+      const parsedWorkflowId = v.safeParse(idSchema, workflowId)
+      if (!parsedWorkflowId.success) return resultErrorCreate(op, "The reprocess workflow identifier was invalid")
+      return assetMutationRead(projectId, assetId, parsedWorkflowId.output, {
         environmentId: environment.id,
         forceNewVersion: true,
       })

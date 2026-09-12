@@ -40,6 +40,7 @@ export type AssetOutputSetInput = {
 
 export type AssetReprocessInput = {
   environmentId: string
+  workflowId?: string
 }
 
 export type AssetApiMutation = {
