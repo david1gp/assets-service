@@ -23,7 +23,7 @@ export const cliProjectsCreateCommand = buildCommand({
   docs: {
     brief: "Register a new project in the asset service, optionally creating its Zitadel project",
     fullDescription:
-      "Registers a new project including Zitadel project bindings and R2 storage bucket settings. When --zitadel-project-id is omitted, the CLI creates a Zitadel project using ZITADEL_BASE_URL and ZITADEL_TOKEN from the project-create environment.",
+      "Registers a new project including Zitadel bindings and R2 settings. With --create-buckets, it provisions missing buckets and reconciles missing bucket-scoped credentials; Cloudflare credentials are read only when needed and secrets are never displayed. When --zitadel-project-id is omitted, the CLI creates a Zitadel project using ZITADEL_BASE_URL and ZITADEL_TOKEN from the project-create environment.",
   },
   parameters: {
     flags: {

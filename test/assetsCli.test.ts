@@ -441,9 +441,27 @@ test("projects create provisions distinct R2 buckets before registration", async
         ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
       },
       wranglerRunner,
-      fetcher: async () => {
+      fetcher: async (input) => {
+        const url = new URL(String(input))
+        if (url.pathname.endsWith("/r2-credential/status")) {
+          const environment = url.pathname.includes("/development/") ? "development" : "production"
+          const bucket = environment === "development" ? "allgroups-chat-development" : "allgroups-chat-production"
+          return envelopeResponseCreate({ projectId: "project-1", environment, bucket, registered: true })
+        }
         events.push("assets:project-create")
-        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+        return envelopeResponseCreate(
+          {
+            project: {
+              ...apiProjectSettingsCreate(),
+              environments: [
+                { ...apiProjectSettingsCreate().environments[0], r2Bucket: "allgroups-chat-development" },
+                { ...apiProjectSettingsCreate().environments[1], r2Bucket: "allgroups-chat-production" },
+              ],
+            },
+            created: true,
+          },
+          201,
+        )
       },
       stdout: (text) => output.push(text),
       stderr: () => undefined,
@@ -459,6 +477,119 @@ test("projects create provisions distinct R2 buckets before registration", async
     ).toEqual(["allgroups-chat-development", "allgroups-chat-production"])
     expect(events.at(-1)).toBe("assets:project-create")
     expect(output.join("\n")).not.toContain("cloudflare-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create reconciles bucket credentials after buckets, Zitadel, and project registration", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-credential-order-home-"))
+  const output: string[] = []
+  const events: string[] = []
+  const registeredBuckets = new Set<string>()
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      [
+        "ASSETS_API_URL=https://assets.example.test",
+        "CLOUDFLARE_ACCOUNT_ID=cloudflare-account",
+        "CLOUDFLARE_API_TOKEN=broad-cloudflare-token",
+        "ZITADEL_BASE_URL=https://zitadel.example.test",
+        "ZITADEL_TOKEN=zitadel-project-token",
+      ].join("\n"),
+    )
+    const args = projectCreateArguments(undefined)
+    args[args.indexOf("allgroups-chat", args.indexOf("--production-r2-bucket"))] = "allgroups-chat-production"
+    args.splice(-1, 0, "--create-buckets", "--wrangler-profile", "fabian")
+    const projectSettings = {
+      ...apiProjectSettingsCreate(),
+      environments: [
+        { ...apiProjectSettingsCreate().environments[0], r2Bucket: "allgroups-chat" },
+        { ...apiProjectSettingsCreate().environments[1], r2Bucket: "allgroups-chat-production" },
+      ],
+    }
+    const exitCode = await assetsCliMain(args, {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      wranglerRunner: async ({ args: wranglerArgs }) => {
+        if (wranglerArgs[0] === "r2" && wranglerArgs[2] === "create") events.push(`bucket:${wranglerArgs[3]}`)
+        if (wranglerArgs[0] === "r2" && wranglerArgs[2] === "info")
+          return { success: true, data: { exitCode: 1, stdout: "", stderr: "bucket_not_found" } }
+        return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+      },
+      zitadelProjectCreate: async () => {
+        events.push("zitadel")
+        return { success: true, data: { projectId: "zitadel-created" } }
+      },
+      cloudflareR2BucketCredentialCreate: async ({ bucket }) => {
+        events.push(`cloudflare:create:${bucket}`)
+        return {
+          success: true,
+          data: {
+            bucket,
+            accessKeyId: `${bucket}-access-secret`,
+            secretAccessKey: `${bucket}-secret-secret`,
+            revocationId: `${bucket}-revocation-secret`,
+          },
+        }
+      },
+      cloudflareR2BucketCredentialRevoke: async () => {
+        events.push("cloudflare:revoke")
+        return { success: true, data: true }
+      },
+      fetcher: async (input, init) => {
+        const request = new Request(String(input), init)
+        const url = new URL(request.url)
+        if (url.pathname === "/api/v1/projects") {
+          events.push("assets:project")
+          return envelopeResponseCreate({ project: projectSettings, created: true }, 201)
+        }
+        if (url.pathname.endsWith("/r2-credential/status")) {
+          events.push("assets:status")
+          const environment = url.pathname.includes("/development/") ? "development" : "production"
+          const bucket = environment === "development" ? "allgroups-chat" : "allgroups-chat-production"
+          return envelopeResponseCreate({
+            projectId: "project-1",
+            environment,
+            bucket,
+            registered: registeredBuckets.has(bucket),
+          })
+        }
+        if (url.pathname.endsWith("/r2-credential") && request.method === "PUT") {
+          const body = (await request.json()) as { bucket: string }
+          events.push(`assets:put:${body.bucket}`)
+          registeredBuckets.add(body.bucket)
+          const environment = body.bucket === "allgroups-chat" ? "development" : "production"
+          return envelopeResponseCreate({ projectId: "project-1", environment, bucket: body.bucket, registered: true })
+        }
+        return failureResponseCreate(`Unexpected request ${url.pathname}`, 404)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(events).toEqual([
+      "bucket:allgroups-chat",
+      "bucket:allgroups-chat-production",
+      "zitadel",
+      "assets:project",
+      "assets:status",
+      "assets:status",
+      "cloudflare:create:allgroups-chat",
+      "assets:put:allgroups-chat",
+      "cloudflare:create:allgroups-chat-production",
+      "assets:put:allgroups-chat-production",
+      "assets:status",
+      "assets:status",
+    ])
+    expect(output.join("\n")).not.toContain("broad-cloudflare-token")
+    expect(output.join("\n")).not.toContain("access-secret")
+    expect(output.join("\n")).not.toContain("secret-secret")
   } finally {
     await rm(homeDirectory, { recursive: true, force: true })
   }

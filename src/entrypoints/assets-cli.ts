@@ -27,11 +27,14 @@ import { type AssetFileFingerprint, assetFileFingerprint } from "../asset-cli/as
 import { cliCommandHelp } from "../asset-cli/cliCommandHelp.js"
 import { cliHelpFormat } from "../asset-cli/cliHelpFormat.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
+import { projectCreateCredentialReconciliationRun } from "../asset-cli/projectCreateCredentialReconciliationRun.js"
 import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { assetsCliVersionMetadataRender } from "../assetsCliVersionMetadataRender.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
 import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
+import { cloudflareR2BucketCredentialCreate } from "../cloudflare/cloudflareR2BucketCredentialCreate.js"
+import { cloudflareR2BucketCredentialRevoke } from "../cloudflare/cloudflareR2BucketCredentialRevoke.js"
 import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import {
   type EnvironmentConfiguration,
@@ -80,6 +83,8 @@ export type AssetsCliOptions = {
   stderr?: (text: string) => void
   stdinRead?: () => Promise<string>
   wranglerRunner?: WranglerCommandRunner
+  cloudflareR2BucketCredentialCreate?: typeof cloudflareR2BucketCredentialCreate
+  cloudflareR2BucketCredentialRevoke?: typeof cloudflareR2BucketCredentialRevoke
 }
 
 type CliConfig = {
@@ -236,14 +241,17 @@ const commandHelp = cliCommandHelp
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
   resultErrorCreate(op, message, rawData)
 
-const cloudflareRequestCredentialsRead = (environment: NodeJS.ProcessEnv): Result<CloudflareRequestCredentials> => {
+const cloudflareRequestCredentialsRead = (
+  environment: NodeJS.ProcessEnv,
+  operation = "Archive and unarchive",
+): Result<CloudflareRequestCredentials> => {
   const op = "assetsCliCloudflareRequestCredentialsRead"
   const accountId = environment.CLOUDFLARE_ACCOUNT_ID
   if (accountId === undefined || accountId.trim().length === 0)
-    return resultFailure(op, "Archive and unarchive require CLOUDFLARE_ACCOUNT_ID")
+    return resultFailure(op, `${operation} requires CLOUDFLARE_ACCOUNT_ID`)
   const apiToken = environment.CLOUDFLARE_API_TOKEN
   if (apiToken === undefined || apiToken.trim().length === 0)
-    return resultFailure(op, "Archive and unarchive require CLOUDFLARE_API_TOKEN")
+    return resultFailure(op, `${operation} requires CLOUDFLARE_API_TOKEN`)
   const credentials = v.safeParse(cloudflareRequestCredentialsSchema, { accountId, apiToken })
   if (!credentials.success) return resultFailure(op, "Cloudflare request credentials are invalid")
   return { success: true, data: credentials.output }
@@ -2443,6 +2451,8 @@ const commandRun = async (
   organization?: OrganizationDefinition,
   zitadelProjectCreate: ZitadelProjectCreate = zitadelProjectCreateDefault,
   wranglerRunner: WranglerCommandRunner = wranglerCommandRunnerProduction,
+  cloudflareCredentialCreate: typeof cloudflareR2BucketCredentialCreate = cloudflareR2BucketCredentialCreate,
+  cloudflareCredentialRevoke: typeof cloudflareR2BucketCredentialRevoke = cloudflareR2BucketCredentialRevoke,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
   pollIntervalMilliseconds = 1000,
@@ -2641,7 +2651,19 @@ const commandRun = async (
         binding: { ...projectInput.binding, zitadelProjectId: created.data },
       }
     }
-    return { result: await client.projectCreate(projectInput as ProjectCreate) }
+    const registered = await client.projectCreate(projectInput as ProjectCreate)
+    if (!registered.success) return { result: registered }
+    if (!flagRead(parsed, "create-buckets")) return { result: registered }
+    const reconciled = await projectCreateCredentialReconciliationRun({
+      client,
+      projectId: registered.data.project.project.id,
+      environments: registered.data.project.environments,
+      cloudflareCredentialsRead: () => cloudflareRequestCredentialsRead(env, "R2 credential registration"),
+      cloudflareCredentialCreate: cloudflareCredentialCreate,
+      cloudflareCredentialRevoke: cloudflareCredentialRevoke,
+    })
+    if (!reconciled.success) return { result: reconciled }
+    return { result: registered }
   }
 
   if (
@@ -3174,6 +3196,8 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     organizationResult.data.organization ?? undefined,
     options.zitadelProjectCreate ?? zitadelProjectCreateDefault,
     options.wranglerRunner ?? wranglerCommandRunnerProduction,
+    options.cloudflareR2BucketCredentialCreate ?? cloudflareR2BucketCredentialCreate,
+    options.cloudflareR2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevoke,
     sleep,
     parsedPollInterval?.data,
   )
