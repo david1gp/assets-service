@@ -125,24 +125,26 @@ const legacyRouteNavigateRead = async (path: string) => {
   const dispose = render(
     () =>
       createComponent(Router, {
-        children: [
-          createComponent(Route, {
-            path: "/projects/:projectId/contributor/assets",
-            component: legacyRouteRedirect,
-          }),
-          createComponent(Route, {
-            path: "/projects/:projectId/contributor/assets/:assetId",
-            component: legacyRouteRedirect,
-          }),
-          createComponent(Route, {
-            path: "/orgs/:orgSlug/projects/:projectSlug/contributor/assets",
-            component: () => "canonical-list",
-          }),
-          createComponent(Route, {
-            path: "/orgs/:orgSlug/projects/:projectSlug/contributor/assets/:assetId",
-            component: () => "canonical-detail",
-          }),
-        ],
+        get children() {
+          return [
+            createComponent(Route, {
+              path: "/projects/:projectId/contributor/assets",
+              component: legacyRouteRedirect,
+            }),
+            createComponent(Route, {
+              path: "/projects/:projectId/contributor/assets/:assetId",
+              component: legacyRouteRedirect,
+            }),
+            createComponent(Route, {
+              path: "/orgs/:orgSlug/projects/:projectSlug/contributor/assets",
+              component: () => "canonical-list",
+            }),
+            createComponent(Route, {
+              path: "/orgs/:orgSlug/projects/:projectSlug/contributor/assets/:assetId",
+              component: () => "canonical-detail",
+            }),
+          ]
+        },
       }),
     root as unknown as Node,
   )
