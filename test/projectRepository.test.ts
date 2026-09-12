@@ -17,6 +17,7 @@ import { outputDefinitionTable } from "../src/infrastructure/db/schema/outputDef
 import { outputVersionTable } from "../src/infrastructure/db/schema/outputVersionTable.js"
 import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
 import { projectGrantTable } from "../src/infrastructure/db/schema/projectGrantTable.js"
+import { projectStorageLocationTable } from "../src/infrastructure/db/schema/projectStorageLocationTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../src/infrastructure/db/schema/sourceRevisionTable.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
@@ -311,32 +312,33 @@ describe("projectRepository.projectsRead", () => {
   test("hides non-active projects by default and never lets a grant opt into them", async () => {
     const { databasePath, connection, repository } = await repositoryCreate()
     try {
-      recordInsertRequired(connection.db, projectTable, {
-        ...project,
-        id: "project-archived",
-        name: "Archived project",
-        slug: "archived-project",
-        archiveState: "archived",
-      })
-      recordInsertRequired(connection.db, projectBindingTable, {
-        id: "binding-archived",
-        projectId: "project-archived",
-        organizationId: "org-1",
-        zitadelProjectId: "zitadel-archived",
-        serviceProjectId: "service-project-archived",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
+      for (const archiveState of ["archiving", "archived", "unarchiving"] as const) {
+        recordInsertRequired(connection.db, projectTable, {
+          ...project,
+          id: `project-${archiveState}`,
+          name: `${archiveState} project`,
+          slug: `${archiveState}-project`,
+          archiveState,
+        })
+        recordInsertRequired(connection.db, projectBindingTable, {
+          id: `binding-${archiveState}`,
+          projectId: `project-${archiveState}`,
+          organizationId: "org-1",
+          zitadelProjectId: `zitadel-${archiveState}`,
+          serviceProjectId: `service-project-${archiveState}`,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }
 
       const defaultAdministrator = repository.projectsRead("org-1", [], true)
       const administratorWithArchived = repository.projectsRead("org-1", [], true, true)
       const contributorWithArchived = repository.projectsRead("org-1", ["zitadel-archived"], false, true)
 
       expect(defaultAdministrator.success && defaultAdministrator.data.map((item) => item.id)).toEqual(["project-1"])
-      expect(administratorWithArchived.success && administratorWithArchived.data.map((item) => item.id)).toEqual([
-        "project-archived",
-        "project-1",
-      ])
+      expect(administratorWithArchived.success && administratorWithArchived.data.map((item) => item.id).sort()).toEqual(
+        ["project-1", "project-archived", "project-archiving", "project-unarchiving"],
+      )
       expect(contributorWithArchived.success && contributorWithArchived.data).toEqual([])
     } finally {
       await cleanup(databasePath, connection)
@@ -394,6 +396,58 @@ describe("projectRepository.projectArchiveStateWrite", () => {
   })
 })
 
+describe("projectRepository.storageBindingsRead", () => {
+  test("includes historical project storage locations when proving bucket ownership", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      recordInsertRequired(connection.db, projectStorageLocationTable, {
+        id: "location-project-1-legacy",
+        projectId: "project-1",
+        environment: "production",
+        bucket: "contentoren-assets-service-public",
+        prefix: "template",
+        createdAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, {
+        ...project,
+        id: "project-2",
+        slug: "second-project",
+      })
+      recordInsertRequired(connection.db, projectStorageLocationTable, {
+        id: "location-project-2-legacy",
+        projectId: "project-2",
+        environment: "production",
+        bucket: "contentoren-assets-service-public",
+        prefix: "other-project",
+        createdAt: timestamp,
+      })
+
+      const bindings = repository.storageBindingsRead?.()
+
+      expect(bindings).toMatchObject({ success: true })
+      if (bindings?.success)
+        expect(bindings.data).toEqual([
+          {
+            projectId: "project-1",
+            environment: "production",
+            bucket: "contentoren-assets-service-public",
+            prefix: "template",
+            publicBaseUrl: "https://archive.invalid",
+          },
+          {
+            projectId: "project-2",
+            environment: "production",
+            bucket: "contentoren-assets-service-public",
+            prefix: "other-project",
+            publicBaseUrl: "https://archive.invalid",
+          },
+        ])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+})
+
 describe("projectRepository.projectCreate", () => {
   test("creates an organization, project binding, both environments, and an admin grant record atomically", async () => {
     const { databasePath, connection, repository } = await emptyRepositoryCreate()
@@ -418,6 +472,16 @@ describe("projectRepository.projectCreate", () => {
       expect(
         connection.db.select().from(projectGrantTable).where(eq(projectGrantTable.projectId, projectId)).all(),
       ).toMatchObject([{ subjectId: "admin-1", role: "admin" }])
+      expect(
+        connection.db
+          .select()
+          .from(projectStorageLocationTable)
+          .where(eq(projectStorageLocationTable.projectId, projectId))
+          .all(),
+      ).toMatchObject([
+        { environment: "development", bucket: "assets-development", prefix: "registered/development" },
+        { environment: "production", bucket: "assets-production", prefix: "registered/production" },
+      ])
 
       const repeated = repository.projectCreate(projectCreateInput, "admin-2")
       expect(repeated).toMatchObject({

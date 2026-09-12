@@ -14,19 +14,20 @@ import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionT
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import type { StorageBinding } from "../storage/storageBindingSchema.js"
+import { storageMutationAssert } from "../storage/storageMutationAssert.js"
 import { type Environment, environmentSchema } from "./environmentSchema.js"
 import { type Organization, organizationSchema } from "./organizationSchema.js"
+import { type ProjectArchiveState, projectArchiveStateSchema } from "./projectArchiveStateSchema.js"
 import { type ProjectBinding, projectBindingSchema } from "./projectBindingSchema.js"
 import type { ProjectCreateResult } from "./projectCreateResultSchema.js"
 import { type ProjectCreate, projectCreateSchema } from "./projectCreateSchema.js"
-import { type ProjectArchiveState, projectArchiveStateSchema } from "./projectArchiveStateSchema.js"
 import type { ProjectRepository } from "./projectRepository.js"
 import { type Project, projectSchema } from "./projectSchema.js"
 import { type ProjectSettings, projectSettingsSchema } from "./projectSettingsSchema.js"
 import { type ProjectSettingsUpdate, projectSettingsUpdateSchema } from "./projectSettingsUpdateSchema.js"
+import { projectStorageLocationRepositoryCreate } from "./projectStorageLocationRepositoryCreate.js"
 
 type ProjectRecord = typeof projectTable.$inferSelect
 type EnvironmentRecord = typeof environmentTable.$inferSelect
@@ -167,10 +168,12 @@ const projectArchiveStateTransitionAllowed = (current: ProjectArchiveState, next
 
 type ProjectRepositoryImplementation = ProjectRepository & {
   projectArchiveStateWrite: NonNullable<ProjectRepository["projectArchiveStateWrite"]>
+  projectStorageLocationsRead: NonNullable<ProjectRepository["projectStorageLocationsRead"]>
 }
 
 export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImplementation => {
   const storageMigrationRepository = storageMigrationRepositoryCreate(db)
+  const projectStorageLocationRepository = projectStorageLocationRepositoryCreate(db)
   const projectRecordRead = (projectIdentifier: string): Result<ProjectRecord | null> => {
     try {
       const direct = db.select().from(projectTable).where(eq(projectTable.id, projectIdentifier)).limit(1).get()
@@ -344,19 +347,47 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
   const storageBindingsRead = (): Result<readonly StorageBinding[]> => {
     try {
       const records = db.select().from(environmentTable).all()
-      const bindings: StorageBinding[] = []
+      const currentBindings: StorageBinding[] = []
       for (const record of records) {
         const environment = environmentRead(record)
         if (!environment.success) return environment
         const binding = storageBindingResolve(environment.data)
         if (!binding.success) return binding
-        bindings.push(binding.data)
+        currentBindings.push(binding.data)
       }
-      return { success: true, data: bindings }
+      const locations = projectStorageLocationRepository.projectStorageLocationsAllRead()
+      if (!locations.success) return locations
+      const publicBaseUrls = new Map(
+        currentBindings.map((binding) => [`${binding.projectId}\u0000${binding.environment}`, binding.publicBaseUrl]),
+      )
+      const bindings = new Map<string, StorageBinding>()
+      for (const binding of currentBindings)
+        bindings.set(
+          `${binding.projectId}\u0000${binding.environment}\u0000${binding.bucket}\u0000${binding.prefix}`,
+          binding,
+        )
+      for (const location of locations.data) {
+        const binding = {
+          projectId: location.projectId,
+          environment: location.environment,
+          bucket: location.bucket,
+          prefix: location.prefix,
+          publicBaseUrl:
+            publicBaseUrls.get(`${location.projectId}\u0000${location.environment}`) ?? "https://archive.invalid",
+        } satisfies StorageBinding
+        bindings.set(
+          `${binding.projectId}\u0000${binding.environment}\u0000${binding.bucket}\u0000${binding.prefix}`,
+          binding,
+        )
+      }
+      return { success: true, data: [...bindings.values()] }
     } catch (error) {
       return resultErrorCreate("projectRepositoryStorageBindingsRead", "The storage bindings could not be read", error)
     }
   }
+
+  const projectStorageLocationsRead = (projectId: string) =>
+    projectStorageLocationRepository.projectStorageLocationsRead(projectId)
 
   const environmentReadByIdentifier = (
     projectId: string,
@@ -501,21 +532,30 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
               })
               .where(eq(environmentTable.id, current.id))
               .run()
-            continue
-          }
-          transaction
-            .insert(environmentTable)
-            .values({
-              id: crypto.randomUUID(),
+          } else
+            transaction
+              .insert(environmentTable)
+              .values({
+                id: crypto.randomUUID(),
+                projectId: project.id,
+                name: environment.name,
+                r2Bucket: environment.r2Bucket,
+                r2Prefix: environment.r2Prefix,
+                publicBaseUrl: environment.publicBaseUrl,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .run()
+          const recorded = projectStorageLocationRepository.projectStorageLocationCreate(
+            {
               projectId: project.id,
-              name: environment.name,
-              r2Bucket: environment.r2Bucket,
-              r2Prefix: environment.r2Prefix,
-              publicBaseUrl: environment.publicBaseUrl,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .run()
+              environment: environment.name,
+              bucket: environment.r2Bucket,
+              prefix: environment.r2Prefix,
+            },
+            transaction,
+          )
+          if (!recorded.success) return recorded
         }
         return { success: true, data: null } as const
       },
@@ -617,6 +657,18 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
               updatedAt: now,
             })
             .run()
+        for (const environment of parsed.output.environments) {
+          const recorded = projectStorageLocationRepository.projectStorageLocationCreate(
+            {
+              projectId,
+              environment: environment.name,
+              bucket: environment.r2Bucket,
+              prefix: environment.r2Prefix,
+            },
+            transaction,
+          )
+          if (!recorded.success) return recorded
+        }
         // Keep this existing database record for project metadata; runtime authorization remains claims-based.
         transaction
           .insert(projectGrantTable)
@@ -653,6 +705,7 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
     environmentRead: environmentReadByIdentifier,
     projectSettingsRead,
     projectSettingsWrite,
+    projectStorageLocationsRead,
     projectArchiveStateWrite,
     projectCreate,
     organizationRead: organizationReadById,

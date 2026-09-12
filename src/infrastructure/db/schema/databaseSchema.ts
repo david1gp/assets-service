@@ -20,7 +20,10 @@ import { outputDefinitionTable } from "./outputDefinitionTable.js"
 import { outputVersionTable } from "./outputVersionTable.js"
 import { projectBindingTable } from "./projectBindingTable.js"
 import { projectGrantTable } from "./projectGrantTable.js"
+import { projectStorageDomainTable } from "./projectStorageDomainTable.js"
+import { projectStorageLocationTable } from "./projectStorageLocationTable.js"
 import { projectTable } from "./projectTable.js"
+import { r2BucketCredentialTable } from "./r2BucketCredentialTable.js"
 import { reconciliationRunTable } from "./reconciliationRunTable.js"
 import { sourceRevisionTable } from "./sourceRevisionTable.js"
 import { structureFolderTable } from "./structureFolderTable.js"
@@ -49,7 +52,10 @@ export const databaseSchema = {
   outputVersionTable,
   projectBindingTable,
   projectGrantTable,
+  projectStorageDomainTable,
+  projectStorageLocationTable,
   projectTable,
+  r2BucketCredentialTable,
   reconciliationRunTable,
   sourceRevisionTable,
   structureFolderTable,

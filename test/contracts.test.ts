@@ -4,8 +4,8 @@ import * as v from "valibot"
 import { apiSuccessEnvelopeCreate } from "../src/api/apiSuccessEnvelopeCreate.js"
 import { jsonEnvelopeStringify } from "../src/api/jsonEnvelopeStringify.js"
 import { foldersSchema } from "../src/asset/foldersSchema.js"
-import { serviceConfigRead } from "../src/config/serviceConfigRead.js"
 import { serviceConfigR2BindingResolve } from "../src/config/serviceConfigR2BindingResolve.js"
+import { serviceConfigRead } from "../src/config/serviceConfigRead.js"
 import { imageMetadataSchema } from "../src/metadata/imageMetadataSchema.js"
 
 test("serviceConfigRead validates environment contracts", () => {
@@ -17,6 +17,7 @@ test("serviceConfigRead validates environment contracts", () => {
     CLOUDFLARE_ACCOUNT_ID: "account",
     R2_ACCESS_KEY_ID: "access",
     R2_SECRET_ACCESS_KEY: "secret",
+    R2_CREDENTIAL_ENCRYPTION_KEY: "encryption-key",
     ASSETS_R2_BUCKET: "assets",
     ASSETS_R2_ENDPOINT: "https://account.r2.cloudflarestorage.com",
     ASSETS_R2_PUBLIC_BASE_URL: "https://assets.example.test",

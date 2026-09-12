@@ -1,15 +1,16 @@
 import type { ProjectListItem } from "../api-client/projectListItemSchema.js"
 import type { Result } from "../schemas/resultSchema.js"
+import type { StorageBinding } from "../storage/storageBindingSchema.js"
 import type { Environment } from "./environmentSchema.js"
 import type { Organization } from "./organizationSchema.js"
+import type { ProjectArchiveState } from "./projectArchiveStateSchema.js"
 import type { ProjectBinding } from "./projectBindingSchema.js"
 import type { ProjectCreateResult } from "./projectCreateResultSchema.js"
 import type { ProjectCreate } from "./projectCreateSchema.js"
-import type { ProjectArchiveState } from "./projectArchiveStateSchema.js"
 import type { Project } from "./projectSchema.js"
 import type { ProjectSettings } from "./projectSettingsSchema.js"
 import type { ProjectSettingsUpdate } from "./projectSettingsUpdateSchema.js"
-import type { StorageBinding } from "../storage/storageBindingSchema.js"
+import type { ProjectStorageLocation } from "./projectStorageLocationSchema.js"
 
 export type ProjectRepository = {
   projectsRead: (
@@ -25,6 +26,7 @@ export type ProjectRepository = {
   environmentRead: (projectId: string, environmentIdentifier: string) => Result<Environment | null>
   projectSettingsRead: (projectIdentifier: string) => Result<ProjectSettings | null>
   projectSettingsWrite: (projectIdentifier: string, input: ProjectSettingsUpdate) => Result<ProjectSettings | null>
+  projectStorageLocationsRead?: (projectId: string) => Result<readonly ProjectStorageLocation[]>
   projectArchiveStateWrite?: (
     projectIdentifier: string,
     archiveState: ProjectArchiveState,

@@ -10,6 +10,7 @@ export const serviceConfigSchema = v.strictObject({
   r2AccountId: v.pipe(v.string(), v.minLength(1)),
   r2AccessKeyId: v.pipe(v.string(), v.minLength(1)),
   r2SecretAccessKey: v.pipe(v.string(), v.minLength(1)),
+  r2CredentialEncryptionKey: v.pipe(v.string(), v.minLength(1)),
   r2Bucket: v.pipe(v.string(), v.minLength(1)),
   r2PrivateBucket: v.optional(v.pipe(v.string(), v.minLength(1))),
   r2PublicBucket: v.optional(v.pipe(v.string(), v.minLength(1))),

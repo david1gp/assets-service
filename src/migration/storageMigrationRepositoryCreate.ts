@@ -9,6 +9,8 @@ import { jobTable } from "../infrastructure/db/schema/jobTable.js"
 import { uploadTable } from "../infrastructure/db/schema/uploadTable.js"
 import { workflowTable } from "../infrastructure/db/schema/workflowTable.js"
 import type { Environment } from "../project/environmentSchema.js"
+import { projectStorageDomainRepositoryCreate } from "../project/projectStorageDomainRepositoryCreate.js"
+import { projectStorageLocationRepositoryCreate } from "../project/projectStorageLocationRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { sha256Schema } from "../schemas/sha256Schema.js"
@@ -41,6 +43,8 @@ export const storageMigrationRepositoryCreate = (
   options: StorageMigrationRepositoryCreateOptions = {},
 ): StorageMigrationRepository => {
   const clock = options.clock ?? (() => new Date())
+  const projectStorageLocationRepository = projectStorageLocationRepositoryCreate(db, { clock })
+  const projectStorageDomainRepository = projectStorageDomainRepositoryCreate(db, { clock })
 
   const storageMigrationRecordRead = (
     record: typeof storageMigrationTable.$inferSelect,
@@ -140,6 +144,31 @@ export const storageMigrationRepositoryCreate = (
         )
       const issuedIntents = storageMigrationIssuedUploadsAssert(transaction, parsed.output.environmentId, now, op)
       if (!issuedIntents.success) return issuedIntents
+
+      for (const binding of [parsed.output.sourceBinding, parsed.output.targetBinding]) {
+        const recorded = projectStorageLocationRepository.projectStorageLocationCreate(
+          {
+            projectId: binding.projectId,
+            environment: binding.environment,
+            bucket: binding.bucket,
+            prefix: binding.prefix,
+          },
+          transaction,
+        )
+        if (!recorded.success) return recorded as Result<StorageMigration>
+        if (binding.customDomain !== undefined && binding.zoneId !== undefined) {
+          const domain = projectStorageDomainRepository.projectStorageDomainCreate(
+            {
+              projectId: binding.projectId,
+              bucket: binding.bucket,
+              customDomain: binding.customDomain,
+              zoneId: binding.zoneId,
+            },
+            transaction,
+          )
+          if (!domain.success) return domain as Result<StorageMigration>
+        }
+      }
 
       const inserted = databaseRecordInsert(transaction, storageMigrationTable, {
         id: `storage-migration-${crypto.randomUUID()}`,
@@ -637,7 +666,9 @@ function storageMigrationBindingMatches(
     left.environment === right.environment &&
     left.bucket === right.bucket &&
     left.prefix === right.prefix &&
-    left.publicBaseUrl === right.publicBaseUrl
+    left.publicBaseUrl === right.publicBaseUrl &&
+    left.customDomain === right.customDomain &&
+    left.zoneId === right.zoneId
   )
 }
 

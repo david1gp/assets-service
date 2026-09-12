@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { eq } from "drizzle-orm"
 import { mkdir, rm } from "node:fs/promises"
+import { eq } from "drizzle-orm"
 
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
@@ -9,10 +9,12 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { jobTable } from "../src/infrastructure/db/schema/jobTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
+import { projectStorageDomainTable } from "../src/infrastructure/db/schema/projectStorageDomainTable.js"
+import { projectStorageLocationTable } from "../src/infrastructure/db/schema/projectStorageLocationTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
-import { storageMigrationTable } from "../src/migration/storageMigrationTable.js"
 import { workflowTable } from "../src/infrastructure/db/schema/workflowTable.js"
 import { storageMigrationRepositoryCreate } from "../src/migration/storageMigrationRepositoryCreate.js"
+import { storageMigrationTable } from "../src/migration/storageMigrationTable.js"
 
 const now = "2026-09-01T00:00:00.000Z"
 
@@ -136,14 +138,22 @@ describe("storage migration repository", () => {
         projectId: "project-1",
         environmentId: "environment-1",
         idempotencyKey: "migration-1",
-        sourceBinding,
-        targetBinding,
+        sourceBinding: { ...sourceBinding, customDomain: "source.example.test", zoneId: "zone-source" },
+        targetBinding: { ...targetBinding, customDomain: "target.example.test", zoneId: "zone-target" },
       }
       const first = fixture.repository.storageMigrationCreate(input)
       const repeated = fixture.repository.storageMigrationCreate(input)
 
       expect(first).toMatchObject({ success: true, data: { status: "queued", sourceBinding, targetBinding } })
       expect(repeated).toMatchObject({ success: true })
+      expect(fixture.connection.db.select().from(projectStorageLocationTable).all()).toMatchObject([
+        { projectId: "project-1", environment: "development", bucket: "source-bucket", prefix: "source-prefix" },
+        { projectId: "project-1", environment: "development", bucket: "target-bucket", prefix: "target-prefix" },
+      ])
+      expect(fixture.connection.db.select().from(projectStorageDomainTable).all()).toMatchObject([
+        { projectId: "project-1", bucket: "source-bucket", customDomain: "source.example.test", zoneId: "zone-source" },
+        { projectId: "project-1", bucket: "target-bucket", customDomain: "target.example.test", zoneId: "zone-target" },
+      ])
       if (!first.success || !repeated.success) return
       expect(repeated.data.id).toBe(first.data.id)
       expect(

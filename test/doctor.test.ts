@@ -3,9 +3,9 @@ import { expect, test } from "bun:test"
 import { doctorReportStringify } from "../src/doctor/doctorReportStringify.js"
 import { doctorRunnerCreate } from "../src/doctor/doctorRunnerCreate.js"
 import { doctorRunnerRun } from "../src/doctor/doctorRunnerRun.js"
-import { resultErrorCreate } from "../src/schemas/resultErrorCreate.js"
-import { r2DoctorCheckCreate } from "../src/infrastructure/storage/r2DoctorCheckCreate.js"
 import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memoryStorageAdapter.js"
+import { r2DoctorCheckCreate } from "../src/infrastructure/storage/r2DoctorCheckCreate.js"
+import { resultErrorCreate } from "../src/schemas/resultErrorCreate.js"
 
 test("doctor runner only wires available checks in stable order", async () => {
   const runner = doctorRunnerCreate({
@@ -58,6 +58,7 @@ test("the R2 doctor combines bucket access and public-domain checks", async () =
     r2AccountId: "account",
     r2AccessKeyId: "access",
     r2SecretAccessKey: "secret",
+    r2CredentialEncryptionKey: "encryption-key",
     r2Bucket: "assets-development",
     r2Endpoint: "https://account.r2.cloudflarestorage.com",
     r2PublicBaseUrl: "https://assets.example.test",

@@ -1,6 +1,5 @@
-import { mkdir, rm } from "node:fs/promises"
-
 import { describe, expect, test } from "bun:test"
+import { mkdir, rm } from "node:fs/promises"
 
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
@@ -9,6 +8,7 @@ import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordIns
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
 import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
 import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
+import { projectStorageLocationTable } from "../src/infrastructure/db/schema/projectStorageLocationTable.js"
 import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
 
@@ -66,6 +66,14 @@ const repositoryCreate = async (databasePath: string) => {
     createdAt: "2026-08-17T00:00:00.000Z",
     updatedAt: "2026-08-17T00:00:00.000Z",
   })
+  databaseRecordInsert(opened.data.db, projectStorageLocationTable, {
+    id: "project-storage-location-1",
+    projectId: "project-1",
+    environment: "development",
+    bucket: "old-bucket",
+    prefix: "old-prefix",
+    createdAt: "2026-08-17T00:00:00.000Z",
+  })
   return { connection: opened.data, repository: projectRepositoryCreate(opened.data.db) }
 }
 
@@ -90,6 +98,14 @@ describe("projectRepository.projectSettingsWrite", () => {
       expect(development?.r2Prefix).toBe("")
       const production = written.data.environments.find((environment) => environment.name === "production")
       expect(production?.r2Prefix).toBe("renamed-service")
+      const locations = repository.projectStorageLocationsRead?.("project-1")
+      expect(locations).toMatchObject({ success: true })
+      if (locations?.success)
+        expect(locations.data.map(({ environment, bucket, prefix }) => ({ environment, bucket, prefix }))).toEqual([
+          { environment: "development", bucket: "assets-development", prefix: "" },
+          { environment: "development", bucket: "old-bucket", prefix: "old-prefix" },
+          { environment: "production", bucket: "assets-production", prefix: "renamed-service" },
+        ])
     } finally {
       databaseClose(connection)
       await rm(databasePath, { force: true })
