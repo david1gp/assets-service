@@ -7,25 +7,29 @@ export const uiBreadcrumbPageRead = (pathname: string, assetName?: string): stri
   if (assetId !== undefined && assetId !== "") {
     return assetName || assetId
   }
-  if (/^\/projects\/[^/?#]+(?:\/(?:admin|contributor))?\/assets\/?$/.test(pathname)) {
+  if (
+    /^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/(?:admin|contributor))?\/assets\/?$/.test(pathname)
+  ) {
     return "List"
   }
-  if (/^\/projects\/[^/?#]+(?:\/(?:admin|contributor))?\/upload\/?$/.test(pathname)) {
+  if (
+    /^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/(?:admin|contributor))?\/upload\/?$/.test(pathname)
+  ) {
     return "Upload"
   }
-  if (/^\/projects\/[^/?#]+(?:\/admin)?\/jobs\/?$/.test(pathname)) {
+  if (/^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/admin)?\/jobs\/?$/.test(pathname)) {
     return ttc("Jobs", "Aufträge")
   }
-  if (/^\/projects\/[^/?#]+(?:\/admin)?\/backups\/?$/.test(pathname)) {
+  if (/^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/admin)?\/backups\/?$/.test(pathname)) {
     return ttc("Backups", "Sicherungen")
   }
-  if (/^\/projects\/[^/?#]+(?:\/admin)?\/catalog\/?$/.test(pathname)) {
+  if (/^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/admin)?\/catalog\/?$/.test(pathname)) {
     return ttc("Catalog", "Katalog")
   }
-  if (/^\/projects\/[^/?#]+(?:\/admin)?\/audit\/?$/.test(pathname)) {
+  if (/^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/admin)?\/audit\/?$/.test(pathname)) {
     return ttc("Audit", "Protokoll")
   }
-  if (/^\/projects\/[^/?#]+(?:\/admin)?\/settings\/?$/.test(pathname)) {
+  if (/^(?:\/projects\/[^/?#]+|\/orgs\/[^/?#]+\/projects\/[^/?#]+)(?:\/admin)?\/settings\/?$/.test(pathname)) {
     return ttc("Settings", "Einstellungen")
   }
   return undefined

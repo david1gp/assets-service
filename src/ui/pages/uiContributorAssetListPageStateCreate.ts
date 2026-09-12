@@ -1,16 +1,17 @@
-import { createSignalObject } from "#ui/utils/createSignalObject.js"
 import { useParams, useSearchParams } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
 import * as v from "valibot"
+import { createSignalObject } from "#ui/utils/createSignalObject.js"
+import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { assetListQuerySchema } from "../../api-client/assetListQuerySchema.js"
 import { type AssetListResponse, assetListResponseSchema } from "../../api-client/assetListResponseSchema.js"
-import type { AssetListItem } from "../../api-client/assetListItemSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiAssetPreviewSourceRead } from "./uiAssetPreviewSourceRead.js"
@@ -18,8 +19,9 @@ import { uiAssetPreviewSourceRead } from "./uiAssetPreviewSourceRead.js"
 /** Holds the contributor asset search, pagination, previews, and customer-facing labels. */
 export const uiContributorAssetListPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const [searchParams, setSearchParams] = useSearchParams()
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const search = createMemo(() => uiSearchParamSchemaRead(assetListQuerySchema.entries.search, searchParams.search))
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
   const searchDraftState = createSignalObject(search() ?? "")

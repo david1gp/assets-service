@@ -6,12 +6,13 @@ import {
   type AuditEventListResponse,
   auditEventListResponseSchema,
 } from "../../api-client/auditEventListResponseSchema.js"
-import { auditActionCatalog, type AuditAction } from "../../audit/auditActionCatalog.js"
+import { type AuditAction, auditActionCatalog } from "../../audit/auditActionCatalog.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
 import { uiSearchParamsReplace } from "../search/uiSearchParamsReplace.js"
@@ -22,9 +23,10 @@ type UiAuditActionSelection = AuditAction | "all"
 /** Loads the audit trail of one project filtered by action. */
 export const uiAuditPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
   const actionSchema = auditEventListQuerySchema.entries.action
   const action = createMemo(() => uiSearchParamSchemaRead(actionSchema, searchParams.action))

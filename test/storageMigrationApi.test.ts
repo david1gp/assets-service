@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
 import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
+import { assetsApiClientCreate } from "../src/api-client/assetsApiClientCreate.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
 import { memorySessionStoreCreate } from "../src/authentication/memorySessionStoreCreate.js"
 import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.js"
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
-import type { Environment } from "../src/project/environmentSchema.js"
-import type { ProjectRepository } from "../src/project/projectRepository.js"
 import type { StorageMigrationRepository } from "../src/migration/storageMigrationRepository.js"
 import type { StorageMigration } from "../src/migration/storageMigrationSchema.js"
-import { assetsApiClientCreate } from "../src/api-client/assetsApiClientCreate.js"
+import type { Environment } from "../src/project/environmentSchema.js"
+import type { ProjectRepository } from "../src/project/projectRepository.js"
 
 const now = 1_700_000_000
 const project = {
@@ -105,6 +105,8 @@ const projectRepositoryCreate = (): ProjectRepository => ({
     data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
   }),
   organizationRead: () => ({ success: true, data: null }),
+  organizationReadBySlug: () => ({ success: true, data: null }),
+  projectReadByOrganizationIdAndSlug: () => ({ success: true, data: null }),
 })
 
 const optionsCreate = (

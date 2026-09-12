@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, rm } from "node:fs/promises"
-import { eq } from "drizzle-orm"
 import type { InferInsertModel } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import type { AnySQLiteTable } from "drizzle-orm/sqlite-core"
 
 import type { AssetDatabase } from "../src/infrastructure/db/assetDatabase.js"
@@ -116,6 +116,43 @@ const cleanup = async (
   await rm(`${databasePath}-shm`, { force: true })
 }
 
+describe("projectRepository slug reads", () => {
+  test("resolves organizations globally and projects within the resolved organization", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      recordInsertRequired(connection.db, organizationTable, {
+        id: "org-2",
+        name: "Other",
+        slug: "other",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, { ...project, id: "project-2", organizationId: "org-2" })
+
+      const organization = repository.organizationReadBySlug("example")
+      expect(organization).toMatchObject({ success: true, data: { id: "org-1", slug: "example" } })
+      expect(repository.organizationReadBySlug("missing")).toEqual({ success: true, data: null })
+
+      const firstProject = repository.projectReadByOrganizationIdAndSlug("org-1", "example-project")
+      expect(firstProject).toMatchObject({
+        success: true,
+        data: { id: "project-1", organizationId: "org-1", slug: "example-project" },
+      })
+      const secondProject = repository.projectReadByOrganizationIdAndSlug("org-2", "example-project")
+      expect(secondProject).toMatchObject({
+        success: true,
+        data: { id: "project-2", organizationId: "org-2", slug: "example-project" },
+      })
+      expect(repository.projectReadByOrganizationIdAndSlug("org-1", "missing")).toEqual({
+        success: true,
+        data: null,
+      })
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+})
+
 describe("projectRepository.projectsRead", () => {
   test("returns zero metrics for a project without assets", async () => {
     const { databasePath, connection, repository } = await repositoryCreate()
@@ -123,7 +160,7 @@ describe("projectRepository.projectsRead", () => {
       const listed = repository.projectsRead("org-1", ["zitadel-1"])
       expect(listed.success).toBe(true)
       if (!listed.success) return
-      expect(listed.data).toEqual([{ ...project, assetCount: 0, totalFileSize: 0 }])
+      expect(listed.data).toEqual([{ ...project, organizationSlug: "example", assetCount: 0, totalFileSize: 0 }])
     } finally {
       await cleanup(databasePath, connection)
     }
@@ -517,6 +554,39 @@ describe("projectRepository.projectCreate", () => {
       if (!created.success) return
       expect(created.data.project.organization?.id).toBe("org-1")
       expect(connection.db.select().from(organizationTable).all()).toHaveLength(1)
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
+
+  test("allows a project slug in another organization but rejects it within the same organization", async () => {
+    const { databasePath, connection, repository } = await emptyRepositoryCreate()
+    try {
+      const first = repository.projectCreate(projectCreateInput, "admin-1")
+      expect(first.success).toBe(true)
+
+      const second = repository.projectCreate(
+        {
+          ...projectCreateInput,
+          organization: { id: "org-second", name: "Second organization", slug: "second-organization" },
+          binding: { zitadelProjectId: "zitadel-second", serviceProjectId: "service-second" },
+        },
+        "admin-2",
+      )
+      expect(second).toMatchObject({ success: true, data: { created: true } })
+      if (!first.success || !second.success) return
+      expect(second.data.project.project.id).not.toBe(first.data.project.project.id)
+
+      const duplicate = repository.projectCreate(
+        {
+          ...projectCreateInput,
+          binding: { zitadelProjectId: "zitadel-duplicate", serviceProjectId: "service-duplicate" },
+        },
+        "admin-3",
+      )
+      expect(duplicate.success).toBe(false)
+      if (!duplicate.success) expect(duplicate.errorMessage).toContain("already exists")
+      expect(connection.db.select().from(projectTable).all()).toHaveLength(2)
     } finally {
       await cleanup(databasePath, connection)
     }

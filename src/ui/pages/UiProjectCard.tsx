@@ -18,7 +18,12 @@ export type UiProjectCardProps = {
 export function UiProjectCard(p: UiProjectCardProps) {
   return (
     <A
-      href={uiProjectCardHrefRead(p.project.id, uiSessionStore.get().principal?.mode)}
+      href={uiProjectCardHrefRead(
+        p.project.id,
+        uiSessionStore.get().principal?.mode,
+        p.project.organizationSlug,
+        p.project.slug,
+      )}
       class="flex flex-col gap-4 rounded-lg bg-white p-4 shadow-lg hover:shadow-xl dark:border dark:border-gray-500 dark:bg-zinc-800"
     >
       <div class="flex items-start justify-between gap-2">

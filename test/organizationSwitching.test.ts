@@ -7,9 +7,9 @@ import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.j
 import { sessionCookieRead } from "../src/authentication/sessionCookieRead.js"
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 import type { ZitadelAuthConfig } from "../src/authentication/zitadelAuthConfigSchema.js"
-import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
-import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
+import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
+import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
 
 const nowSeconds = 1_700_000_000
@@ -255,6 +255,7 @@ describe("Organization Switching HTTP API", () => {
         organizations: {
           id: string
           name: string
+          slug?: string
           current: boolean
           mode: string
           organizationAdmin: boolean
@@ -284,6 +285,7 @@ describe("Organization Switching HTTP API", () => {
 
     const contentorenOrg = body.data.organizations.find((o) => o.id === "org-contentoren")
     expect(contentorenOrg?.current).toBe(true)
+    expect(contentorenOrg?.slug).toBe("contentoren")
   })
 
   test("POST /api/v1/auth/organization switches active organization session and updates access", async () => {

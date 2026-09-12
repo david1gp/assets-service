@@ -11,6 +11,7 @@ import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
 import { uiFormDraftPersistenceCreate } from "../storage/uiFormDraftPersistenceCreate.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
@@ -24,7 +25,8 @@ const contributorIntegrationNoteDraftSchema = v.strictObject({
 /** Holds the simplified contributor preview and alternative-text edit. */
 export const uiContributorAssetDetailPageStateCreate = () => {
   const params = useParams<{ projectId: string; assetId: string }>()
-  const projectId = createMemo(() => params.projectId)
+  const route = uiProjectRouteContextRead()
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const assetId = createMemo(() => params.assetId)
   const altDraftState = createSignalObject("")
   const integrationNoteDraftState = createSignalObject("")

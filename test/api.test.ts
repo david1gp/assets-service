@@ -10,8 +10,8 @@ import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.j
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 import type { ZitadelJwk } from "../src/infrastructure/zitadel/zitadelJwk.js"
 import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
-import type { ProjectRepository } from "../src/project/projectRepository.js"
 import type { ProjectArchiveWorkflow } from "../src/project/projectArchiveWorkflow.js"
+import type { ProjectRepository } from "../src/project/projectRepository.js"
 import type { ProjectUnarchiveWorkflow } from "../src/project/projectUnarchiveWorkflow.js"
 
 const now = 1_700_000_000
@@ -74,8 +74,7 @@ const project = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
-const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
-
+const projectListItem = { ...project, organizationSlug: "example", assetCount: 0, totalFileSize: 0 }
 const archivedProjectListItem = {
   ...projectListItem,
   id: "project-archived",
@@ -149,6 +148,8 @@ const projectRepositoryCreate = (): ProjectRepository => ({
     data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
   }),
   organizationRead: () => ({ success: true, data: null }),
+  organizationReadBySlug: () => ({ success: true, data: null }),
+  projectReadByOrganizationIdAndSlug: () => ({ success: true, data: null }),
 })
 
 const optionsCreate = (): ApiAppOptions => {
@@ -519,7 +520,7 @@ describe("HTTP API", () => {
     expect(response.status).toBe(200)
     expect(parsed.success).toBe(true)
     if (!parsed.success) return
-    expect(parsed.output.projects[0]).toMatchObject({ assetCount: 2, totalFileSize: 50 })
+    expect(parsed.output.projects[0]).toMatchObject({ organizationSlug: "example", assetCount: 2, totalFileSize: 50 })
   })
 
   test("normalizes omitted and empty R2 prefixes in settings input", async () => {

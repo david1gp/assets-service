@@ -7,15 +7,17 @@ import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { type UiCatalogView, uiCatalogViewSchema } from "./uiCatalogViewSchema.js"
 
 /** Loads the current catalog and its generated lists for one environment. */
 export const uiCatalogPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const environment = createMemo(
     () => uiSearchParamPicklistRead(environmentNameSchema, searchParams.environment) ?? "development",
   )

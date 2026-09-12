@@ -4,6 +4,7 @@ import { uiPaths } from "../src/ui/routing/uiPaths.js"
 import { uiProjectRouteModeRead } from "../src/ui/routing/uiProjectRouteModeRead.js"
 import { uiRouteIsKnown } from "../src/ui/routing/uiRouteIsKnown.js"
 import { uiRouteModeAllowed } from "../src/ui/routing/uiRouteModeAllowed.js"
+import { uiAssetIdFromPathnameRead } from "../src/ui/shell/uiAssetIdFromPathnameRead.js"
 import { uiNavigationActiveCheck } from "../src/ui/shell/uiNavigationActiveCheck.js"
 import { uiNavigationLinksRead } from "../src/ui/shell/uiNavigationLinksRead.js"
 import { uiProjectIdFromPathnameRead } from "../src/ui/shell/uiProjectIdFromPathnameRead.js"
@@ -50,6 +51,26 @@ describe("uiProjectIdFromPathnameRead", () => {
 })
 
 describe("mode-specific project routing", () => {
+  test("builds canonical organization-scoped paths", () => {
+    expect(uiPaths.orgProject("adaptive", "media-library")).toBe("/orgs/adaptive/projects/media-library")
+    expect(uiPaths.admin.assets("adaptive", "media-library")).toBe("/orgs/adaptive/projects/media-library/admin/assets")
+    expect(uiPaths.contributor.asset("adaptive", "media-library", "hero image")).toBe(
+      "/orgs/adaptive/projects/media-library/contributor/assets/hero%20image",
+    )
+    expect(
+      uiNavigationLinksRead({ organizationSlug: "adaptive", projectSlug: "media-library" }, "admin")[0]?.href,
+    ).toBe("/orgs/adaptive/projects/media-library/admin/assets")
+  })
+
+  test("recognizes canonical routes and extracts canonical asset ids", () => {
+    expect(uiRouteIsKnown("/orgs/adaptive/projects/media-library/admin/assets")).toBe(true)
+    expect(uiRouteIsKnown("/orgs/adaptive/projects/media-library/contributor/assets/hero")).toBe(true)
+    expect(uiRouteIsKnown("/orgs/adaptive/projects/media-library/contributor/jobs")).toBe(false)
+    expect(uiAssetIdFromPathnameRead("/orgs/adaptive/projects/media-library/admin/assets/hero%20image")).toBe(
+      "hero image",
+    )
+  })
+
   test("builds paths inside the selected project view", () => {
     expect(uiPaths.admin.assets("demo")).toBe("/projects/demo/admin/assets")
     expect(uiPaths.contributor.asset("demo", "hero image")).toBe("/projects/demo/contributor/assets/hero%20image")
@@ -93,6 +114,8 @@ describe("mode-specific project routing", () => {
   test("reads the explicit route view and trusts the principal mode for access", () => {
     expect(uiProjectRouteModeRead("/projects/demo/admin/assets")).toBe("admin")
     expect(uiProjectRouteModeRead("/projects/demo/contributor/assets")).toBe("contributor")
+    expect(uiProjectRouteModeRead("/orgs/adaptive/projects/media-library/admin/assets")).toBe("admin")
+    expect(uiProjectRouteModeRead("/orgs/adaptive/projects/media-library/contributor/assets")).toBe("contributor")
     expect(uiProjectRouteModeRead("/projects/demo/assets")).toBeUndefined()
     expect(uiRouteModeAllowed("/projects/demo/admin/assets", "admin")).toBe(true)
     expect(uiRouteModeAllowed("/projects/demo/contributor/assets", "admin")).toBe(true)
@@ -110,6 +133,76 @@ describe("mode-specific project routing", () => {
     expect(uiLegacyRouteRedirectRead("/projects/team%2Fblue/assets", "admin")).toBe(
       "/projects/team%2Fblue/admin/assets",
     )
+  })
+
+  test("redirects legacy routes to canonical organization/project paths", () => {
+    expect(
+      uiLegacyRouteRedirectRead(
+        "/projects/project-id/assets/hero",
+        "admin",
+        "?dialog=outputs",
+        "adaptive",
+        "media-library",
+      ),
+    ).toBe("/orgs/adaptive/projects/media-library/admin/assets/hero?dialog=outputs")
+    expect(uiLegacyRouteRedirectRead("/projects/project-id/admin/jobs", "admin", "", "adaptive", "media-library")).toBe(
+      "/orgs/adaptive/projects/media-library/admin/jobs",
+    )
+  })
+
+  test("redirects every explicit ID-based mode route to its canonical path", () => {
+    const adminRoutes = [
+      ["/projects/project-id/admin", "/orgs/adaptive/projects/media-library/admin"],
+      ["/projects/project-id/admin/settings", "/orgs/adaptive/projects/media-library/admin/settings"],
+      ["/projects/project-id/admin/assets", "/orgs/adaptive/projects/media-library/admin/assets"],
+      [
+        "/projects/project-id/admin/assets/hero%20image",
+        "/orgs/adaptive/projects/media-library/admin/assets/hero%20image",
+      ],
+      ["/projects/project-id/admin/upload", "/orgs/adaptive/projects/media-library/admin/upload"],
+      ["/projects/project-id/admin/jobs", "/orgs/adaptive/projects/media-library/admin/jobs"],
+      ["/projects/project-id/admin/backups", "/orgs/adaptive/projects/media-library/admin/backups"],
+      ["/projects/project-id/admin/catalog", "/orgs/adaptive/projects/media-library/admin/catalog"],
+      ["/projects/project-id/admin/audit", "/orgs/adaptive/projects/media-library/admin/audit"],
+    ] as const
+    for (const [pathname, target] of adminRoutes) {
+      expect(uiLegacyRouteRedirectRead(pathname, "admin", "?tab=overview", "adaptive", "media-library")).toBe(
+        `${target}?tab=overview`,
+      )
+    }
+
+    const contributorRoutes = [
+      ["/projects/project-id/contributor", "/orgs/adaptive/projects/media-library/contributor"],
+      ["/projects/project-id/contributor/assets", "/orgs/adaptive/projects/media-library/contributor/assets"],
+      [
+        "/projects/project-id/contributor/assets/hero%20image",
+        "/orgs/adaptive/projects/media-library/contributor/assets/hero%20image",
+      ],
+      ["/projects/project-id/contributor/upload", "/orgs/adaptive/projects/media-library/contributor/upload"],
+    ] as const
+    for (const [pathname, target] of contributorRoutes) {
+      expect(uiLegacyRouteRedirectRead(pathname, "contributor", "?tab=overview", "adaptive", "media-library")).toBe(
+        `${target}?tab=overview`,
+      )
+    }
+    expect(
+      uiLegacyRouteRedirectRead(
+        "/projects/project-id/admin/assets",
+        "contributor",
+        "?tab=overview",
+        "adaptive",
+        "media-library",
+      ),
+    ).toBe("/orgs/adaptive/projects/media-library/admin/assets?tab=overview")
+    expect(
+      uiLegacyRouteRedirectRead(
+        "/projects/project-id/contributor/assets",
+        "admin",
+        "?tab=overview",
+        "adaptive",
+        "media-library",
+      ),
+    ).toBe("/orgs/adaptive/projects/media-library/contributor/assets?tab=overview")
   })
 
   test("redirects every recognized legacy admin section and preserves contributor fallback", () => {

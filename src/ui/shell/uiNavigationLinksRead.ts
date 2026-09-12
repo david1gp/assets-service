@@ -10,29 +10,50 @@ import { ttc } from "../localization/ttc.js"
 import { uiPaths } from "../routing/uiPaths.js"
 
 export type UiNavigationLink = { href: string; label: string; icon: string }
+type UiNavigationProject = { organizationSlug: string; projectSlug: string }
 
 /** Lists the primary navigation targets of one project. */
 export const uiNavigationLinksRead = (
-  projectId: string,
+  project: string | UiNavigationProject,
   mode: AuthenticationMode = "admin",
 ): readonly UiNavigationLink[] => {
+  const path = typeof project === "string" ? undefined : project
+  const projectId = typeof project === "string" ? project : ""
+  const contributor = uiPaths.contributor
+  const admin = uiPaths.admin
+  const contributorAssets = () =>
+    path ? contributor.assets(path.organizationSlug, path.projectSlug) : contributor.assets(projectId)
+  const contributorUpload = () =>
+    path ? contributor.upload(path.organizationSlug, path.projectSlug) : contributor.upload(projectId)
+  const adminAssets = () => (path ? admin.assets(path.organizationSlug, path.projectSlug) : admin.assets(projectId))
+  const adminUpload = () => (path ? admin.upload(path.organizationSlug, path.projectSlug) : admin.upload(projectId))
+  const adminJobs = () => (path ? admin.jobs(path.organizationSlug, path.projectSlug) : admin.jobs(projectId))
+  const adminBackups = () => (path ? admin.backups(path.organizationSlug, path.projectSlug) : admin.backups(projectId))
+  const adminCatalog = () => (path ? admin.catalog(path.organizationSlug, path.projectSlug) : admin.catalog(projectId))
+  const adminAudit = () => (path ? admin.audit(path.organizationSlug, path.projectSlug) : admin.audit(projectId))
+  const adminSettings = () =>
+    path ? admin.projectSettings(path.organizationSlug, path.projectSlug) : admin.projectSettings(projectId)
   if (mode === "contributor") {
     return [
-      { href: uiPaths.contributor.upload(projectId), label: ttc("Upload new", "Neu hochladen"), icon: mdiCloudUpload },
       {
-        href: uiPaths.contributor.assets(projectId),
+        href: contributorUpload(),
+        label: ttc("Upload new", "Neu hochladen"),
+        icon: mdiCloudUpload,
+      },
+      {
+        href: contributorAssets(),
         label: ttc("View/edit existing", "Medien ansehen/bearbeiten"),
         icon: mdiImageMultiple,
       },
     ]
   }
   return [
-    { href: uiPaths.admin.assets(projectId), label: ttc("Assets", "Medien"), icon: mdiImageMultiple },
-    { href: uiPaths.admin.upload(projectId), label: ttc("Upload", "Hochladen"), icon: mdiCloudUpload },
-    { href: uiPaths.admin.jobs(projectId), label: ttc("Jobs", "Aufträge"), icon: mdiPlaylistCheck },
-    { href: uiPaths.admin.backups(projectId), label: ttc("Backups", "Sicherungen"), icon: mdiDatabaseArrowUp },
-    { href: uiPaths.admin.catalog(projectId), label: ttc("Catalog", "Katalog"), icon: mdiFileTree },
-    { href: uiPaths.admin.audit(projectId), label: ttc("Audit", "Protokoll"), icon: mdiClipboardTextClock },
-    { href: uiPaths.admin.projectSettings(projectId), label: ttc("Settings", "Einstellungen"), icon: mdiCogOutline },
+    { href: adminAssets(), label: ttc("Assets", "Medien"), icon: mdiImageMultiple },
+    { href: adminUpload(), label: ttc("Upload", "Hochladen"), icon: mdiCloudUpload },
+    { href: adminJobs(), label: ttc("Jobs", "Aufträge"), icon: mdiPlaylistCheck },
+    { href: adminBackups(), label: ttc("Backups", "Sicherungen"), icon: mdiDatabaseArrowUp },
+    { href: adminCatalog(), label: ttc("Catalog", "Katalog"), icon: mdiFileTree },
+    { href: adminAudit(), label: ttc("Audit", "Protokoll"), icon: mdiClipboardTextClock },
+    { href: adminSettings(), label: ttc("Settings", "Einstellungen"), icon: mdiCogOutline },
   ]
 }

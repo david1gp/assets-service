@@ -10,6 +10,18 @@ export const uiRouteIsKnown = (pathname: string): boolean => {
   const segments = pathname.split("/").filter((segment) => segment.length > 0)
   if (segments.length === 0) return true
   if (segments.length === 1 && segments[0] === "login") return true
+  if (segments[0] === "orgs") {
+    if (segments.length < 4 || segments[2] !== "projects") return false
+    if (segments.length === 4) return true
+    const mode = segments[4]
+    if (mode !== "admin" && mode !== "contributor") return false
+    if (segments.length === 5) return true
+    return projectRouteIsKnown(
+      segments.slice(0, 2).concat(segments.slice(2)),
+      mode === "admin" ? adminProjectSections : contributorProjectSections,
+      5,
+    )
+  }
   if (segments[0] !== "projects") return false
   if (segments.length === 2) return true
 
@@ -25,9 +37,9 @@ export const uiRouteIsKnown = (pathname: string): boolean => {
   return segments.length === 4 && legacySection === "assets"
 }
 
-const projectRouteIsKnown = (segments: string[], sections: readonly string[]): boolean => {
-  const section = segments[3] ?? ""
+const projectRouteIsKnown = (segments: string[], sections: readonly string[], sectionIndex = 3): boolean => {
+  const section = segments[sectionIndex] ?? ""
   if (!sections.includes(section)) return false
-  if (segments.length === 4) return true
-  return segments.length === 5 && section === "assets"
+  if (segments.length === sectionIndex + 1) return true
+  return segments.length === sectionIndex + 2 && section === "assets"
 }

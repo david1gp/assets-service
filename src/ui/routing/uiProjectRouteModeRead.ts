@@ -3,6 +3,11 @@ import type { AuthenticationMode } from "../../authentication/authenticationMode
 /** Reads the explicit project view from a mode-specific pathname. */
 export const uiProjectRouteModeRead = (pathname: string): AuthenticationMode | undefined => {
   const segments = pathname.split("/").filter((segment) => segment.length > 0)
+  if (segments[0] === "orgs") {
+    if (segments.length < 5 || segments[2] !== "projects") return undefined
+    if (segments[4] !== "admin" && segments[4] !== "contributor") return undefined
+    return segments[4]
+  }
   if (segments.length < 3 || segments[0] !== "projects") return undefined
   if (segments[2] !== "admin" && segments[2] !== "contributor") return undefined
   return segments[2]

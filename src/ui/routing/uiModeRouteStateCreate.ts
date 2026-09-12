@@ -6,7 +6,7 @@ import { uiPaths } from "./uiPaths.js"
 
 /** Holds trusted-session authorization state for one mode-specific route. */
 export const uiModeRouteStateCreate = (mode: AuthenticationMode) => {
-  const params = useParams<{ projectId: string }>()
+  const params = useParams<{ projectId?: string; orgSlug?: string; projectSlug?: string }>()
   const session = createMemo(() => uiSessionStore.get())
   const isDenied = createMemo(() => {
     const current = session()
@@ -17,7 +17,11 @@ export const uiModeRouteStateCreate = (mode: AuthenticationMode) => {
       current.principal.mode !== "admin"
     )
   })
-  const redirectPath = createMemo(() => uiPaths.contributor.project(params.projectId))
+  const redirectPath = createMemo(() =>
+    params.orgSlug !== undefined && params.projectSlug !== undefined
+      ? uiPaths.contributor.project(params.orgSlug, params.projectSlug)
+      : uiPaths.contributor.project(params.projectId ?? ""),
+  )
 
   return { isDenied, redirectPath }
 }

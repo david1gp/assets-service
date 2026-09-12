@@ -12,6 +12,7 @@ import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
@@ -36,10 +37,11 @@ const uiAssetFolderAssignmentPreferenceKey = "assets-service:ui:asset-list:show-
 /** Holds asset inventory filters, search, and pagination bound to the URL. */
 export const uiAssetListPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const paths = createMemo(() => uiPaths[uiProjectRouteModeRead(location.pathname) ?? "admin"])
   const classSchema = assetListQuerySchema.entries.class
   const folderSchema = assetListQuerySchema.entries.folder

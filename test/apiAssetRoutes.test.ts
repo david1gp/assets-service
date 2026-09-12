@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test"
 import * as v from "valibot"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
+import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
 import { assetDetailResponseSchema } from "../src/api-client/assetDetailResponseSchema.js"
 import { assetHistoryResponseSchema } from "../src/api-client/assetHistoryResponseSchema.js"
 import { assetListResponseSchema } from "../src/api-client/assetListResponseSchema.js"
-import type { ApiAppOptions } from "../src/api/apiAppOptions.js"
 import type { AssetApiRepository } from "../src/asset/assetApiRepository.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
 import { memorySessionStoreCreate } from "../src/authentication/memorySessionStoreCreate.js"
@@ -32,7 +32,7 @@ const project = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
-const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
+const projectListItem = { ...project, organizationSlug: "example", assetCount: 0, totalFileSize: 0 }
 const binding = {
   id: "binding-1",
   projectId: "project-1",
@@ -154,6 +154,8 @@ const projectRepositoryCreate = (): ProjectRepository => ({
     data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
   }),
   organizationRead: () => ({ success: true, data: null }),
+  organizationReadBySlug: () => ({ success: true, data: null }),
+  projectReadByOrganizationIdAndSlug: () => ({ success: true, data: null }),
 })
 
 const assetRepositoryCreate = (): AssetApiRepository => ({

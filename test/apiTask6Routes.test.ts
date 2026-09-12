@@ -25,7 +25,7 @@ const project = {
   createdAt: "2026-08-17T00:00:00.000Z",
   updatedAt: "2026-08-17T00:00:00.000Z",
 }
-const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
+const projectListItem = { ...project, organizationSlug: "example", assetCount: 0, totalFileSize: 0 }
 const binding = {
   id: "binding-1",
   projectId: "project-1",
@@ -191,6 +191,8 @@ const projectRepositoryCreate = (): ProjectRepository => ({
     data: { project: { project, organization: null, binding, environments: [environment] }, created: true },
   }),
   organizationRead: () => ({ success: true, data: null }),
+  organizationReadBySlug: () => ({ success: true, data: null }),
+  projectReadByOrganizationIdAndSlug: () => ({ success: true, data: null }),
 })
 
 const workflowRepositoryCreate = (): WorkflowApiRepository => ({

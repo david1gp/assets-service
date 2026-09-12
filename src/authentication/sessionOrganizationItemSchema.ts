@@ -5,6 +5,7 @@ import { authenticationModeSchema } from "./authenticationModeSchema.js"
 export const sessionOrganizationItemSchema = v.strictObject({
   id: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
   name: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
+  slug: v.optional(v.pipe(v.string(), v.slug())),
   current: v.boolean(),
   mode: authenticationModeSchema,
   organizationAdmin: v.boolean(),

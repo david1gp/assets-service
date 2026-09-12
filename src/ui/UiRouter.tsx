@@ -26,6 +26,119 @@ export function UiRouter() {
         <Route path="/" component={UiProjectListPage} />
         <Route path="/login" component={UiLoginPage} />
 
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <Navigate href="admin/assets" />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <Navigate href="assets" />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/settings"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiProjectSettingsPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/assets"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiAssetListPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/assets/:assetId"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiAssetDetailPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/upload"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiUploadPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/jobs"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiJobsPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/backups"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiBackupsPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/catalog"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiCatalogPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/admin/audit"
+          component={() => (
+            <UiModeRoute mode="admin">
+              <UiAuditPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/contributor"
+          component={() => (
+            <UiModeRoute mode="contributor">
+              <UiContributorLandingPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/contributor/assets"
+          component={() => (
+            <UiModeRoute mode="contributor">
+              <UiContributorAssetListPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/contributor/assets/:assetId"
+          component={() => (
+            <UiModeRoute mode="contributor">
+              <UiContributorAssetDetailPage />
+            </UiModeRoute>
+          )}
+        />
+        <Route
+          path="/orgs/:orgSlug/projects/:projectSlug/contributor/upload"
+          component={() => (
+            <UiModeRoute mode="contributor">
+              <UiUploadPage />
+            </UiModeRoute>
+          )}
+        />
+
         <Route path="/projects/:projectId" component={UiLegacyRouteRedirect} />
         <Route path="/projects/:projectId/settings" component={UiLegacyRouteRedirect} />
         <Route path="/projects/:projectId/assets" component={UiLegacyRouteRedirect} />
@@ -36,111 +149,20 @@ export function UiRouter() {
         <Route path="/projects/:projectId/catalog" component={UiLegacyRouteRedirect} />
         <Route path="/projects/:projectId/audit" component={UiLegacyRouteRedirect} />
 
-        <Route
-          path="/projects/:projectId/admin"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <Navigate href="assets" />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/settings"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiProjectSettingsPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/assets"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiAssetListPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/assets/:assetId"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiAssetDetailPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/upload"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiUploadPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/jobs"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiJobsPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/backups"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiBackupsPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/catalog"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiCatalogPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/admin/audit"
-          component={() => (
-            <UiModeRoute mode="admin">
-              <UiAuditPage />
-            </UiModeRoute>
-          )}
-        />
+        <Route path="/projects/:projectId/admin" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/settings" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/assets" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/assets/:assetId" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/upload" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/jobs" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/backups" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/catalog" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/admin/audit" component={UiLegacyRouteRedirect} />
 
-        <Route
-          path="/projects/:projectId/contributor"
-          component={() => (
-            <UiModeRoute mode="contributor">
-              <UiContributorLandingPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/contributor/assets"
-          component={() => (
-            <UiModeRoute mode="contributor">
-              <UiContributorAssetListPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/contributor/assets/:assetId"
-          component={() => (
-            <UiModeRoute mode="contributor">
-              <UiContributorAssetDetailPage />
-            </UiModeRoute>
-          )}
-        />
-        <Route
-          path="/projects/:projectId/contributor/upload"
-          component={() => (
-            <UiModeRoute mode="contributor">
-              <UiUploadPage />
-            </UiModeRoute>
-          )}
-        />
+        <Route path="/projects/:projectId/contributor" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/contributor/assets" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/contributor/assets/:assetId" component={UiLegacyRouteRedirect} />
+        <Route path="/projects/:projectId/contributor/upload" component={UiLegacyRouteRedirect} />
         <Route path="*" component={UiNotFoundPage} />
       </Router>
       <UiToastViewport />

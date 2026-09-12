@@ -1,16 +1,16 @@
+import type { ZitadelOidcClient } from "../infrastructure/zitadel/zitadelOidcClient.js"
+import type { ZitadelUserGrant } from "../infrastructure/zitadel/zitadelUserGrantSchema.js"
 import type { ProjectRepository } from "../project/projectRepository.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
-import type { ZitadelOidcClient } from "../infrastructure/zitadel/zitadelOidcClient.js"
-import type { ZitadelUserGrant } from "../infrastructure/zitadel/zitadelUserGrantSchema.js"
 import { jwtProjectGrantsRead } from "./jwtProjectGrantsRead.js"
 import { jwtTokenParse } from "./jwtTokenParse.js"
 import type { ProjectGrant } from "./projectGrantSchema.js"
+import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
 import type { SessionOrganizationItem, SessionOrganizationsReadResponse } from "./sessionOrganizationItemSchema.js"
 import type { AuthenticationSession } from "./sessionSchema.js"
-import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
-import type { SessionAccessTokenStore } from "./sessionAccessTokenStore.js"
 import { userGrantsNormalize } from "./userGrantsNormalize.js"
+import type { ZitadelAuthConfig } from "./zitadelAuthConfigSchema.js"
 import { zitadelOrganizationContextCreate } from "./zitadelOrganizationContextCreate.js"
 
 type SessionOrganizationsReadOptions = {
@@ -112,6 +112,7 @@ export const sessionOrganizationsRead = async (
     organizations.push({
       id: orgId,
       name,
+      ...(repoOrg?.success && repoOrg.data ? { slug: repoOrg.data.slug } : {}),
       current: orgId === currentOrgId,
       mode,
       organizationAdmin,

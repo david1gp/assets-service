@@ -6,6 +6,7 @@ import type { ZitadelOrganizationMapping } from "../authentication/zitadelOrgani
 import type { ProjectRepository } from "../project/projectRepository.js"
 import { apiErrorResponseCreate } from "./apiErrorResponseCreate.js"
 import { apiProjectAuthorizationRead } from "./apiProjectAuthorizationRead.js"
+import { apiProjectAuthorizationReadBySlugs } from "./apiProjectAuthorizationReadBySlugs.js"
 
 type ApiContext = { Variables: Record<string, unknown> }
 
@@ -27,20 +28,36 @@ export const apiProjectRoleMiddlewareCreate =
         message: "Authentication is required",
       })
     }
-    const authorization = apiProjectAuthorizationRead(
-      context.req.param("projectId") ?? "",
-      authentication,
-      options.projectRepository,
-      options.requiredRole,
-      {
-        organizationId: options.organizationId,
-        customerOrganizationId: options.customerOrganizationId,
-        organizationMappings: options.organizationMappings,
-      },
-    )
+    const scope = {
+      organizationId: options.organizationId,
+      customerOrganizationId: options.customerOrganizationId,
+      organizationMappings: options.organizationMappings,
+    }
+    const organizationSlug = context.req.param("orgSlug")
+    const projectSlug = context.req.param("projectSlug")
+    const authorization =
+      organizationSlug !== undefined && projectSlug !== undefined
+        ? apiProjectAuthorizationReadBySlugs(
+            organizationSlug,
+            projectSlug,
+            authentication,
+            options.projectRepository,
+            options.requiredRole,
+            scope,
+          )
+        : apiProjectAuthorizationRead(
+            context.req.param("projectId") ?? "",
+            authentication,
+            options.projectRepository,
+            options.requiredRole,
+            scope,
+          )
     if (!authorization.success) {
-      const invalidIdentifier = authorization.errorMessage === "The project identifier was invalid"
-      const notFound = authorization.errorMessage === "The project was not found"
+      const invalidIdentifier =
+        authorization.errorMessage === "The project identifier was invalid" ||
+        authorization.errorMessage === "The organization slug was invalid" ||
+        authorization.errorMessage === "The project slug was invalid"
+      const notFound = /was not found$/.test(authorization.errorMessage)
       const technical = authorization.op.startsWith("projectRepository")
       return apiErrorResponseCreate({
         requestId: String(context.get("requestId") ?? "unknown"),

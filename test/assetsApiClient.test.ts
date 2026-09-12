@@ -83,6 +83,7 @@ test("assets API client preserves archived opt-in and search across project page
   const projectCreate = (id: string) => ({
     id,
     organizationId: "organization-1",
+    organizationSlug: "organization-1",
     name: id,
     slug: id,
     defaultEnvironment: "development" as const,
@@ -258,8 +259,22 @@ test("assets API client reads organizations and switches organization", async ()
       if (req.url.endsWith("/auth/organizations")) {
         return envelopeResponseCreate({
           organizations: [
-            { id: "org-contentoren", name: "Contentoren", current: true, mode: "admin", organizationAdmin: true },
-            { id: "org-david", name: "David", current: false, mode: "admin", organizationAdmin: true },
+            {
+              id: "org-contentoren",
+              name: "Contentoren",
+              slug: "contentoren",
+              current: true,
+              mode: "admin",
+              organizationAdmin: true,
+            },
+            {
+              id: "org-david",
+              name: "David",
+              slug: "david",
+              current: false,
+              mode: "admin",
+              organizationAdmin: true,
+            },
           ],
           currentOrganizationId: "org-contentoren",
         })

@@ -19,6 +19,7 @@ import { uiOutputSetChangesRead } from "../output/uiOutputSetChangesRead.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { uiFormDraftKeyCreate } from "../storage/uiFormDraftKeyCreate.js"
@@ -70,10 +71,11 @@ const draftIdCreate = () => `draft-${crypto.randomUUID()}`
 /** Drives asset detail reads plus metadata, output-set, move, and delete mutations. */
 export const uiAssetDetailPageStateCreate = () => {
   const params = useParams<{ projectId: string; assetId: string }>()
+  const route = uiProjectRouteContextRead()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const assetId = createMemo(() => params.assetId)
   const mode = createMemo(() => uiProjectRouteModeRead(location.pathname) ?? "admin")
   const paths = createMemo(() => uiPaths[mode()])

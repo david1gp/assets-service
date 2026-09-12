@@ -3,6 +3,8 @@ import { Hono } from "hono"
 import * as v from "valibot"
 
 import { apiAppCreate } from "../src/api/apiAppCreate.js"
+import type { ProjectListItem } from "../src/api-client/projectListItemSchema.js"
+import type { AuthenticatedPrincipal } from "../src/authentication/authenticatedPrincipalSchema.js"
 import { humanLoginCallback } from "../src/authentication/humanLoginCallback.js"
 import { jwtPrincipalValidate } from "../src/authentication/jwtPrincipalValidate.js"
 import { memoryPkceStateStoreCreate } from "../src/authentication/memoryPkceStateStoreCreate.js"
@@ -10,22 +12,20 @@ import { memorySessionStoreCreate } from "../src/authentication/memorySessionSto
 import { projectAuthorizationCheck } from "../src/authentication/projectAuthorizationCheck.js"
 import { serviceBearerValidate } from "../src/authentication/serviceBearerValidate.js"
 import { servicePatPrincipalValidate } from "../src/authentication/servicePatPrincipalValidate.js"
-import type { AuthenticatedPrincipal } from "../src/authentication/authenticatedPrincipalSchema.js"
 import type { ZitadelAuthConfig } from "../src/authentication/zitadelAuthConfigSchema.js"
 import { zitadelOrganizationContextCreate } from "../src/authentication/zitadelOrganizationContextCreate.js"
 import { zitadelOrganizationMappingsParse } from "../src/config/zitadelOrganizationMappingsParse.js"
-import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
+import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
 import { databaseRecordInsert } from "../src/infrastructure/db/databaseRecordInsert.js"
-import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
-import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
-import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
 import { environmentTable } from "../src/infrastructure/db/schema/environmentTable.js"
+import { organizationTable } from "../src/infrastructure/db/schema/organizationTable.js"
+import { projectBindingTable } from "../src/infrastructure/db/schema/projectBindingTable.js"
+import { projectTable } from "../src/infrastructure/db/schema/projectTable.js"
 import type { ZitadelJwk } from "../src/infrastructure/zitadel/zitadelJwk.js"
 import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
 import type { ProjectBinding } from "../src/project/projectBindingSchema.js"
 import { projectRepositoryCreate } from "../src/project/projectRepositoryCreate.js"
-import type { ProjectListItem } from "../src/api-client/projectListItemSchema.js"
 
 const nowSeconds = 1_700_000_000
 
@@ -678,6 +678,7 @@ describe("Multi-organization Project Listing (/api/v1/projects)", () => {
   const projectListItemCreate = (id: string, organizationId: string): ProjectListItem => ({
     id,
     organizationId,
+    organizationSlug: organizationId,
     name: `Project ${id}`,
     slug: `project-${id}`,
     defaultEnvironment: "development",
@@ -858,8 +859,8 @@ describe("Multi-organization Actual API Auth Login Flow (/api/v1/auth/login, /ap
     const sessionStore = memorySessionStoreCreate()
     const stateStore = memoryPkceStateStoreCreate({ now: () => nowSeconds * 1000 })
 
-    let tokenPayloadsForCode: Record<string, { orgId: string; resourceOwnerId: string; isCustomer: boolean }> = {}
-    let exactMembershipByOrg: Record<string, boolean> = {}
+    const tokenPayloadsForCode: Record<string, { orgId: string; resourceOwnerId: string; isCustomer: boolean }> = {}
+    const exactMembershipByOrg: Record<string, boolean> = {}
 
     const oidcClient = {
       discoveryRead: async () => ({

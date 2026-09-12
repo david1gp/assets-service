@@ -1,9 +1,8 @@
-import { useLocation, useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate } from "@solidjs/router"
 import { createMemo, onCleanup, onMount } from "solid-js"
 import * as v from "valibot"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
-import { assetDetailResponseSchema, type AssetDetailResponse } from "../../api-client/assetDetailResponseSchema.js"
-import { type Project, projectSchema } from "../../project/projectSchema.js"
+import { type AssetDetailResponse, assetDetailResponseSchema } from "../../api-client/assetDetailResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
@@ -11,6 +10,7 @@ import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
+import { uiProjectRouteStateCreate } from "../routing/uiProjectRouteStateCreate.js"
 import { uiRouteIsKnown } from "../routing/uiRouteIsKnown.js"
 import { uiSessionLogout } from "../session/uiSessionLogout.js"
 import { uiSessionRefresh } from "../session/uiSessionRefresh.js"
@@ -20,11 +20,9 @@ import { uiAssetIdFromPathnameRead } from "./uiAssetIdFromPathnameRead.js"
 import { uiBreadcrumbPageRead } from "./uiBreadcrumbPageRead.js"
 import { uiNavigationActiveCheck } from "./uiNavigationActiveCheck.js"
 import { uiNavigationLinksRead } from "./uiNavigationLinksRead.js"
-import { uiProjectIdFromPathnameRead } from "./uiProjectIdFromPathnameRead.js"
 
 /** Holds shell-local navigation, session, and menu state. */
 export const uiShellStateCreate = () => {
-  const params = useParams<{ projectId?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
   const menuOpen = createSignalObject(false)
@@ -43,27 +41,26 @@ export const uiShellStateCreate = () => {
   })
 
   const session = createMemo(() => uiSessionStore.get())
-  const projectId = createMemo(() => params.projectId || (uiProjectIdFromPathnameRead(location.pathname) ?? ""))
-  const projectQuery = uiQueryCreate<Project | null>(
-    async () => {
-      const id = projectId()
-      if (id === "") return { success: true, data: null }
-      if (session().status !== "authenticated") return { success: true, data: null }
-
-      const client = uiApiClientRead()
-      if (!client.success) return resultErrorCreate("uiShellProjectRead", client.errorMessage)
-      return client.data.projectRead(id)
-    },
-    {
-      cacheKey: () => (projectId() === "" ? undefined : uiQueryCacheKeyCreate("project", projectId())),
-      cacheSchema: v.nullable(projectSchema),
-    },
-  )
+  const route = uiProjectRouteStateCreate()
+  const projectId = route.projectId
+  const projectQuery = route.projectQuery
   const projectName = createMemo(() => projectQuery.data()?.name ?? "")
   const accountName = createMemo(() => session().principal?.displayName ?? "")
   const accountId = createMemo(() => session().principal?.subjectId ?? "")
   const routeMode = createMemo(() => uiProjectRouteModeRead(location.pathname) ?? session().principal?.mode ?? "admin")
-  const links = createMemo(() => (projectId() === "" ? [] : uiNavigationLinksRead(projectId(), routeMode())))
+  const canonicalRoute = createMemo(
+    () => projectId() !== "" && route.organizationSlug() !== "" && route.projectSlug() !== "",
+  )
+  const links = createMemo(() =>
+    projectId() === ""
+      ? []
+      : uiNavigationLinksRead(
+          canonicalRoute()
+            ? { organizationSlug: route.organizationSlug(), projectSlug: route.projectSlug() }
+            : projectId(),
+          routeMode(),
+        ),
+  )
   const isCurrent = (href: string) => uiNavigationActiveCheck(location.pathname, href)
   const isKnownRoute = createMemo(() => uiRouteIsKnown(location.pathname))
 
@@ -91,9 +88,11 @@ export const uiShellStateCreate = () => {
   const projectPath = createMemo(() =>
     projectId() === ""
       ? ""
-      : routeMode() === "contributor"
-        ? uiPaths.contributor.project(projectId())
-        : uiPaths.admin.project(projectId()),
+      : !canonicalRoute()
+        ? uiPaths[routeMode()].project(projectId())
+        : routeMode() === "contributor"
+          ? uiPaths.contributor.project(route.organizationSlug(), route.projectSlug())
+          : uiPaths.admin.project(route.organizationSlug(), route.projectSlug()),
   )
   const breadcrumbPage = createMemo(() => uiBreadcrumbPageRead(location.pathname, assetQuery.data()?.filename))
 
@@ -126,8 +125,14 @@ export const uiShellStateCreate = () => {
     assetQuery,
     routeMode,
     canSwitchView: () => projectId() !== "" && session().principal?.mode === "admin",
-    adminViewPath: () => uiPaths.admin.project(projectId()),
-    contributorViewPath: () => uiPaths.contributor.project(projectId()),
+    adminViewPath: () =>
+      canonicalRoute()
+        ? uiPaths.admin.project(route.organizationSlug(), route.projectSlug())
+        : uiPaths.admin.project(projectId()),
+    contributorViewPath: () =>
+      canonicalRoute()
+        ? uiPaths.contributor.project(route.organizationSlug(), route.projectSlug())
+        : uiPaths.contributor.project(projectId()),
     links,
     isCurrent,
     isKnownRoute,

@@ -13,6 +13,7 @@ import { uiApiClientRead } from "../client/uiApiClientRead.js"
 import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamPicklistRead } from "../search/uiSearchParamPicklistRead.js"
 import { uiToastAdd } from "../toast/uiToastAdd.js"
@@ -31,9 +32,10 @@ const uiJobActionLabelRead = (label: string): string => {
 /** Drives the workflow and job tabs including retry and cancel actions. */
 export const uiJobsPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const tab = createMemo<UiJobsTab>(() => uiSearchParamPicklistRead(uiJobsTabSchema, searchParams.tab) ?? "workflows")
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
   const workflowStatus = createMemo(() => uiSearchParamPicklistRead(workflowStatusSchema, searchParams.status))

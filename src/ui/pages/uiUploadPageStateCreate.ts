@@ -1,6 +1,7 @@
 import { useLocation, useParams } from "@solidjs/router"
 import { createMemo } from "solid-js"
 import { uiPaths } from "../routing/uiPaths.js"
+import { uiProjectRouteContextRead } from "../routing/uiProjectRouteContextRead.js"
 import { uiProjectRouteModeRead } from "../routing/uiProjectRouteModeRead.js"
 import { uiUploadAcceptAttributeRead } from "../upload/uiUploadAcceptAttributeRead.js"
 import { uiUploadMultiFileStateCreate } from "./uiUploadMultiFileStateCreate.js"
@@ -8,9 +9,10 @@ import { uiUploadMultiFileStateCreate } from "./uiUploadMultiFileStateCreate.js"
 /** Drives the multi-file upload page: route context plus immediate per-file uploads. */
 export const uiUploadPageStateCreate = () => {
   const params = useParams<{ projectId: string }>()
+  const route = uiProjectRouteContextRead()
   const location = useLocation()
 
-  const projectId = createMemo(() => params.projectId)
+  const projectId = createMemo(() => route?.projectId() ?? params.projectId)
   const mode = createMemo(() => uiProjectRouteModeRead(location.pathname) ?? "admin")
   const paths = createMemo(() => uiPaths[mode()])
   const uploads = uiUploadMultiFileStateCreate({ projectId })

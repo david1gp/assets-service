@@ -129,10 +129,11 @@ const projectRead = (record: ProjectRecord): Result<Project> => {
 
 const projectListItemRead = (
   record: ProjectRecord,
+  organizationSlug: string,
   assetCount: number,
   totalFileSize: number,
 ): Result<ProjectListItem> => {
-  const parsed = v.safeParse(projectListItemSchema, { ...record, assetCount, totalFileSize })
+  const parsed = v.safeParse(projectListItemSchema, { ...record, organizationSlug, assetCount, totalFileSize })
   if (!parsed.success)
     return resultErrorCreate("projectRepositoryProjectListItemRead", "The stored project list item was invalid")
   return { success: true, data: parsed.output }
@@ -265,11 +266,13 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
       const records = db
         .select({
           project: projectTable,
+          organizationSlug: organizationTable.slug,
           assetCount: count(assetTable.id),
           totalFileSize: sql<number>`coalesce(sum(${sourceRevisionTable.byteSize}), 0)`,
         })
         .from(projectTable)
         .innerJoin(projectBindingTable, eq(projectBindingTable.projectId, projectTable.id))
+        .innerJoin(organizationTable, eq(organizationTable.id, projectTable.organizationId))
         .leftJoin(assetTable, eq(assetTable.projectId, projectTable.id))
         .leftJoin(
           sourceRevisionTable,
@@ -291,7 +294,12 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
         .all()
       const projects: ProjectListItem[] = []
       for (const record of records) {
-        const project = projectListItemRead(record.project, record.assetCount, record.totalFileSize)
+        const project = projectListItemRead(
+          record.project,
+          record.organizationSlug,
+          record.assetCount,
+          record.totalFileSize,
+        )
         if (!project.success) return project
         projects.push(project.data)
       }
@@ -422,6 +430,40 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
       return organizationRead(record)
     } catch (error) {
       return resultErrorCreate("projectRepositoryOrganizationRead", "The organization could not be read", error)
+    }
+  }
+
+  const organizationReadBySlug = (organizationSlug: string): Result<Organization | null> => {
+    try {
+      const record = db
+        .select()
+        .from(organizationTable)
+        .where(eq(organizationTable.slug, organizationSlug))
+        .limit(1)
+        .get()
+      if (!record) return { success: true, data: null }
+      return organizationRead(record)
+    } catch (error) {
+      return resultErrorCreate("projectRepositoryOrganizationReadBySlug", "The organization could not be read", error)
+    }
+  }
+
+  const projectReadByOrganizationIdAndSlug = (organizationId: string, projectSlug: string): Result<Project | null> => {
+    try {
+      const record = db
+        .select()
+        .from(projectTable)
+        .where(and(eq(projectTable.organizationId, organizationId), eq(projectTable.slug, projectSlug)))
+        .limit(1)
+        .get()
+      if (!record) return { success: true, data: null }
+      return projectRead(record)
+    } catch (error) {
+      return resultErrorCreate(
+        "projectRepositoryProjectReadByOrganizationIdAndSlug",
+        "The project could not be read",
+        error,
+      )
     }
   }
 
@@ -709,6 +751,8 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
     projectArchiveStateWrite,
     projectCreate,
     organizationRead: organizationReadById,
+    organizationReadBySlug,
+    projectReadByOrganizationIdAndSlug,
     projectGrantIdsRead,
     storageBindingsRead,
   }
