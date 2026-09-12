@@ -9,6 +9,8 @@ Add project-level archive and unarchive library APIs and CLI commands. Archiving
 - Archive state belongs to the project and is retained with all asset, source revision, output definition, and verified backup receipt metadata; “remove all data” means all project object data in R2, not the recovery metadata in SQLite or Google Drive.
 - Archive/unarchive are explicit, idempotent project workflows exposed through the public library, authenticated API, and CLI.
 - Bucket deletion is allowed only when the bucket is proven dedicated to the archived project. Shared-bucket bindings fail safely rather than deleting another project's data.
+- A root/empty-prefix bucket is considered dedicated when every persisted binding to that bucket belongs to the archived project; an already-absent dedicated bucket is an idempotent success.
+- Archive preflight verifies the actual Google Drive object bytes for every current source, not only the presence of a verified receipt.
 - Archive becomes visible only after R2 cleanup and bucket deletion succeed. Unarchive becomes visible only after bucket provisioning, source restoration, optimized output regeneration, and verification succeed.
 - Existing R2, rclone, processing, workflow, authorization, Solid UI, and Wrangler abstractions are extended and reused; no new external dependency is introduced.
 - Archived projects are excluded server-side by default. Only owner/admin requests may opt in to listing them; contributor requests and contributor routes never expose them.
@@ -32,5 +34,7 @@ Add project-level archive and unarchive library APIs and CLI commands. Archiving
 - [x] 6. Add the off-by-default **Show archived** owner/admin project-list toggle, keep it absent from contributor view, and cover state/rendering behavior.
 - [x] 7. Run focused and full checks, fix only feature-related failures, and verify owner/contributor UI behavior in a browser.
 - [x] 8. Use the commits skill to split, commit, and push the completed changes.
-- [ ] 9. Deploy production and verify service health.
-- [ ] 10. In production, identify Template exactly, archive it through the new CLI, and verify it is hidden by default, visible with **Show archived**, absent to contributors, removed from R2 including its dedicated bucket, and retained in Google Drive.
+- [x] 9. Deploy production and verify service health.
+- [x] 10. Harden archive for proven-dedicated root buckets and actual Google Drive object verification, with focused regression tests and full checks.
+- [ ] 11. Use the commits skill to commit/push the hardening fix, deploy it, and verify production health.
+- [ ] 12. Repair Template's one stale Drive backup object from its byte-identical verified Drive copy, archive Template through the CLI, remove only its known legacy shared-bucket prefix, and verify archive visibility, R2 removal, SQLite recovery metadata, and Google Drive retention.
