@@ -23,6 +23,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install Wrangler for production command tests
+        run: bun install --global wrangler@4.131.1
+
       # Setup Node.js only for npm publishing with OIDC until Bun adds support for it - https://github.com/oven-sh/bun/issues/15601
       - uses: actions/setup-node@v6
         with:
@@ -32,7 +35,7 @@ jobs:
       # Use Bun for everything except publishing
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - run: bun test
+      - run: bun run test
 
       # Ensure npm 11.5.1 or later is installed
       - name: Update npm
