@@ -22,6 +22,7 @@ import { projectArchiveWorkflowCreate } from "../project/projectArchiveWorkflowC
 import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
 import { projectStorageDomainRepositoryCreate } from "../project/projectStorageDomainRepositoryCreate.js"
 import { projectUnarchiveWorkflowCreate } from "../project/projectUnarchiveWorkflowCreate.js"
+import { r2BucketCredentialBackfillCreate } from "../r2/r2BucketCredentialBackfillCreate.js"
 import { r2BucketCredentialRepositoryCreate } from "../r2/r2BucketCredentialRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -54,6 +55,13 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const credentialRepository = r2BucketCredentialRepositoryCreate(connection.data.db, {
     encryptionKey: config.service.r2CredentialEncryptionKey,
   })
+  const r2BucketCredentialBackfill =
+    projectRepository.liveStorageBindingsRead === undefined
+      ? undefined
+      : r2BucketCredentialBackfillCreate({
+          liveStorageBindingsRead: projectRepository.liveStorageBindingsRead,
+          r2BucketCredentialRepository: credentialRepository,
+        })
   const storageDomainRepository = projectStorageDomainRepositoryCreate(connection.data.db)
   const storage = r2BucketStorageAdapterCreate({
     accountId: config.service.r2AccountId,
@@ -139,6 +147,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     projectRepository,
     projectArchiveWorkflow,
     projectUnarchiveWorkflow,
+    r2BucketCredentialBackfill,
     r2BucketCredentialRepository: credentialRepository,
     storageMigrationRepository,
     storageMigrationWorkflowEnqueue: (input) => storageMigrationWorkflowEnqueue(connection.data.db, input),

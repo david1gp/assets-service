@@ -10,6 +10,9 @@ import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import { projectSchema } from "../project/projectSchema.js"
 import { projectSettingsSchema } from "../project/projectSettingsSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
+import type { R2BucketCredentialBackfillRequest } from "../r2/r2BucketCredentialBackfillRequestSchema.js"
+import { r2BucketCredentialBackfillRequestSchema } from "../r2/r2BucketCredentialBackfillRequestSchema.js"
+import { r2BucketCredentialBackfillResultSchema } from "../r2/r2BucketCredentialBackfillResultSchema.js"
 import { assetClassSchema } from "../schemas/assetClassSchema.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
@@ -585,6 +588,17 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       bodySchema: cloudflareRequestCredentialsSchema,
       responseSchema: projectUnarchiveResponseSchema,
       operation: "assetsApiClientProjectUnarchive",
+    })
+
+  const r2BucketCredentialBackfill = (input: R2BucketCredentialBackfillRequest) =>
+    requestRead({
+      path: "/operations/r2-bucket-credentials/backfill",
+      method: "POST",
+      body: input,
+      bodySchema: r2BucketCredentialBackfillRequestSchema,
+      responseSchema: r2BucketCredentialBackfillResultSchema,
+      operation: "assetsApiClientR2BucketCredentialBackfill",
+      redactionSecrets: [input.apiToken],
     })
 
   const projectSettingsRead = (projectId: string) =>

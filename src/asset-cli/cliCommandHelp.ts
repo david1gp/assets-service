@@ -22,6 +22,7 @@ const commands: readonly string[] = [
   "projects create --create-buckets: provisions missing buckets and reconciles missing scoped credentials without displaying secrets",
   "projects archive --project <id-or-name>",
   "projects unarchive --project <id-or-name>",
+  "r2 credentials backfill [--dry-run|--apply]",
   "config show [root]",
   "doctor --environment <development|production>",
   "diff [root]",
@@ -75,6 +76,7 @@ const subcommands: Record<string, readonly string[]> = {
   ],
   "projects archive": ["--project"],
   "projects unarchive": ["--project"],
+  "r2 credentials backfill": ["--dry-run", "--apply"],
   "config show": [],
   doctor: ["--environment"],
   diff: [

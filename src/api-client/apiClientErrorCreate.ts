@@ -35,12 +35,19 @@ const truncatedValue = "[TRUNCATED]"
 const unsupportedValue = "[UNSERIALIZABLE]"
 const urlPattern = /\b(?:https?|wss?):\/\/[^\s"'<>]+/giu
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]+/giu
-const secretAssignmentPattern =
-  /(\b(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?token|credential|signature|x-amz-[\w-]+)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu
-const quotedSecretAssignmentPattern =
-  /(["'])(authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?token|credential|signature|x-amz-[\w-]+)\1(\s*:\s*)(?:"[^"]*"|'[^']*'|[^,}\s]+)/giu
-const sensitiveKeyPattern =
-  /(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?(?:token|secret)|credential|headers?)/iu
+const secretFieldPattern = "access[-_ ]?key[-_ ]?id|secret[-_ ]?access[-_ ]?key|revocation[-_ ]?id|api[-_ ]?token"
+const secretAssignmentPattern = new RegExp(
+  `(\\b(?:${secretFieldPattern}|authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?token|credential|signature|x-amz-[\\w-]+)\\b\\s*[:=]\\s*)(?:"[^"]*"|'[^']*'|[^\\s,;]+)`,
+  "giu",
+)
+const quotedSecretAssignmentPattern = new RegExp(
+  `(["'])(${secretFieldPattern}|authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?token|credential|signature|x-amz-[\\w-]+)\\1(\\s*:\\s*)(?:"[^"]*"|'[^']*'|[^,}\\s]+)`,
+  "giu",
+)
+const sensitiveKeyPattern = new RegExp(
+  `(?:${secretFieldPattern}|authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?(?:token|secret)|credential|headers?)`,
+  "iu",
+)
 
 export const apiClientErrorCreate = (input: ApiClientErrorInput): Result<never> => {
   const secrets = (input.redactionSecrets ?? []).filter(

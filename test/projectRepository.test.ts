@@ -483,6 +483,77 @@ describe("projectRepository.storageBindingsRead", () => {
       await cleanup(databasePath, connection)
     }
   })
+
+  test("live storage bindings exclude archived project buckets while retaining active shared buckets", async () => {
+    const { databasePath, connection, repository } = await repositoryCreate()
+    try {
+      recordInsertRequired(connection.db, environmentTable, {
+        id: "environment-project-1-production",
+        projectId: "project-1",
+        name: "production",
+        r2Bucket: "active-current",
+        r2Prefix: "current",
+        publicBaseUrl: "https://assets.example.test",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectStorageLocationTable, {
+        id: "location-project-1-legacy",
+        projectId: "project-1",
+        environment: "production",
+        bucket: "active-historical",
+        prefix: "legacy",
+        createdAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, {
+        ...project,
+        id: "project-2",
+        slug: "archived-project",
+        archiveState: "archived",
+      })
+      recordInsertRequired(connection.db, environmentTable, {
+        id: "environment-project-2-production",
+        projectId: "project-2",
+        name: "production",
+        r2Bucket: "deleted-dedicated",
+        r2Prefix: "archived",
+        publicBaseUrl: "https://archived.assets.example.test",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectStorageLocationTable, {
+        id: "location-project-2-shared",
+        projectId: "project-2",
+        environment: "production",
+        bucket: "shared-live",
+        prefix: "archived",
+        createdAt: timestamp,
+      })
+      recordInsertRequired(connection.db, projectTable, { ...project, id: "project-3", slug: "shared-project" })
+      recordInsertRequired(connection.db, environmentTable, {
+        id: "environment-project-3-production",
+        projectId: "project-3",
+        name: "production",
+        r2Bucket: "shared-live",
+        r2Prefix: "active",
+        publicBaseUrl: "https://shared.assets.example.test",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+
+      const bindings = repository.liveStorageBindingsRead?.()
+
+      expect(bindings).toMatchObject({ success: true })
+      if (bindings?.success)
+        expect(bindings.data.map((binding) => binding.bucket)).toEqual([
+          "active-current",
+          "active-historical",
+          "shared-live",
+        ])
+    } finally {
+      await cleanup(databasePath, connection)
+    }
+  })
 })
 
 describe("projectRepository.projectCreate", () => {

@@ -14,9 +14,10 @@ import { cliOutputsAddCommand } from "./cliOutputsAddCommand.js"
 import { cliOutputsListCommand } from "./cliOutputsListCommand.js"
 import { cliOutputsRemoveCommand } from "./cliOutputsRemoveCommand.js"
 import { cliOutputsSetCommand } from "./cliOutputsSetCommand.js"
-import { cliProjectsCreateCommand } from "./cliProjectsCreateCommand.js"
 import { cliProjectsArchiveCommand } from "./cliProjectsArchiveCommand.js"
+import { cliProjectsCreateCommand } from "./cliProjectsCreateCommand.js"
 import { cliProjectsUnarchiveCommand } from "./cliProjectsUnarchiveCommand.js"
+import { cliR2CredentialsBackfillCommand } from "./cliR2CredentialsBackfillCommand.js"
 import { cliReprocessCommand } from "./cliReprocessCommand.js"
 import { cliSettingsMigrateCommand } from "./cliSettingsMigrateCommand.js"
 import { cliSettingsReadCommand } from "./cliSettingsReadCommand.js"
@@ -40,9 +41,18 @@ export const assetsCliRouteMap = buildRouteMap({
     projects: buildRouteMap({
       docs: { brief: "Project administration commands" },
       routes: {
-        create: cliProjectsCreateCommand,
         archive: cliProjectsArchiveCommand,
+        create: cliProjectsCreateCommand,
         unarchive: cliProjectsUnarchiveCommand,
+      },
+    }),
+    r2: buildRouteMap({
+      docs: { brief: "R2 operational commands" },
+      routes: {
+        credentials: buildRouteMap({
+          docs: { brief: "R2 credential commands" },
+          routes: { backfill: cliR2CredentialsBackfillCommand },
+        }),
       },
     }),
     config: buildRouteMap({

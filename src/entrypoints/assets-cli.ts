@@ -435,9 +435,17 @@ const parsedCommandRead = (args: readonly string[]): Result<ParsedCommand> => {
   }
   const command = positionals.shift()
   if (command === undefined) return { success: true, data: { command: "help", positionals, options, json } }
-  const subcommand = ["auth", "config", "catalogs", "outputs", "metadata", "settings", "projects", "uploads"].includes(
-    command,
-  )
+  const subcommand = [
+    "auth",
+    "config",
+    "catalogs",
+    "outputs",
+    "metadata",
+    "settings",
+    "projects",
+    "uploads",
+    "r2",
+  ].includes(command)
     ? positionals.shift()
     : undefined
   return {
@@ -2459,6 +2467,24 @@ const commandRun = async (
 ): Promise<CommandOutput> => {
   const organizationId = organization?.id
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
+
+  if (parsed.command === "r2") {
+    if (parsed.subcommand !== "credentials" || parsed.positionals.length !== 1 || parsed.positionals[0] !== "backfill")
+      return { result: resultFailure("assetsCliR2", "Use r2 credentials backfill") }
+    const allowed = optionAllowed(parsed, ["dry-run", "apply"])
+    if (!allowed.success) return { result: allowed }
+    if (flagRead(parsed, "dry-run") && flagRead(parsed, "apply"))
+      return { result: resultFailure("assetsCliR2BucketCredentialBackfill", "Use only one of --dry-run and --apply") }
+    const cloudflareCredentials = cloudflareRequestCredentialsRead(env, "R2 bucket credential backfill")
+    if (!cloudflareCredentials.success) return { result: cloudflareCredentials }
+    const dryRun = !flagRead(parsed, "apply")
+    const result = await client.r2BucketCredentialBackfill({ ...cloudflareCredentials.data, dryRun })
+    if (!result.success) return { result }
+    return {
+      result,
+      humanOutput: `R2 bucket credential backfill ${dryRun ? "planned" : "applied"}: ${result.data.discoveredBuckets.length} live buckets, ${result.data.createdBuckets.length} created, ${result.data.skippedBuckets.length} skipped, ${result.data.plannedBuckets.length} planned.\n`,
+    }
+  }
 
   if (parsed.command === "auth" && parsed.subcommand === "login") {
     if (parsed.positionals.length !== 0)

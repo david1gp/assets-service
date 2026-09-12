@@ -9,6 +9,7 @@ import { environmentTable } from "../infrastructure/db/schema/environmentTable.j
 import { organizationTable } from "../infrastructure/db/schema/organizationTable.js"
 import { projectBindingTable } from "../infrastructure/db/schema/projectBindingTable.js"
 import { projectGrantTable } from "../infrastructure/db/schema/projectGrantTable.js"
+import { projectStorageLocationTable } from "../infrastructure/db/schema/projectStorageLocationTable.js"
 import { projectTable } from "../infrastructure/db/schema/projectTable.js"
 import { sourceRevisionTable } from "../infrastructure/db/schema/sourceRevisionTable.js"
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
@@ -170,6 +171,7 @@ const projectArchiveStateTransitionAllowed = (current: ProjectArchiveState, next
 type ProjectRepositoryImplementation = ProjectRepository & {
   projectArchiveStateWrite: NonNullable<ProjectRepository["projectArchiveStateWrite"]>
   projectStorageLocationsRead: NonNullable<ProjectRepository["projectStorageLocationsRead"]>
+  liveStorageBindingsRead: NonNullable<ProjectRepository["liveStorageBindingsRead"]>
 }
 
 export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImplementation => {
@@ -391,6 +393,74 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
       return { success: true, data: [...bindings.values()] }
     } catch (error) {
       return resultErrorCreate("projectRepositoryStorageBindingsRead", "The storage bindings could not be read", error)
+    }
+  }
+
+  const liveStorageBindingsRead = (): Result<readonly StorageBinding[]> => {
+    const op = "projectRepositoryLiveStorageBindingsRead"
+    try {
+      const currentRecords = db
+        .select({ environment: environmentTable })
+        .from(environmentTable)
+        .innerJoin(projectTable, eq(projectTable.id, environmentTable.projectId))
+        .where(eq(projectTable.archiveState, "active"))
+        .orderBy(asc(environmentTable.projectId), asc(environmentTable.name), asc(environmentTable.id))
+        .all()
+      const currentBindings: StorageBinding[] = []
+      for (const record of currentRecords) {
+        const environment = environmentRead(record.environment)
+        if (!environment.success) return environment
+        const binding = storageBindingResolve(environment.data)
+        if (!binding.success) return binding
+        currentBindings.push(binding.data)
+      }
+      const historicalRecords = db
+        .select({ location: projectStorageLocationTable })
+        .from(projectStorageLocationTable)
+        .innerJoin(projectTable, eq(projectTable.id, projectStorageLocationTable.projectId))
+        .where(eq(projectTable.archiveState, "active"))
+        .orderBy(
+          asc(projectStorageLocationTable.projectId),
+          asc(projectStorageLocationTable.environment),
+          asc(projectStorageLocationTable.bucket),
+          asc(projectStorageLocationTable.prefix),
+          asc(projectStorageLocationTable.id),
+        )
+        .all()
+      const publicBaseUrls = new Map(
+        currentBindings.map((binding) => [`${binding.projectId}\u0000${binding.environment}`, binding.publicBaseUrl]),
+      )
+      const bindings = new Map<string, StorageBinding>()
+      for (const binding of currentBindings)
+        bindings.set(
+          `${binding.projectId}\u0000${binding.environment}\u0000${binding.bucket}\u0000${binding.prefix}`,
+          binding,
+        )
+      for (const record of historicalRecords) {
+        const location = record.location
+        const binding = {
+          projectId: location.projectId,
+          environment: location.environment,
+          bucket: location.bucket,
+          prefix: location.prefix,
+          publicBaseUrl:
+            publicBaseUrls.get(`${location.projectId}\u0000${location.environment}`) ?? "https://archive.invalid",
+        } satisfies StorageBinding
+        bindings.set(
+          `${binding.projectId}\u0000${binding.environment}\u0000${binding.bucket}\u0000${binding.prefix}`,
+          binding,
+        )
+      }
+      return {
+        success: true,
+        data: [...bindings.values()].sort((left, right) =>
+          `${left.projectId}\u0000${left.environment}\u0000${left.bucket}\u0000${left.prefix}`.localeCompare(
+            `${right.projectId}\u0000${right.environment}\u0000${right.bucket}\u0000${right.prefix}`,
+          ),
+        ),
+      }
+    } catch (error) {
+      return resultErrorCreate(op, "The live storage bindings could not be read", error)
     }
   }
 
@@ -755,5 +825,6 @@ export const projectRepositoryCreate = (db: AssetDatabase): ProjectRepositoryImp
     projectReadByOrganizationIdAndSlug,
     projectGrantIdsRead,
     storageBindingsRead,
+    liveStorageBindingsRead,
   }
 }

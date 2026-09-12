@@ -33,6 +33,7 @@ export type ProjectRepository = {
     expectedArchiveState?: ProjectArchiveState,
   ) => Result<Project | null>
   storageBindingsRead?: () => Result<readonly StorageBinding[]>
+  liveStorageBindingsRead?: () => Result<readonly StorageBinding[]>
   projectCreate: (input: ProjectCreate, initialAdminSubjectId: string) => Result<ProjectCreateResult>
   organizationRead: (organizationId: string) => Result<Organization | null>
   organizationReadBySlug: (organizationSlug: string) => Result<Organization | null>
