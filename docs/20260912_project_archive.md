@@ -46,7 +46,9 @@ Provide project archive and unarchive library functions and CLI commands. Archiv
 - [x] 9. Use the commits skill to split, commit, and push the completed implementation.
 - [x] 10. Deploy production, verify migrations, global Wrangler availability, service health, and a non-destructive Cloudflare credential/bucket/domain capability check.
 - [x] 11. Archive production Template through the deployed CLI and verify it remains archived, is hidden by default, is visible with **Show archived**, is absent to contributors, has no current or historical R2 data or deleted-bucket domain bindings, retains SQLite metadata, and retains Google Drive backups.
+- [x] 12. Backfill encrypted bucket-scoped R2 credentials once per distinct live current/historical bucket with dry-run, retries, redaction, and CLI Cloudflare environment inputs.
+- [x] 13. Review and harden task-12 bucket credential backfill correctness and security, run focused/full repository checks, fix only backfill defects, commit/push, and do not deploy or run production.
 
 ## Current context
 
-- Tasks 1–11 complete. The implementation and historical-receipt compatibility fix are deployed from `origin/main`. Production Template is archived, its R2 data and deleted-bucket bindings are absent, shared storage and all SQLite/Google Drive metadata are retained, and admin/contributor browser visibility checks pass. Template remains archived.
+- Tasks 1–13 complete. Tasks 1–11 remain deployed from `origin/main` with production Template archived, its R2 data and deleted-bucket bindings absent, shared storage and all SQLite/Google Drive metadata retained, and admin/contributor browser visibility checks passing. Tasks 12–13 add and review the idempotent live-bucket credential backfill, including encrypted persistence, admin authorization, CLI environment sourcing, retry handling, and credential redaction. Focused tests, the full test suite, typechecks, formatting, package build, and Vite build pass; unrelated pre-existing worktree files were excluded from the commits. No task 12 or 13 deployment or production operation was performed.
