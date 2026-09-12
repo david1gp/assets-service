@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import { createHash } from "node:crypto"
 
 import { cloudflareR2BucketCredentialCreate } from "../src/cloudflare/cloudflareR2BucketCredentialCreate.js"
 import { cloudflareR2BucketCredentialRevoke } from "../src/cloudflare/cloudflareR2BucketCredentialRevoke.js"
@@ -28,7 +27,7 @@ test("creates a bucket-scoped R2 credential with request-scoped Cloudflare crede
     data: {
       bucket: "project-bucket",
       accessKeyId: "access-key",
-      secretAccessKey: createHash("sha256").update("token-value").digest("hex"),
+      secretAccessKey: "token-value",
       revocationId: "access-key",
     },
   })
@@ -85,4 +84,22 @@ test("redacts the request token from Cloudflare failures", async () => {
 
   expect(result.success).toBe(false)
   expect(JSON.stringify(result)).not.toContain("request-token")
+})
+
+test("does not expose an invalid Cloudflare token response in errors", async () => {
+  const generatedSecret = "generated-secret"
+  const result = await cloudflareR2BucketCredentialCreate({
+    accountId: "account-1",
+    apiToken: "request-token",
+    bucket: "project-bucket",
+    apiBaseUrl,
+    fetchImplementation: async () =>
+      new Response(JSON.stringify({ success: true, result: { id: "", value: generatedSecret } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  })
+
+  expect(result.success).toBe(false)
+  expect(JSON.stringify(result)).not.toContain(generatedSecret)
 })

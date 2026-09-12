@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto"
-
 import * as v from "valibot"
 import type { R2BucketCredentialCreateInput } from "../r2/r2BucketCredentialCreateInputSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
@@ -65,7 +63,7 @@ export const cloudflareR2BucketCredentialCreate = async (input: {
     data: {
       bucket: input.bucket,
       accessKeyId: parsed.output.result.id,
-      secretAccessKey: createHash("sha256").update(parsed.output.result.value, "utf8").digest("hex"),
+      secretAccessKey: parsed.output.result.value,
       revocationId: parsed.output.result.id,
     },
   }
