@@ -58,12 +58,23 @@ export const cloudflareR2BucketCredentialCreate = async (input: {
   )
   if (!parsed.success) return resultErrorCreate(op, "The Cloudflare R2 credential response was invalid")
 
+  // Cloudflare maps an account API token's id to the S3 access key and the lowercase SHA-256 hex digest of its
+  // value to the S3 secret (https://developers.cloudflare.com/r2/api/tokens/#get-s3-api-credentials-from-an-api-token).
+  // The one-time raw value is used only in memory and is never persisted or logged.
+  let digest: ArrayBuffer
+  try {
+    digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(parsed.output.result.value))
+  } catch {
+    return resultErrorCreate(op, "The Cloudflare R2 credential secret could not be derived")
+  }
+  const secretAccessKey = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+
   return {
     success: true,
     data: {
       bucket: input.bucket,
       accessKeyId: parsed.output.result.id,
-      secretAccessKey: parsed.output.result.value,
+      secretAccessKey,
       revocationId: parsed.output.result.id,
     },
   }

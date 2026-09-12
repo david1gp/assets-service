@@ -27,10 +27,11 @@ test("creates a bucket-scoped R2 credential with request-scoped Cloudflare crede
     data: {
       bucket: "project-bucket",
       accessKeyId: "access-key",
-      secretAccessKey: "token-value",
+      secretAccessKey: "e6c02a5742ea9d4de588eb9b9de7bed43dc17011552186bed3e98b2c5958ff4a",
       revocationId: "access-key",
     },
   })
+  expect(JSON.stringify(result)).not.toContain("token-value")
   expect(request?.url).toBe("https://api.cloudflare.test/client/v4/accounts/account-1/tokens")
   expect(request?.init.method).toBe("POST")
   expect(new Headers(request?.init.headers).get("authorization")).toBe("Bearer request-token")
