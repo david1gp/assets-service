@@ -213,6 +213,7 @@ const flagNames = new Set([
   "wait",
   "apply",
   "create-bucket",
+  "create-buckets",
   "write",
   "delete",
   "version",
@@ -2333,8 +2334,13 @@ const projectCreateInputRead = (
     "production-r2-bucket",
     "production-r2-prefix",
     "production-public-base-url",
+    "create-buckets",
+    "wrangler-profile",
   ])
   if (!allowed.success) return allowed
+  const wranglerProfile = optionRead(parsed, "wrangler-profile")
+  if (wranglerProfile !== undefined && wranglerProfile.trim().length === 0)
+    return resultFailure(op, "--wrangler-profile must not be empty")
   if (optionRead(parsed, "project") !== undefined)
     return resultFailure(op, "Use --service-project-id instead of --project for project creation")
   if (optionRead(parsed, "environment") !== undefined)
@@ -2402,6 +2408,30 @@ const projectCreateInputRead = (
       },
     },
   }
+}
+
+const projectBucketsProvision = async (
+  input: ProjectCreateCliInput,
+  parsed: ParsedCommand,
+  environment: NodeJS.ProcessEnv,
+  wranglerRunner: WranglerCommandRunner,
+): Promise<Result<readonly { name: string; created: boolean }[]>> => {
+  const buckets = [...new Set(input.environments.map((projectEnvironment) => projectEnvironment.r2Bucket))]
+  const provisioned: { name: string; created: boolean }[] = []
+  for (const bucket of buckets) {
+    const result = await wranglerProvisioningRun(wranglerRunner, {
+      bucket,
+      createBucket: true,
+      ...(optionRead(parsed, "wrangler-profile") === undefined
+        ? {}
+        : { profile: optionRead(parsed, "wrangler-profile") }),
+      ...(environment.CLOUDFLARE_ACCOUNT_ID === undefined ? {} : { accountId: environment.CLOUDFLARE_ACCOUNT_ID }),
+      ...(environment.CLOUDFLARE_API_TOKEN === undefined ? {} : { apiToken: environment.CLOUDFLARE_API_TOKEN }),
+    })
+    if (!result.success) return result
+    if (result.data.bucket) provisioned.push(result.data.bucket)
+  }
+  return { success: true, data: provisioned }
 }
 
 const commandRun = async (
@@ -2599,6 +2629,10 @@ const commandRun = async (
     const input = projectCreateInputRead(parsed, organization)
     if (!input.success) return { result: input }
     let projectInput = input.data
+    if (flagRead(parsed, "create-buckets")) {
+      const provisioned = await projectBucketsProvision(projectInput, parsed, env, wranglerRunner)
+      if (!provisioned.success) return { result: provisioned }
+    }
     if (projectInput.binding.zitadelProjectId === undefined) {
       const created = await zitadelProjectIdCreate(projectInput, env, zitadelProjectCreate)
       if (!created.success) return { result: created }

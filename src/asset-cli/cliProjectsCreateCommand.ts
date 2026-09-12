@@ -14,6 +14,8 @@ export type CliProjectsCreateFlags = AssetsCliGlobalFlags & {
   productionR2Bucket: string
   productionR2Prefix: string
   productionPublicBaseUrl: string
+  createBuckets?: boolean
+  wranglerProfile?: string
   token?: string
 }
 
@@ -81,6 +83,17 @@ export const cliProjectsCreateCommand = buildCommand({
         kind: "parsed",
         parse: String,
         brief: "Production public base URL",
+      },
+      createBuckets: {
+        kind: "boolean",
+        brief: "Provision the configured R2 buckets if they do not exist",
+        optional: true,
+      },
+      wranglerProfile: {
+        kind: "parsed",
+        parse: String,
+        brief: "Wrangler configuration profile to use for R2 provisioning",
+        optional: true,
       },
       token: {
         kind: "parsed",

@@ -7,6 +7,7 @@ import pkg from "../package.json" with { type: "json" }
 import { assetsCliMain } from "../src/entrypoints/assets-cli.js"
 import type { AssetClass } from "../src/schemas/assetClassSchema.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
+import type { WranglerCommandRunner } from "../src/wrangler/wranglerCommandRunner.js"
 
 const envelopeResponseCreate = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify({ ok: true, data, requestId: "request-1" }), {
@@ -226,7 +227,12 @@ const projectResolutionFetcherCreate = (
       return (
         projectsResponse ??
         envelopeResponseCreate({
-          projects: projects.map((project) => ({ ...project, assetCount: 0, totalFileSize: 0 })),
+          projects: projects.map((project) => ({
+            ...project,
+            organizationSlug: project.organizationId,
+            assetCount: 0,
+            totalFileSize: 0,
+          })),
           page: { limit: 100, nextCursor: null },
         })
       )
@@ -395,6 +401,97 @@ test("projects create sends the complete registration to the service", async () 
       environments: [{ name: "development" }, { name: "production" }],
     })
     expect(JSON.parse(output[0] ?? "")).toMatchObject({ ok: true, data: { created: true } })
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create provisions distinct R2 buckets before registration", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-r2-home-"))
+  const output: string[] = []
+  const events: string[] = []
+  const calls: Parameters<WranglerCommandRunner>[0][] = []
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      [
+        "ASSETS_TOKEN=service-token",
+        "ASSETS_API_URL=https://assets.example.test",
+        "CLOUDFLARE_ACCOUNT_ID=cloudflare-account",
+        "CLOUDFLARE_API_TOKEN=cloudflare-token",
+      ].join("\n"),
+    )
+    const args = projectCreateArguments("zitadel-existing")
+    args[args.indexOf("allgroups-chat", args.indexOf("--development-r2-bucket"))] = "allgroups-chat-development"
+    args[args.indexOf("allgroups-chat", args.indexOf("--production-r2-bucket"))] = "allgroups-chat-production"
+    args.splice(-1, 0, "--create-buckets", "--wrangler-profile", "fabian")
+    const wranglerRunner: WranglerCommandRunner = async (input) => {
+      calls.push(input)
+      events.push(`wrangler:${input.args.join(" ")}`)
+      if (input.args[0] === "r2" && input.args[2] === "info")
+        return { success: true, data: { exitCode: 1, stdout: "", stderr: "bucket_not_found" } }
+      return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+    }
+
+    const exitCode = await assetsCliMain(args, {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      wranglerRunner,
+      fetcher: async () => {
+        events.push("assets:project-create")
+        return envelopeResponseCreate({ project: apiProjectSettingsCreate(), created: true }, 201)
+      },
+      stdout: (text) => output.push(text),
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(calls).toHaveLength(6)
+    expect(calls.every((call) => call.accountId === "cloudflare-account")).toBe(true)
+    expect(calls.every((call) => call.apiToken === "cloudflare-token")).toBe(true)
+    expect(calls.every((call) => call.args.slice(-2).join(" ") === "--profile fabian")).toBe(true)
+    expect(
+      calls.filter((call) => call.args[0] === "r2" && call.args[2] === "create").map((call) => call.args[3]),
+    ).toEqual(["allgroups-chat-development", "allgroups-chat-production"])
+    expect(events.at(-1)).toBe("assets:project-create")
+    expect(output.join("\n")).not.toContain("cloudflare-token")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
+test("projects create rejects an empty Wrangler profile before side effects", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-r2-profile-home-"))
+  let sideEffectCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(homeDirectory, "ASSETS_TOKEN=service-token\n")
+    const args = projectCreateArguments("zitadel-existing")
+    args.splice(-1, 0, "--create-buckets", "--wrangler-profile", "")
+    const exitCode = await assetsCliMain(args, {
+      env: {
+        HOME: homeDirectory,
+        ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+        ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+      },
+      wranglerRunner: async () => {
+        sideEffectCount += 1
+        return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+      },
+      fetcher: async () => {
+        sideEffectCount += 1
+        return envelopeResponseCreate({}, 201)
+      },
+      stdout: () => undefined,
+      stderr: () => undefined,
+    })
+
+    expect(exitCode).toBe(1)
+    expect(sideEffectCount).toBe(0)
   } finally {
     await rm(homeDirectory, { recursive: true, force: true })
   }
