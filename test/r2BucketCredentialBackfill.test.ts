@@ -69,6 +69,39 @@ test("dry-run deduplicates shared buckets and skips existing credentials without
   expect(persistenceCalls).toBe(0)
 })
 
+test("skips an imported credential without a revocation ID instead of replacing it", async () => {
+  const imported = credentialRead({ ...credentialCreate("imported"), revocationId: null })
+  let createCalls = 0
+  const backfill = r2BucketCredentialBackfillCreate({
+    liveStorageBindingsRead: () => ({ success: true, data: [bindingCreate("imported")] }),
+    r2BucketCredentialRepository: {
+      r2BucketCredentialsRead: () => ({ success: true, data: [imported] }),
+      r2BucketCredentialCreate: () => {
+        createCalls += 1
+        return { success: true, data: imported }
+      },
+    },
+    r2BucketCredentialCreate: async () => {
+      createCalls += 1
+      return { success: true, data: credentialCreate("imported") }
+    },
+  })
+
+  const result = await backfill.r2BucketCredentialBackfill(credentials)
+
+  expect(result).toEqual({
+    success: true,
+    data: {
+      dryRun: false,
+      discoveredBuckets: ["imported"],
+      plannedBuckets: [],
+      createdBuckets: [],
+      skippedBuckets: ["imported"],
+    },
+  })
+  expect(createCalls).toBe(0)
+})
+
 test("creates one encrypted credential for each distinct live bucket", async () => {
   const opened = databaseOpen(":memory:")
   expect(opened.success).toBe(true)

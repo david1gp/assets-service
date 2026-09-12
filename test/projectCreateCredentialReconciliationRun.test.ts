@@ -29,6 +29,7 @@ const reconciliationRun = async (input: {
   credentialsRead?: () => Result<typeof cloudflareCredentials>
   registerResult?: Result<R2BucketCredentialRegisterResponse>
   revokeResult?: Result<boolean>
+  createdCredential?: (bucket: string) => R2BucketCredentialCreateInput
 }) => {
   const registeredBuckets = new Set(input.registeredBuckets ?? [])
   const statusCalls: EnvironmentName[] = []
@@ -66,7 +67,7 @@ const reconciliationRun = async (input: {
     },
     cloudflareCredentialCreate: async ({ bucket }) => {
       createCalls.push(bucket)
-      return { success: true, data: credentialCreate(bucket) }
+      return { success: true, data: input.createdCredential?.(bucket) ?? credentialCreate(bucket) }
     },
     cloudflareCredentialRevoke: async ({ revocationId }) => {
       revokeCalls.push(revocationId)
@@ -185,4 +186,18 @@ test("reports a redacted combined cleanup error when revocation fails", async ()
   expect(outcome.result.success ? "" : outcome.result.errorMessage).not.toContain(
     "bucket-development-revocation-secret",
   )
+})
+
+test("does not revoke an imported credential when registration fails", async () => {
+  const outcome = await reconciliationRun({
+    buckets: ["bucket-development", "bucket-production"],
+    createdCredential: (bucket) => ({ ...credentialCreate(bucket), revocationId: null }),
+    registerResult: resultErrorCreate("assetsApiClientR2BucketCredentialRegister", "registration failed"),
+  })
+
+  expect(outcome.result).toMatchObject({
+    success: false,
+    errorMessage: "Could not register the scoped R2 credential for bucket-development: registration failed",
+  })
+  expect(outcome.revokeCalls).toEqual([])
 })

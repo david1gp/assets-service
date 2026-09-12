@@ -107,6 +107,16 @@ describe("project archive workflow", () => {
     expect(setup.credentialDeleteCalls).toEqual([environment.r2Bucket])
   })
 
+  test("deletes an imported credential without attempting Cloudflare revocation", async () => {
+    const setup = workflowSetup({ credential: true, credentialRevocationId: null })
+
+    const archived = await setup.workflow.projectArchive(projectId, cloudflareCredentials)
+
+    expect(archived).toMatchObject({ success: true, data: { deletedBuckets: [environment.r2Bucket] } })
+    expect(setup.credentialRevokeCalls).toEqual([])
+    expect(setup.credentialDeleteCalls).toEqual([environment.r2Bucket])
+  })
+
   test("treats missing domains and dedicated buckets as idempotent while removing credentials", async () => {
     const setup = workflowSetup({
       customDomains: ["assets.example.test"],
@@ -395,6 +405,7 @@ function workflowSetup(
     customDomains?: readonly string[]
     domainsAttached?: boolean
     credential?: boolean
+    credentialRevocationId?: string | null
     credentialRevokeFailure?: string
   } = {},
 ) {
@@ -580,7 +591,7 @@ function workflowSetup(
     bucket: environment.r2Bucket,
     accessKeyId: "access-key",
     secretAccessKey: "secret-key",
-    revocationId: "archive-revocation",
+    revocationId: options.credentialRevocationId === undefined ? "archive-revocation" : options.credentialRevocationId,
     createdAt: timestamp,
     updatedAt: timestamp,
   }

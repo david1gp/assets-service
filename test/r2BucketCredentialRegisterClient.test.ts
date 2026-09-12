@@ -82,3 +82,30 @@ test("assets API client redacts R2 credential secrets from request failures and 
   expect(JSON.stringify(invalid)).not.toContain(input.secretAccessKey)
   expect(JSON.stringify(invalid)).not.toContain(input.revocationId)
 })
+
+test("assets API client sends imported credentials without a revocation ID and keeps responses secret-free", async () => {
+  const importedInput = { ...input, revocationId: null }
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    fetcher: async (target, init) => {
+      request = new Request(String(target), init)
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: { projectId: "project", environment: "production", bucket: importedInput.bucket, registered: true },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const result = await clientResult.data.r2BucketCredentialRegister("project", "production", importedInput)
+
+  expect(result).toMatchObject({ success: true })
+  expect(await request?.clone().json()).toEqual(importedInput)
+  expect(JSON.stringify(result)).not.toContain(importedInput.accessKeyId)
+  expect(JSON.stringify(result)).not.toContain(importedInput.secretAccessKey)
+})

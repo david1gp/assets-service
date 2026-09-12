@@ -9,6 +9,7 @@ import { sessionCookieCreate } from "../src/authentication/sessionCookieCreate.j
 import type { AuthenticationSession } from "../src/authentication/sessionSchema.js"
 import type { ProjectRepository } from "../src/project/projectRepository.js"
 import type { R2BucketCredentialRepository } from "../src/r2/r2BucketCredentialRepository.js"
+import type { R2BucketCredentialCreateInput } from "../src/r2/r2BucketCredentialCreateInputSchema.js"
 import { databaseClose } from "../src/infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../src/infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../src/infrastructure/db/databaseOpen.js"
@@ -219,7 +220,7 @@ const repositoryCreate = (existing?: ReturnType<typeof credentialCreate>) => {
   return { repository, credentials, createCallsRead: () => createCalls }
 }
 
-const credentialCreate = (input: typeof credentialInput = credentialInput) => ({
+const credentialCreate = (input: R2BucketCredentialCreateInput = credentialInput) => ({
   ...input,
   createdAt: "2026-09-12T00:00:00.000Z",
   updatedAt: "2026-09-12T00:00:00.000Z",
@@ -377,4 +378,23 @@ test("R2 credential registration persists encrypted credentials through the repo
   } finally {
     databaseClose(opened.data)
   }
+})
+
+test("R2 credential registration accepts imported credentials without a revocation ID", async () => {
+  const importedInput = { ...credentialInput, revocationId: null }
+  const stored = repositoryCreate()
+  const options = optionsCreate({ repository: stored.repository })
+  const cookie = await sessionCreate(options, [{ projectId: "zitadel-1", roles: ["admin"] }])
+  const response = await apiAppCreate(options).fetch(requestCreate(cookie, importedInput))
+  const json = await response.json()
+
+  expect(response.status).toBe(200)
+  expect(json).toEqual({
+    ok: true,
+    data: { projectId: "project-1", environment: "development", bucket: "assets-development", registered: true },
+    requestId,
+  })
+  expect(JSON.stringify(json)).not.toContain(importedInput.accessKeyId)
+  expect(JSON.stringify(json)).not.toContain(importedInput.secretAccessKey)
+  expect(stored.credentials.get(importedInput.bucket)?.revocationId).toBeNull()
 })

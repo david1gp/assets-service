@@ -47,6 +47,34 @@ test("R2 bucket credential repository encrypts, rotates, and removes credentials
     })
     expect(repository.r2BucketCredentialRead("missing")).toEqual({ success: true, data: null })
 
+    const imported = repository.r2BucketCredentialCreate({
+      bucket: "imported-assets",
+      accessKeyId: "imported-access-key",
+      secretAccessKey: "imported-secret-key",
+      revocationId: null,
+    })
+    expect(imported).toMatchObject({
+      success: true,
+      data: {
+        bucket: "imported-assets",
+        accessKeyId: "imported-access-key",
+        secretAccessKey: "imported-secret-key",
+        revocationId: null,
+      },
+    })
+    const importedStored = opened.data.db
+      .select()
+      .from(r2BucketCredentialTable)
+      .where(eq(r2BucketCredentialTable.bucket, "imported-assets"))
+      .get()
+    expect(importedStored?.revocationId).toBeNull()
+    expect(importedStored?.accessKeyIdCiphertext).not.toContain("imported-access-key")
+    expect(importedStored?.secretAccessKeyCiphertext).not.toContain("imported-secret-key")
+    expect(repository.r2BucketCredentialRead("imported-assets")).toMatchObject({
+      success: true,
+      data: imported.success ? imported.data : null,
+    })
+
     const wrongKeyRepository = r2BucketCredentialRepositoryCreate(opened.data.db, { encryptionKey: "wrong-key" })
     expect(wrongKeyRepository.r2BucketCredentialRead("assets").success).toBe(false)
 
@@ -65,6 +93,14 @@ test("R2 bucket credential repository encrypts, rotates, and removes credentials
     })
     expect(rotated.success && first.success ? rotated.data.createdAt : "").toBe("2026-09-01T00:00:00.000Z")
     expect(rotated.success && first.success ? rotated.data.updatedAt : "").toBe("2026-09-02T00:00:00.000Z")
+
+    const importedRotated = repository.r2BucketCredentialCreate({
+      bucket: "imported-assets",
+      accessKeyId: "imported-access-key-2",
+      secretAccessKey: "imported-secret-key-2",
+      revocationId: "imported-token",
+    })
+    expect(importedRotated).toMatchObject({ success: true, data: { revocationId: "imported-token" } })
 
     const ciphertext = opened.data.db
       .select()
