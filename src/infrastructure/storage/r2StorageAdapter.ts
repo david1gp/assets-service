@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { AwsClient } from "aws4fetch"
 import * as v from "valibot"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
@@ -220,10 +220,37 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
       return { success: true, data: undefined }
     },
     probeCredentials: async (bucket) => {
-      const response = await request("HEAD", bucket, "")
-      if (!response.success) return response
-      if (!response.data.ok) return responseError("r2StorageAdapterCreate", response.data)
-      return { success: true, data: { reachable: true, status: response.data.status } }
+      const probeKey = `_assets-service-probes/${randomUUID()}`
+      const sentinel = new Uint8Array([0x61])
+      const stored = await request(
+        "PUT",
+        bucket,
+        probeKey,
+        {
+          "cache-control": "no-store",
+          "content-length": String(sentinel.byteLength),
+          "content-type": "application/octet-stream",
+        },
+        sentinel,
+      )
+      if (!stored.success) return credentialProbeFailureCreate("put")
+      if (!stored.data.ok) return credentialProbeFailureCreate("put", stored.data.status)
+
+      const verified = await request("HEAD", bucket, probeKey)
+      const verificationFailure = verified.success
+        ? verified.data.ok
+          ? undefined
+          : credentialProbeFailureCreate("head", verified.data.status)
+        : credentialProbeFailureCreate("head")
+      const verifiedStatus = verified.success && verified.data.ok ? verified.data.status : undefined
+
+      const cleanup = await request("DELETE", bucket, probeKey)
+      if (!cleanup.success) return credentialProbeFailureCreate("cleanup")
+      if (!cleanup.data.ok && cleanup.data.status !== 404)
+        return credentialProbeFailureCreate("cleanup", cleanup.data.status)
+      if (verificationFailure !== undefined) return verificationFailure
+      if (verifiedStatus === undefined) return credentialProbeFailureCreate("head")
+      return { success: true, data: { reachable: true, status: verifiedStatus } }
     },
   }
 
@@ -294,6 +321,15 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
 
 function responseError(op: string, response: Response): Result<never> {
   return resultErrorCreate(op, `R2 request failed with status ${response.status}`, { status: response.status })
+}
+
+function credentialProbeFailureCreate(phase: "put" | "head" | "cleanup", status?: number): Result<never> {
+  return resultErrorCreate(
+    "r2StorageAdapterCreate",
+    `R2 credential probe ${phase} failed`,
+    status === undefined ? undefined : { status },
+    status === undefined ? {} : { diagnostics: { status } },
+  )
 }
 
 function storageObjectFromHeaders(

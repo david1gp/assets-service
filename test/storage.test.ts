@@ -338,9 +338,9 @@ describe("storage adapters", () => {
       secretAccessKey: "secret",
       endpoint: "https://account.r2.cloudflarestorage.com",
       now: () => new Date("2026-08-17T12:00:00.000Z"),
-      fetchImplementation: async (request) => {
+      fetchImplementation: async (request, init) => {
         const requestUrl = request instanceof Request ? request.url : request.toString()
-        requests.push(new Request(requestUrl))
+        requests.push(new Request(requestUrl, init))
         return new Response(null, { status: 200 })
       },
     })
@@ -361,7 +361,13 @@ describe("storage adapters", () => {
     expect(new URL(intent.data.url).pathname).toBe(`/project-configured-bucket/${location.data.objectKey}`)
     expect(new URL(intent.data.url).searchParams.get("X-Amz-Expires")).toBe("600")
     expect((await adapter.probeCredentials(runtimeBinding.bucket)).success).toBe(true)
-    expect(requests).toHaveLength(1)
+    expect(requests.map(({ method }) => method)).toEqual(["PUT", "HEAD", "DELETE"])
+    expect(new Set(requests.map(({ url }) => new URL(url).pathname)).size).toBe(1)
+    expect(
+      /^\/project-configured-bucket\/_assets-service-probes\/[0-9a-f-]{36}$/u.test(
+        new URL(requests[0]?.url ?? "https://invalid.test").pathname,
+      ),
+    ).toBe(true)
   })
 
   test("requests identity encoding for signed R2 object HEADs", async () => {
