@@ -21,7 +21,8 @@ Replace every `CHANGE_ME` value. Keep `.env`, the R2 secret key, the Zitadel ser
 | `ASSETS_API_PORT` | Local listener, normally `8787`. |
 | `ASSETS_DATABASE_PATH` | SQLite file. In Compose use `/var/lib/assets-service/assets.sqlite`. |
 | `ASSETS_WORKER_ID` | Stable, unique worker name. |
-| `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 S3 credentials. Grant only the required bucket access. |
+| `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Legacy/bootstrap and operational R2 S3 credentials. Grant only the required bucket access. |
+| `R2_CREDENTIAL_ENCRYPTION_KEY` | Server-side master key for encrypted persisted bucket credentials. |
 | `ASSETS_R2_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com`. |
 | `ASSETS_R2_BUCKET`, `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Service-level operational/fallback bucket settings. |
 | `ASSETS_R2_PUBLIC_BASE_URL` | Service-level operational/fallback public domain. |
@@ -29,7 +30,8 @@ Replace every `CHANGE_ME` value. Keep `.env`, the R2 secret key, the Zitadel ser
 | `ASSETS_FFPROBE_EXECUTABLE` | Usually `ffprobe`. The production image includes it. |
 
 Project environment R2 bucket names and public domains are configured in project settings through the API and resolved at
-runtime. They do not need startup allowlisting or project-specific entries in the service environment. `r2Prefix` is
+runtime. Their persisted bucket credentials are resolved from SQLite by both the API and worker. They do not need startup
+allowlisting or project-specific entries in the service environment. `r2Prefix` is
 optional: use an empty value for a dedicated bucket and retain a non-empty value to namespace objects in a shared
 bucket. The service-level R2 values above are used for operational tooling; they do not override project environment
 settings.

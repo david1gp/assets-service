@@ -9,8 +9,9 @@ between hosts. SQLite runs in WAL mode. Take snapshots with the service command 
 CLI arguments, project data, or generated lists.
 
 Project environment R2 bucket names and public domains are runtime-managed through project settings and the API. They
-are authoritative for project storage and are not startup allowlist entries. The endpoint, credentials, and service-level
-operational R2 settings below remain environment-configured.
+are authoritative for project storage and are not startup allowlist entries. The endpoint, bootstrap credentials, and
+service-level operational R2 settings below remain environment-configured. Project bucket credentials are persisted
+encrypted in SQLite for API and worker data-plane access.
 
 | Variable | Purpose |
 | --- | --- |
@@ -22,6 +23,7 @@ operational R2 settings below remain environment-configured.
 | `ASSETS_WORKER_ID` | Stable worker identity for logs and leases |
 | `CLOUDFLARE_ACCOUNT_ID` | R2 account identifier |
 | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 credentials |
+| `R2_CREDENTIAL_ENCRYPTION_KEY` | Server-side master key for persisted bucket credentials |
 | `ASSETS_R2_ENDPOINT` | S3-compatible R2 endpoint |
 | `ASSETS_R2_BUCKET` | Service-level operational/fallback bucket |
 | `ASSETS_R2_PRIVATE_BUCKET`, `ASSETS_R2_PUBLIC_BUCKET` | Optional service-level operational private/public bucket split |

@@ -136,6 +136,24 @@ bun run assets settings update [--project <id-or-name>] \
 role for the selected project. `--project` accepts a project ID or name; otherwise normal project resolution applies
 (`ASSETS_PROJECT`, saved CLI configuration, or the sole accessible project).
 
+### Archive and unarchive projects
+
+Project archive and unarchive are authenticated administrator-only CLI operations; they are not web UI mutations:
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<account-id> \
+CLOUDFLARE_API_TOKEN=<api-token> \
+bun run assets projects archive --project <id-or-name>
+
+CLOUDFLARE_ACCOUNT_ID=<account-id> \
+CLOUDFLARE_API_TOKEN=<api-token> \
+bun run assets projects unarchive --project <id-or-name>
+```
+
+The CLI reads these values from the selected environment (including `--env-file`) and sends them only with the
+request. They are not accepted as command-line flags, stored in CLI configuration or sessions, returned by the API,
+or persisted by the service.
+
 ### Reprocess an existing asset
 
 Reprocess an existing asset into a selected environment without uploading source bytes:

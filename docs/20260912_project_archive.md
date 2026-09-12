@@ -2,39 +2,51 @@
 
 ## Goal
 
-Add project-level archive and unarchive library APIs and CLI commands. Archiving must preserve the database metadata and verified Google Drive originals needed for recovery while removing the project's R2 objects and dedicated bucket. Unarchiving must recreate the bucket, restore originals from Google Drive, and regenerate all optimized assets. The web project list must hide archived projects by default and offer an owner/admin-only, off-by-default **Show archived** toggle that is never exposed in contributor view.
+Provide project archive and unarchive library functions and CLI commands. Archive retains project metadata and Google Drive backups while removing all current and historical project data from R2, removing custom domains from buckets being deleted, and deleting dedicated buckets. Unarchive recreates production storage, fresh bucket credentials, custom domains, every source revision, and optimized current assets. The web UI only adds an admin-only, off-by-default **Show archived** toggle; archive actions remain outside the web UI. Production verification archives Template and leaves it archived.
 
 ## Decisions
 
-- Archive state belongs to the project and is retained with all asset, source revision, output definition, and verified backup receipt metadata; “remove all data” means all project object data in R2, not the recovery metadata in SQLite or Google Drive.
-- Archive/unarchive are explicit, idempotent project workflows exposed through the public library, authenticated API, and CLI.
-- Bucket deletion is allowed only when the bucket is proven dedicated to the archived project. Shared-bucket bindings fail safely rather than deleting another project's data.
-- A root/empty-prefix bucket is considered dedicated when every persisted binding to that bucket belongs to the archived project; an already-absent dedicated bucket is an idempotent success.
-- Archive preflight verifies the actual Google Drive object bytes for every current source, not only the presence of a verified receipt.
-- Archive becomes visible only after R2 cleanup and bucket deletion succeed. Unarchive becomes visible only after bucket provisioning, source restoration, optimized output regeneration, and verification succeed.
-- Existing R2, rclone, processing, workflow, authorization, Solid UI, and Wrangler abstractions are extended and reused; no new external dependency is introduced.
-- Archived projects are excluded server-side by default. Only owner/admin requests may opt in to listing them; contributor requests and contributor routes never expose them.
-- Production verification targets the Template project and leaves it archived after verifying the deployed behavior.
+- Persist lifecycle states `active`, `archiving`, `archived`, and `unarchiving`; retries resume idempotently without a separate progress or failure model.
+- Add structured phase/error logging sufficient to diagnose retries, while redacting every credential and secret.
+- Preserve SQLite project, asset, revision, output, audit, and backup-receipt metadata. Preserve the shared `gdrive_beta` Google Drive remote and all backup objects.
+- Archive requires matching verified Google Drive receipts for every source revision but does not download or checksum Drive objects during archive preflight.
+- Delete every known current and historical project R2 prefix. Never delete a shared bucket; remove only the archived project's prefixes from it.
+- Delete a root bucket only when all persisted current and historical bindings prove it belongs exclusively to the project. Missing objects or buckets are idempotent successes.
+- Before deleting a dedicated bucket, remove its configured custom-domain bindings. Unarchive recreates and verifies those bindings after recreating the bucket.
+- Restore every source revision into the production/default environment. Regenerate and verify current optimized outputs for every asset in that environment.
+- Cloudflare account ID and API token are per-user, request-scoped inputs supplied by the CLI from its environment or explicitly to the library. They are never persisted.
+- Use the request-scoped Cloudflare token to create bucket-scoped R2 access-key/secret credentials. Persist those credentials encrypted, with their revocation identifier, for use by the API and worker until the bucket is removed.
+- Use one server-side master encryption key for stored bucket credentials; this is service configuration, not per-user state.
+- Revoke and delete stored bucket credentials when their bucket is deleted. Unarchive creates and stores fresh credentials.
+- Resolve R2 data-plane access by bucket from persisted credentials rather than a single service-wide R2 account.
+- Assume Wrangler is installed globally through Bun. Invoke it with an explicit request-scoped Cloudflare environment for bucket and custom-domain control-plane operations.
+- Archive/unarchive API and CLI operations are admin-only. The web UI does not expose archive/unarchive buttons.
+- **Show archived** is visible only to authorized admins, disabled by default, URL-backed, and never available in contributor view.
+- Template remains archived after production verification.
 
 ## Approach
 
-- Add persisted archive lifecycle state and safe list/authorization semantics, with a migration and typed contracts.
-- Add reusable R2 bucket deletion/provisioning and Google Drive restore primitives with injectable fakes.
-- Implement resumable archive/unarchive orchestration and expose narrow library/API operations.
-- Add matching CLI commands and an owner/admin project-list toggle.
-- Verify focused unit/integration coverage, full repository checks, browser behavior, commit/push, deploy, and production archive of Template.
+- Persist complete storage history, custom-domain restoration metadata, and encrypted per-bucket R2 credentials.
+- Add request-scoped Cloudflare control-plane adapters for bucket, credential, and custom-domain lifecycle, plus bucket-scoped R2 adapter resolution for API and worker operations.
+- Rework archive/unarchive orchestration around all revisions, historical locations, credential lifecycle, domain lifecycle, idempotent retries, and redacted structured logging.
+- Expose narrow library/API contracts and CLI commands that automatically read caller Cloudflare credentials from environment variables.
+- Keep archived filtering enforced server-side and retain the admin-only UI visibility toggle without web mutation actions.
+- Verify focused and full tests, browser visibility behavior, commit/push, deploy, and the complete production Template archive.
 
 ## Tasks
 
-- [x] 1. Add the project archive lifecycle schema/migration, repository operations, default archived filtering, admin opt-in listing, and contributor-safe authorization behavior with focused tests.
-- [x] 2. Add safe, reusable storage primitives for Drive download/verification, paginated R2 project cleanup, dedicated-bucket validation, and Wrangler bucket create/delete with focused tests.
-- [x] 3. Implement the idempotent archive workflow and public library export, preserving recovery metadata/Drive data while deleting project R2 data and its dedicated bucket; add focused tests.
-- [x] 4. Implement the idempotent unarchive workflow and public library export to provision the bucket, restore verified originals from Drive, regenerate/verify optimized outputs, and complete the lifecycle; add focused tests.
-- [x] 5. Add authenticated archive/unarchive API operations and matching CLI commands/help, with authorization and command tests.
-- [x] 6. Add the off-by-default **Show archived** owner/admin project-list toggle, keep it absent from contributor view, and cover state/rendering behavior.
-- [x] 7. Run focused and full checks, fix only feature-related failures, and verify owner/contributor UI behavior in a browser.
-- [x] 8. Use the commits skill to split, commit, and push the completed changes.
-- [x] 9. Deploy production and verify service health.
-- [x] 10. Harden archive for proven-dedicated root buckets and actual Google Drive object verification, with focused regression tests and full checks.
-- [ ] 11. Use the commits skill to commit/push the hardening fix, deploy it, and verify production health.
-- [ ] 12. Repair Template's one stale Drive backup object from its byte-identical verified Drive copy, archive Template through the CLI, remove only its known legacy shared-bucket prefix, and verify archive visibility, R2 removal, SQLite recovery metadata, and Google Drive retention.
+- [x] 1. Finalize persistence for historical storage locations, custom-domain metadata, and encrypted bucket credentials, including migrations/backfills and repository tests.
+- [x] 2. Implement request-scoped Cloudflare account/API-token handling, bucket-scoped R2 credential creation/revocation, Bun-global Wrangler bucket/domain operations, secret redaction, and focused adapter tests.
+- [x] 3. Replace service-wide R2 access in archive/unarchive and processing with bucket-scoped credential resolution usable by both API and worker; cover existing-project credential bootstrap and retries.
+- [x] 4. Rework archive to require verified receipts for every source revision without reading Drive bytes, clean every current/historical R2 prefix, remove domains for deleted buckets, delete only dedicated buckets, revoke credentials, and emit structured phase/error logs.
+- [x] 5. Rework unarchive to recreate production buckets and fresh credentials, reattach/verify custom domains, restore every source revision from `gdrive_beta`, regenerate/verify current optimized assets, and emit structured phase/error logs.
+- [x] 6. Update public library inputs, authenticated API contracts, and CLI archive/unarchive commands so Cloudflare credentials are explicit library inputs and automatically sourced from CLI environment variables; keep web mutation actions absent.
+- [x] 7. Retain and verify default archived filtering, admin-only **Show archived**, archived status presentation, and contributor exclusion in API and web UI.
+- [x] 8. Run focused integration tests, full checks, operations validation, and browser verification; fix only feature-related defects.
+- [x] 9. Use the commits skill to split, commit, and push the completed implementation.
+- [ ] 10. Deploy production, verify migrations, global Wrangler availability, service health, and a non-destructive Cloudflare credential/bucket/domain capability check.
+- [ ] 11. Archive production Template through the deployed CLI and verify it remains archived, is hidden by default, is visible with **Show archived**, is absent to contributors, has no current or historical R2 data or deleted-bucket domain bindings, retains SQLite metadata, and retains Google Drive backups.
+
+## Current context
+
+- Tasks 1–8 complete. Project archive/unarchive persistence, Cloudflare lifecycle adapters, bucket-scoped data access, workflows, public contracts, CLI commands, and archived visibility are implemented. Focused verification and browser scenarios pass, including admin archived-project detail access; unrelated repository-wide check failures and missing local operations configuration remain outside this feature.
