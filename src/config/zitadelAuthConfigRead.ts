@@ -2,11 +2,18 @@ import * as v from "valibot"
 
 import { type ZitadelAuthConfig, zitadelAuthConfigSchema } from "../authentication/zitadelAuthConfigSchema.js"
 import type { ZitadelOrganizationMapping } from "../authentication/zitadelOrganizationMappingSchema.js"
-import { zitadelOrganizationMappingsParse } from "./zitadelOrganizationMappingsParse.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { zitadelOrganizationMappingsParse } from "./zitadelOrganizationMappingsParse.js"
 
 export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.env): Result<ZitadelAuthConfig> => {
+  const projectProvisionerSubjectIds = [
+    ...(environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID ? [environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID] : []),
+    ...(environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_IDS ?? "")
+      .split(",")
+      .map((subjectId) => subjectId.trim())
+      .filter(Boolean),
+  ].filter((subjectId, index, subjectIds) => subjectIds.indexOf(subjectId) === index)
   let organizationMappings: readonly ZitadelOrganizationMapping[] | undefined
   if (environment.ZITADEL_ORGANIZATION_MAPPINGS) {
     const parsedMappings = zitadelOrganizationMappingsParse(environment.ZITADEL_ORGANIZATION_MAPPINGS)
@@ -23,6 +30,7 @@ export const zitadelAuthConfigRead = (environment: NodeJS.ProcessEnv = process.e
     ...(environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID
       ? { projectProvisionerSubjectId: environment.ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID }
       : {}),
+    ...(projectProvisionerSubjectIds.length > 0 ? { projectProvisionerSubjectIds } : {}),
     redirectUri: environment.ZITADEL_REDIRECT_URI,
     audience: environment.ZITADEL_AUDIENCE,
     organizationId: environment.ZITADEL_ORGANIZATION_ID,

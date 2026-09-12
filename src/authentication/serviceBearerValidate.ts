@@ -2,8 +2,8 @@ import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { AuthenticatedPrincipal } from "./authenticatedPrincipalSchema.js"
 import { jwtPrincipalValidate } from "./jwtPrincipalValidate.js"
-import { servicePatPrincipalValidate } from "./servicePatPrincipalValidate.js"
 import type { ServiceBearerValidateOptions } from "./serviceBearerValidateOptions.js"
+import { servicePatPrincipalValidate } from "./servicePatPrincipalValidate.js"
 
 export const serviceBearerValidate = async (
   request: Request,
@@ -24,6 +24,7 @@ export const serviceBearerValidate = async (
       fetcher: options.patFetcher,
       now: options.now,
       projectProvisionerSubjectId: options.projectProvisionerSubjectId,
+      projectProvisionerSubjectIds: options.projectProvisionerSubjectIds,
     })
   }
 

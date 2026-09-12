@@ -77,9 +77,11 @@ export const servicePatPrincipalValidate = async (
   const grants = userGrantsNormalize(grantsParsed.output.result ?? [], {
     allowedOrganizationIds,
   })
+  const projectProvisionerSubjectIds =
+    options.projectProvisionerSubjectIds ??
+    (options.projectProvisionerSubjectId ? [options.projectProvisionerSubjectId] : [])
   const isProjectProvisioner =
-    Boolean(options.projectProvisionerSubjectId) &&
-    user.output.user.id === options.projectProvisionerSubjectId &&
+    projectProvisionerSubjectIds.includes(user.output.user.id) &&
     allowedOrganizationIds.includes(user.output.user.details.resourceOwner)
   if (!isProjectProvisioner && grants.length === 0)
     return resultErrorCreate(op, "The JWT did not contain the required project grant")

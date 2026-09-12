@@ -231,9 +231,10 @@ describe("Zitadel authentication contracts", () => {
     ])
   })
 
-  test("preserves project provisioner capability only for exact PAT subject and organization", async () => {
+  test("preserves project provisioner capability only for exact allowlisted PAT subjects and organization", async () => {
     const pat = "eyJhbGciOiJBMjU2R0NNS1ciLCJlbmMiOiJBMjU2R0NNIn0.ciphertext.tag.iv.extra"
     const provisionerSubjectId = "machine-provisioner-1"
+    const secondProvisionerSubjectId = "machine-provisioner-2"
     const createPatFetcher =
       (userId: string, orgId: string, grantsResult: unknown[] = []) =>
       async (input: string | URL) => {
@@ -262,15 +263,16 @@ describe("Zitadel authentication contracts", () => {
         jwksClient: zitadelJwksClientMemoryCreate([]),
         organizationId: "org-1",
         projectProvisionerSubjectId: provisionerSubjectId,
+        projectProvisionerSubjectIds: [provisionerSubjectId, secondProvisionerSubjectId],
         now: () => nowSeconds * 1000,
-        patFetcher: createPatFetcher(provisionerSubjectId, "org-1", []),
+        patFetcher: createPatFetcher(secondProvisionerSubjectId, "org-1", []),
       },
     )
     expect(validProvisioner).toMatchObject({
       success: true,
       data: {
         method: "service_account",
-        subjectId: provisionerSubjectId,
+        subjectId: secondProvisionerSubjectId,
         organizationId: "org-1",
         mode: "admin",
         organizationAdmin: false,

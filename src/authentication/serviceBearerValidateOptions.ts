@@ -18,4 +18,5 @@ export type ServiceBearerValidateOptions = {
   clockSkewSeconds?: number
   patFetcher?: (input: string | URL, init?: RequestInit) => Promise<Response>
   projectProvisionerSubjectId?: string
+  projectProvisionerSubjectIds?: readonly string[]
 }

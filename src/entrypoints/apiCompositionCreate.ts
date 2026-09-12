@@ -114,7 +114,9 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     ],
   )
   const serviceBearer =
-    config.zitadel.serviceAccountClientId || config.zitadel.projectProvisionerSubjectId
+    config.zitadel.serviceAccountClientId ||
+    config.zitadel.projectProvisionerSubjectId ||
+    (config.zitadel.projectProvisionerSubjectIds?.length ?? 0) > 0
       ? {
           issuer: config.zitadel.issuer,
           audience: config.zitadel.audience,
@@ -129,6 +131,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
           now: undefined,
           clockSkewSeconds: config.zitadel.clockSkewSeconds,
           projectProvisionerSubjectId: config.zitadel.projectProvisionerSubjectId,
+          projectProvisionerSubjectIds: config.zitadel.projectProvisionerSubjectIds,
         }
       : undefined
 

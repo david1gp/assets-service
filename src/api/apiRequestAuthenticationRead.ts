@@ -13,6 +13,8 @@ export const apiRequestAuthenticationRead = async (
         ...options.serviceBearer,
         projectProvisionerSubjectId:
           options.serviceBearer.projectProvisionerSubjectId ?? options.config.projectProvisionerSubjectId,
+        projectProvisionerSubjectIds:
+          options.serviceBearer.projectProvisionerSubjectIds ?? options.config.projectProvisionerSubjectIds,
       }
     : undefined
   return requestAuthenticationRead(request, {

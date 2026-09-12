@@ -6,4 +6,5 @@ export type ServicePatPrincipalValidateOptions = {
   fetcher?: (input: string | URL, init?: RequestInit) => Promise<Response>
   now?: () => number
   projectProvisionerSubjectId?: string
+  projectProvisionerSubjectIds?: readonly string[]
 }

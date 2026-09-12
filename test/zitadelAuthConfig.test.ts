@@ -64,6 +64,31 @@ test("reads the optional project provisioner subject ID when configured", () => 
   expect(invalid.success).toBe(false)
 })
 
+test("merges and deduplicates project provisioner subject IDs", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID: "machine-provisioner-1",
+    ZITADEL_PROJECT_PROVISIONER_SUBJECT_IDS: " machine-provisioner-2, machine-provisioner-1, ,machine-provisioner-3 ",
+  })
+
+  expect(result).toMatchObject({
+    success: true,
+    data: {
+      projectProvisionerSubjectId: "machine-provisioner-1",
+      projectProvisionerSubjectIds: ["machine-provisioner-1", "machine-provisioner-2", "machine-provisioner-3"],
+    },
+  })
+})
+
+test("rejects an invalid additional project provisioner subject ID", () => {
+  const result = zitadelAuthConfigRead({
+    ...environment,
+    ZITADEL_PROJECT_PROVISIONER_SUBJECT_IDS: "machine-provisioner-2,-invalid-id",
+  })
+
+  expect(result.success).toBe(false)
+})
+
 test("defaults organizationMappings from ZITADEL_ORGANIZATION_ID and ZITADEL_CUSTOMER_ORGANIZATION_ID when omitted", () => {
   const result = zitadelAuthConfigRead(environment)
   expect(result.success).toBe(true)
