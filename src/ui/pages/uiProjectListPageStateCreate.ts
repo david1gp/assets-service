@@ -1,14 +1,14 @@
 import { useNavigate, useSearchParams } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
 import { createSignalObject } from "#ui/utils/createSignalObject.js"
-import { projectListQuerySchema } from "../../api-client/projectListQuerySchema.js"
 import type { ProjectListItem } from "../../api-client/projectListItemSchema.js"
+import { projectListQuerySchema } from "../../api-client/projectListQuerySchema.js"
 import { type ProjectListResponse, projectListResponseSchema } from "../../api-client/projectListResponseSchema.js"
 import { resultErrorCreate } from "../../schemas/resultErrorCreate.js"
 import { uiApiClientRead } from "../client/uiApiClientRead.js"
+import { ttc } from "../localization/ttc.js"
 import { uiQueryCacheKeyCreate } from "../query/uiQueryCacheKeyCreate.js"
 import { uiQueryCreate } from "../query/uiQueryCreate.js"
-import { ttc } from "../localization/ttc.js"
 import { uiPaths } from "../routing/uiPaths.js"
 import { uiSearchParamNumberRead } from "../search/uiSearchParamNumberRead.js"
 import { uiSearchParamSchemaRead } from "../search/uiSearchParamSchemaRead.js"
@@ -21,21 +21,38 @@ export const uiProjectListPageStateCreate = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const searchSchema = projectListQuerySchema.entries.search
+  const includeArchivedSchema = projectListQuerySchema.entries.includeArchived
   const search = createMemo(() => uiSearchParamSchemaRead(searchSchema, searchParams.search))
   const searchDraftState = createSignalObject(search() ?? "")
   let pendingSearchParams = new URLSearchParams(window.location.search)
 
   const cursor = createMemo(() => uiSearchParamNumberRead(searchParams.cursor))
+  const canShowArchived = createMemo(() => {
+    const principal = uiSessionStore.get().principal
+    return (
+      principal?.mode === "admin" &&
+      (principal.organizationAdmin === true ||
+        principal.grants.some(
+          (grant) => grant.roles.includes("admin") || (grant.roles as readonly string[]).includes("assets.admin"),
+        ))
+    )
+  })
+  const includeArchivedUrlValue = createMemo(() =>
+    uiSearchParamSchemaRead(includeArchivedSchema, searchParams.includeArchived),
+  )
+  const includeArchived = createMemo(() => canShowArchived() && includeArchivedUrlValue() === true)
 
   const searchUrlValuesRead = () => {
     const value = uiSearchParamSchemaRead(searchSchema, searchDraftState.get())
-    return { search: value ?? null, cursor: null }
+    return { search: value ?? null, includeArchived: includeArchived() ? "true" : null, cursor: null }
   }
 
   const searchUrlReplace = () => {
     const value = uiSearchParamSchemaRead(searchSchema, searchDraftState.get())
     if (value === undefined) pendingSearchParams.delete("search")
     else pendingSearchParams.set("search", value)
+    if (includeArchived()) pendingSearchParams.set("includeArchived", "true")
+    else pendingSearchParams.delete("includeArchived")
     pendingSearchParams.delete("cursor")
     void uiSearchParamsReplace(pendingSearchParams).then((result) => {
       if (!result.success) return
@@ -64,14 +81,31 @@ export const uiProjectListPageStateCreate = () => {
           "uiProjectListPageRead",
           ttc("The API client is unavailable", "Der API-Client ist nicht verfügbar"),
         )
-      return client.data.projectsRead({
+      const projects = await client.data.projectsRead({
         limit: 25,
         ...(search() === undefined ? {} : { search: search() }),
         ...(cursor() === undefined ? {} : { cursor: cursor() }),
+        ...(includeArchived() ? { includeArchived: true } : {}),
       })
+      if (!projects.success) return projects
+      if (uiSessionStore.get().principal?.mode !== "contributor") return projects
+      return {
+        success: true,
+        data: {
+          ...projects.data,
+          projects: projects.data.projects.filter(
+            (project) => project.archiveState === undefined || project.archiveState === "active",
+          ),
+        },
+      }
     },
     {
-      cacheKey: () => uiQueryCacheKeyCreate("projects", "all", `search=${search() ?? ""}&cursor=${cursor() ?? ""}`),
+      cacheKey: () =>
+        uiQueryCacheKeyCreate(
+          "projects",
+          "all",
+          `search=${search() ?? ""}&includeArchived=${includeArchived()}&cursor=${cursor() ?? ""}`,
+        ),
       cacheSchema: projectListResponseSchema,
     },
   )
@@ -106,6 +140,22 @@ export const uiProjectListPageStateCreate = () => {
   return {
     query,
     searchDraft,
+    canShowArchived,
+    includeArchived,
+    changeIncludeArchived: (value: boolean) => {
+      if (!canShowArchived()) return
+      const pending = new URLSearchParams(window.location.search)
+      if (value) pending.set("includeArchived", "true")
+      else pending.delete("includeArchived")
+      pending.delete("cursor")
+      void uiSearchParamsReplace(pending).then((result) => {
+        if (!result.success) return
+        setSearchParams(
+          { search: search() ?? null, includeArchived: value ? "true" : null, cursor: null },
+          { replace: true },
+        )
+      })
+    },
     hasSearch: () => search() !== undefined,
     nextCursor: () => query.data()?.page.nextCursor ?? null,
     isFirstPage: () => cursor() === undefined,

@@ -141,6 +141,29 @@ test("associates each asset view tab with its hidden tabpanel", async () => {
   expect(page).toContain('hidden={state.tabSignal.get() !== "list"}')
 })
 
+test("keeps archived project visibility administrator-only and URL-backed", async () => {
+  const page = await readFile("src/ui/pages/UiProjectListPage.tsx", "utf8")
+  const state = await readFile("src/ui/pages/uiProjectListPageStateCreate.ts", "utf8")
+  const card = await readFile("src/ui/pages/UiProjectCard.tsx", "utf8")
+
+  expect(page).toContain('import { Checkbox } from "#ui/input/check/Checkbox.jsx"')
+  expect(page).toContain('ttc("Show archived", "Archivierte anzeigen")')
+  expect(page).toContain("<Show when={state.canShowArchived()}>")
+  expect(state).toContain('principal?.mode === "admin"')
+  expect(state).toContain("principal.organizationAdmin === true")
+  expect(state).toContain('grant.roles.includes("admin")')
+  expect(state).toContain("includeArchived: true")
+  expect(state).toContain("includeArchived=" + "$" + "{includeArchived()}")
+  expect(state).toContain('includeArchived: value ? "true" : null')
+  expect(state).toContain("...(search() === undefined ? {} : { search: search() }),")
+  expect(state).toContain("...(cursor() === undefined ? {} : { cursor: cursor() }),")
+  expect(state).toContain("search: search() ?? null")
+  expect(state).toContain("projectsReadAll()")
+  expect(state).toContain('project.archiveState === undefined || project.archiveState === "active"')
+  expect(card).toContain('p.project.archiveState !== undefined && p.project.archiveState !== "active"')
+  expect(card).toContain('ttc("Archived", "Archiviert")')
+})
+
 test("removes list preview images when previews are disabled", async () => {
   const page = await readFile("src/ui/pages/UiAssetListPage.tsx", "utf8")
 

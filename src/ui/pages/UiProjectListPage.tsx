@@ -1,6 +1,7 @@
 import { mdiClose } from "@adaptive-ds/mdi/mdiClose.js"
 import { mdiMagnify } from "@adaptive-ds/mdi/mdiMagnify.js"
-import { For } from "solid-js"
+import { For, Show } from "solid-js"
+import { Checkbox } from "#ui/input/check/Checkbox.jsx"
 import { InputS } from "#ui/input/input/InputS.jsx"
 import { Label } from "#ui/input/label/Label.jsx"
 import { ButtonIcon } from "#ui/interactive/button/ButtonIcon.jsx"
@@ -53,6 +54,16 @@ export function UiProjectListPage() {
         >
           {ttc("Clear", "Leeren")}
         </ButtonIcon>
+        <Show when={state.canShowArchived()}>
+          <Checkbox
+            id="show-archived"
+            checked={state.includeArchived()}
+            onChange={state.changeIncludeArchived}
+            data-testid="show-archived"
+          >
+            {ttc("Show archived", "Archivierte anzeigen")}
+          </Checkbox>
+        </Show>
       </form>
 
       <UiQueryView

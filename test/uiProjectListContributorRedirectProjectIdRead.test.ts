@@ -55,3 +55,14 @@ test("preserves admin selection and filtered or paginated contributor selection"
     }),
   ).toBe(null)
 })
+
+test("does not redirect contributors to an archived project", () => {
+  expect(
+    uiProjectListContributorRedirectProjectIdRead({
+      mode: "contributor",
+      search: undefined,
+      cursor: undefined,
+      projects: [{ id: "project-1", archiveState: "archived" }] as never,
+    }),
+  ).toBe(null)
+})
