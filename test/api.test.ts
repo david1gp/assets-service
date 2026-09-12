@@ -11,6 +11,8 @@ import type { AuthenticationSession } from "../src/authentication/sessionSchema.
 import type { ZitadelJwk } from "../src/infrastructure/zitadel/zitadelJwk.js"
 import { zitadelJwksClientMemoryCreate } from "../src/infrastructure/zitadel/zitadelJwksClientMemoryCreate.js"
 import type { ProjectRepository } from "../src/project/projectRepository.js"
+import type { ProjectArchiveWorkflow } from "../src/project/projectArchiveWorkflow.js"
+import type { ProjectUnarchiveWorkflow } from "../src/project/projectUnarchiveWorkflow.js"
 
 const now = 1_700_000_000
 
@@ -373,6 +375,107 @@ describe("HTTP API", () => {
     expect(adminSettings.status).toBe(200)
   })
 
+  test("does not authorize contributors against projects in an archive lifecycle state", async () => {
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectRead: () => ({ success: true, data: { ...project, archiveState: "archived" } }),
+    }
+    const app = apiAppCreate(options)
+    const contributor = await sessionCreate(options)
+    const denied = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service", { headers: { cookie: contributor } }),
+    )
+    expect(denied.status).toBe(403)
+
+    const adminOptions = optionsCreate()
+    adminOptions.projectRepository = {
+      ...adminOptions.projectRepository,
+      projectRead: () => ({ success: true, data: { ...project, archiveState: "archived" } }),
+    }
+    const adminApp = apiAppCreate(adminOptions)
+    const administrator = await sessionCreate(adminOptions, "contributor", true)
+    const allowed = await adminApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service", {
+        headers: { cookie: administrator },
+      }),
+    )
+    expect(allowed.status).toBe(200)
+  })
+
+  test("allows project administrators to archive and unarchive, but not contributors", async () => {
+    const archiveCalls: string[] = []
+    const unarchiveCalls: string[] = []
+    const options = optionsCreate()
+    const archiveWorkflow: ProjectArchiveWorkflow = {
+      projectArchive: async (projectId) => {
+        archiveCalls.push(projectId)
+        return { success: true, data: { project, deletedBuckets: ["assets-project"], deletedObjectCount: 2 } }
+      },
+    }
+    const unarchiveWorkflow: ProjectUnarchiveWorkflow = {
+      projectUnarchive: async (projectId) => {
+        unarchiveCalls.push(projectId)
+        return {
+          success: true,
+          data: { project, createdBuckets: ["assets-project"], restoredOriginalCount: 1, regeneratedOutputCount: 2 },
+        }
+      },
+    }
+    options.projectArchiveWorkflow = archiveWorkflow
+    options.projectUnarchiveWorkflow = unarchiveWorkflow
+    const app = apiAppCreate(options)
+    const contributor = await sessionCreate(options, "contributor")
+    const contributorArchive = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/archive", {
+        method: "POST",
+        headers: { cookie: contributor },
+      }),
+    )
+    const contributorUnarchive = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/unarchive", {
+        method: "POST",
+        headers: { cookie: contributor },
+      }),
+    )
+
+    expect(contributorArchive.status).toBe(403)
+    expect(contributorUnarchive.status).toBe(403)
+    expect(archiveCalls).toEqual([])
+    expect(unarchiveCalls).toEqual([])
+
+    const administratorOptions = optionsCreate()
+    administratorOptions.projectArchiveWorkflow = archiveWorkflow
+    administratorOptions.projectUnarchiveWorkflow = unarchiveWorkflow
+    const administratorApp = apiAppCreate(administratorOptions)
+    const administrator = await sessionCreate(administratorOptions, "admin")
+    const archive = await administratorApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/archive", {
+        method: "POST",
+        headers: { cookie: administrator },
+      }),
+    )
+    const unarchive = await administratorApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/unarchive", {
+        method: "POST",
+        headers: { cookie: administrator },
+      }),
+    )
+
+    expect(archive.status).toBe(200)
+    expect(await archive.json()).toMatchObject({
+      ok: true,
+      data: { project: { id: "project-1" }, deletedBuckets: ["assets-project"], deletedObjectCount: 2 },
+    })
+    expect(unarchive.status).toBe(200)
+    expect(await unarchive.json()).toMatchObject({
+      ok: true,
+      data: { project: { id: "project-1" }, createdBuckets: ["assets-project"], restoredOriginalCount: 1 },
+    })
+    expect(archiveCalls).toEqual(["project-1"])
+    expect(unarchiveCalls).toEqual(["project-1"])
+  })
+
   test("returns aggregate metrics in the project list contract", async () => {
     const options = optionsCreate()
     options.projectRepository = {
@@ -441,37 +544,72 @@ describe("HTTP API", () => {
 
   test("passes organization-wide listing only for an organization administrator", async () => {
     let requestedOrganizationAdmin: boolean | undefined
+    let requestedIncludeArchived: boolean | undefined
     const options = optionsCreate()
     options.projectRepository = {
       ...options.projectRepository,
-      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
+      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin, includeArchived) => {
         requestedOrganizationAdmin = organizationAdmin
+        requestedIncludeArchived = includeArchived
         return { success: true, data: [projectListItem] }
       },
     }
     const app = apiAppCreate(options)
     const administrator = await sessionCreate(options, "contributor", true)
     const administratorResponse = await app.fetch(
-      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: administrator } }),
+      new Request("https://assets.example.test/api/v1/projects?includeArchived=true", {
+        headers: { cookie: administrator },
+      }),
     )
     expect(administratorResponse.status).toBe(200)
     expect(requestedOrganizationAdmin).toBe(true)
+    expect(requestedIncludeArchived).toBe(true)
 
     const regularOptions = optionsCreate()
     regularOptions.projectRepository = {
       ...regularOptions.projectRepository,
-      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin) => {
+      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin, includeArchived) => {
         requestedOrganizationAdmin = organizationAdmin
+        requestedIncludeArchived = includeArchived
         return { success: true, data: [projectListItem] }
       },
     }
     const regularApp = apiAppCreate(regularOptions)
     const regular = await sessionCreate(regularOptions)
     const regularResponse = await regularApp.fetch(
-      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: regular } }),
+      new Request("https://assets.example.test/api/v1/projects?includeArchived=true", { headers: { cookie: regular } }),
     )
     expect(regularResponse.status).toBe(200)
     expect(requestedOrganizationAdmin).toBe(false)
+    expect(requestedIncludeArchived).toBe(false)
+  })
+
+  test("passes archived listing opt-in for a project administrator", async () => {
+    let requestedOrganizationAdmin: boolean | undefined
+    let requestedIncludeArchived: boolean | undefined
+    let requestedProjectAdministrator: boolean | undefined
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectsRead: (_organizationId, _zitadelProjectIds, organizationAdmin, includeArchived, projectAdministrator) => {
+        requestedOrganizationAdmin = organizationAdmin
+        requestedIncludeArchived = includeArchived
+        requestedProjectAdministrator = projectAdministrator
+        return { success: true, data: [projectListItem] }
+      },
+    }
+    const app = apiAppCreate(options)
+    const administrator = await sessionCreate(options, "admin")
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects?includeArchived=true", {
+        headers: { cookie: administrator },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(requestedOrganizationAdmin).toBe(false)
+    expect(requestedIncludeArchived).toBe(true)
+    expect(requestedProjectAdministrator).toBe(true)
   })
 
   test("keeps customer contributors on owned bindings and exact contributor grants", async () => {

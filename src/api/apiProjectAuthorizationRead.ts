@@ -18,6 +18,35 @@ type ApiProjectAuthorizationScope = {
   organizationMappings?: readonly ZitadelOrganizationMapping[]
 }
 
+const projectArchiveAccessAllowed = (
+  project: Project,
+  binding: ProjectBinding,
+  authentication: RequestAuthentication,
+  scope: ApiProjectAuthorizationScope,
+): boolean => {
+  if (project.archiveState === undefined || project.archiveState === "active") return true
+  const mapping = scope.organizationMappings?.find(
+    (candidate) => candidate.ownerOrganizationId === binding.organizationId,
+  )
+  const customerOrganizationId = mapping?.customerOrganizationId ?? scope.customerOrganizationId
+  const isCustomer =
+    authentication.principal.method === "human_session" &&
+    customerOrganizationId !== undefined &&
+    authentication.principal.organizationId === customerOrganizationId
+  if (isCustomer) return false
+  if (
+    authentication.principal.method === "human_session" &&
+    authentication.principal.organizationAdmin &&
+    authentication.principal.organizationId === binding.organizationId
+  )
+    return true
+  const grant = authentication.principal.grants.find((candidate) => candidate.projectId === binding.zitadelProjectId)
+  return (
+    grant?.roles.includes("admin") === true ||
+    (grant?.roles as readonly string[] | undefined)?.includes("assets.admin") === true
+  )
+}
+
 export const apiProjectAuthorizationRead = (
   projectIdentifier: string,
   authentication: RequestAuthentication,
@@ -45,5 +74,7 @@ export const apiProjectAuthorizationRead = (
   if (!project.data) return resultErrorCreate("apiProjectAuthorizationRead", "The project was not found")
   if (project.data.organizationId !== binding.data.organizationId)
     return resultErrorCreate("apiProjectAuthorizationRead", "The project binding was invalid")
+  if (!projectArchiveAccessAllowed(project.data, binding.data, authentication, scope))
+    return resultErrorCreate("apiProjectAuthorizationRead", "The archived project was not available")
   return { success: true, data: { project: project.data, binding: binding.data, authentication } }
 }

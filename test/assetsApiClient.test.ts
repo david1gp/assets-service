@@ -59,6 +59,107 @@ test("assets API client validates the server-derived session mode", async () => 
   })
 })
 
+test("assets API client sends the archived-project opt-in query", async () => {
+  let request: Request | undefined
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    sessionCookie: "admin-session-cookie",
+    fetcher: async (input, init) => {
+      request = new Request(String(input), init)
+      return envelopeResponseCreate({ projects: [], page: { limit: 50, nextCursor: null } })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const projects = await clientResult.data.projectsRead({ includeArchived: true })
+
+  expect(projects).toMatchObject({ success: true, data: { projects: [], page: { nextCursor: null } } })
+  expect(request?.url).toBe("https://assets.example.test/api/v1/projects?includeArchived=true")
+})
+
+test("assets API client preserves archived opt-in and search across project pages", async () => {
+  const requests: Request[] = []
+  const projectCreate = (id: string) => ({
+    id,
+    organizationId: "organization-1",
+    name: id,
+    slug: id,
+    defaultEnvironment: "development" as const,
+    archiveState: "archived" as const,
+    assetCount: 0,
+    totalFileSize: 0,
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  })
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    sessionCookie: "admin-session-cookie",
+    fetcher: async (input, init) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      const cursor = new URL(request.url).searchParams.get("cursor")
+      return envelopeResponseCreate({
+        projects: [projectCreate(cursor === null ? "project-1" : "project-2")],
+        page: { limit: 100, nextCursor: cursor === null ? "100" : null },
+      })
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const projects = await clientResult.data.projectsReadAll({ search: "archived", includeArchived: true })
+
+  expect(projects).toMatchObject({ success: true, data: [{ id: "project-1" }, { id: "project-2" }] })
+  expect(requests).toHaveLength(2)
+  for (const request of requests) {
+    const query = new URL(request.url).searchParams
+    expect(query.get("includeArchived")).toBe("true")
+    expect(query.get("search")).toBe("archived")
+    expect(query.get("limit")).toBe("100")
+  }
+  expect(new URL(requests[0]?.url ?? "https://assets.example.test").searchParams.get("cursor")).toBeNull()
+  expect(new URL(requests[1]?.url ?? "https://assets.example.test").searchParams.get("cursor")).toBe("100")
+})
+
+test("assets API client archives and unarchives a project with authenticated POST requests", async () => {
+  const requests: Request[] = []
+  const project = {
+    id: "project:1",
+    organizationId: "organization-1",
+    name: "Example",
+    slug: "example",
+    defaultEnvironment: "development",
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+  }
+  const clientResult = assetsApiClientCreate({
+    apiUrl: "https://assets.example.test",
+    accessToken: "admin-token",
+    fetcher: async (input, init) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      return envelopeResponseCreate(
+        request.url.endsWith("/archive")
+          ? { project, deletedBuckets: ["bucket-1"], deletedObjectCount: 1 }
+          : { project, createdBuckets: ["bucket-1"], restoredOriginalCount: 1, regeneratedOutputCount: 1 },
+      )
+    },
+  })
+
+  expect(clientResult.success).toBe(true)
+  if (!clientResult.success) return
+  const archived = await clientResult.data.projectArchive("project:1")
+  const unarchived = await clientResult.data.projectUnarchive("project:1")
+
+  expect(archived).toMatchObject({ success: true, data: { deletedObjectCount: 1 } })
+  expect(unarchived).toMatchObject({ success: true, data: { regeneratedOutputCount: 1 } })
+  expect(requests.map((request) => [request.method, request.url, request.headers.get("authorization")])).toEqual([
+    ["POST", "https://assets.example.test/api/v1/projects/project%3A1/archive", "Bearer admin-token"],
+    ["POST", "https://assets.example.test/api/v1/projects/project%3A1/unarchive", "Bearer admin-token"],
+  ])
+})
+
 test("assets API client returns safe network diagnostics", async () => {
   const token = "network-secret-token"
   const accessToken = "configured-api-token"

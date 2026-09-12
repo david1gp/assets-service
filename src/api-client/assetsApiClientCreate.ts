@@ -55,6 +55,8 @@ import { outputListResponseSchema } from "./outputListResponseSchema.js"
 import { outputRemoveRequestSchema } from "./outputRemoveRequestSchema.js"
 import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
+import { projectArchiveResponseSchema } from "./projectArchiveResponseSchema.js"
+import { projectUnarchiveResponseSchema } from "./projectUnarchiveResponseSchema.js"
 import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
 import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
 import { storageMigrationPlanRequestSchema } from "./storageMigrationPlanRequestSchema.js"
@@ -94,6 +96,7 @@ const pageInputSchema = v.strictObject({
 const projectListInputSchema = v.strictObject({
   ...pageInputSchema.entries,
   search: v.optional(v.pipe(v.string(), v.maxLength(255))),
+  includeArchived: v.optional(v.boolean()),
 })
 
 const assetListInputSchema = v.strictObject({
@@ -502,7 +505,9 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientAuthOrganizationSwitch",
     })
 
-  const projectsRead = async (query: { cursor?: number; limit?: number; search?: string } = {}) => {
+  const projectsRead = async (
+    query: { cursor?: number; limit?: number; search?: string; includeArchived?: boolean } = {},
+  ) => {
     const valid = schemaParse(
       projectListInputSchema,
       query,
@@ -518,9 +523,9 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     })
   }
 
-  const projectsReadAll = () =>
-    pageReadAll(async (query) => {
-      const page = await projectsRead(query)
+  const projectsReadAll = (projectQuery: { search?: string; includeArchived?: boolean } = {}) =>
+    pageReadAll(async (pageQuery) => {
+      const page = await projectsRead({ ...projectQuery, ...pageQuery })
       if (!page.success) return page
       return { success: true, data: { items: page.data.projects, nextCursor: page.data.page.nextCursor } }
     })
@@ -540,6 +545,22 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       path: `/projects/${encodeURIComponent(projectId)}`,
       responseSchema: projectSchema,
       operation: "assetsApiClientProjectRead",
+    })
+
+  const projectArchive = (projectId: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/archive`,
+      method: "POST",
+      responseSchema: projectArchiveResponseSchema,
+      operation: "assetsApiClientProjectArchive",
+    })
+
+  const projectUnarchive = (projectId: string) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/unarchive`,
+      method: "POST",
+      responseSchema: projectUnarchiveResponseSchema,
+      operation: "assetsApiClientProjectUnarchive",
     })
 
   const projectSettingsRead = (projectId: string) =>
@@ -1176,6 +1197,8 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     projectsReadAll,
     projectCreate,
     projectRead,
+    projectArchive,
+    projectUnarchive,
     projectSettingsRead,
     projectSettingsWrite,
     environmentsRead,

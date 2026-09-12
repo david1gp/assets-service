@@ -123,9 +123,10 @@ const assetNotFoundResponseCreate = (context: { get: (key: string) => unknown })
 
 const domainFailureResponseCreate = (context: { get: (key: string) => unknown }, errorMessage: string) => {
   const notFound = /not found|does not exist|disappeared/i.test(errorMessage)
-  const conflict = /already|must retain|must have|cannot have|different request|cannot be resumed|not available/i.test(
-    errorMessage,
-  )
+  const conflict =
+    /already|must retain|must have|cannot have|different request|cannot be resumed|cannot be (archived|unarchived)|state transition was not allowed|not available/i.test(
+      errorMessage,
+    )
   const validation =
     /invalid|must be|requires|only one|exactly one|unique|does not match|not allowed|could not be detected/i.test(
       errorMessage,
@@ -203,6 +204,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/auth\/(logout|organization|organization\/switch)$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects$/, methods: ["GET", "POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/(archive|unarchive)$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/settings$/, methods: ["GET", "PUT"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+$/, methods: ["GET"] },
@@ -678,13 +680,29 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
       authentication.principal.method === "human_session" &&
       orgContext.isOwner(authentication.principal.organizationId) &&
       authentication.principal.organizationAdmin
-    const projects = options.projectRepository.projectsRead(projectOrganizationId, zitadelProjectIds, organizationAdmin)
+    const projectAdministrator =
+      authentication.principal.mode === "admin" &&
+      !isCustomer &&
+      authentication.principal.grants.some(
+        (grant) => grant.roles.includes("admin") || (grant.roles as readonly string[]).includes("assets.admin"),
+      )
+    const includeArchived = (organizationAdmin || projectAdministrator) && parsedQuery.output.includeArchived === true
+    const projects = options.projectRepository.projectsRead(
+      projectOrganizationId,
+      zitadelProjectIds,
+      organizationAdmin,
+      includeArchived,
+      projectAdministrator,
+    )
     if (!projects.success) return failureFromRepositoryCreate(context)
+    const visibleProjects = includeArchived
+      ? projects.data
+      : projects.data.filter((item) => item.archiveState === undefined || item.archiveState === "active")
     const search = parsedQuery.output.search?.toLocaleLowerCase()
     const filtered =
       search === undefined
-        ? projects.data
-        : projects.data.filter((item) => `${item.name} ${item.slug}`.toLocaleLowerCase().includes(search))
+        ? visibleProjects
+        : visibleProjects.filter((item) => `${item.name} ${item.slug}`.toLocaleLowerCase().includes(search))
     const offset = parsedQuery.output.cursor ?? 0
     const limit = Math.min(100, Math.max(1, parsedQuery.output.limit ?? 50))
     const selected = filtered.slice(offset, offset + limit + 1)
@@ -749,6 +767,34 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     if (!project) return failureFromRepositoryCreate(context)
     return successResponseCreate(context, project)
   })
+
+  app.post(
+    `${apiVersionPath}/projects/:projectId/archive`,
+    authenticationMiddleware,
+    adminMiddleware,
+    async (context) => {
+      if (options.projectArchiveWorkflow === undefined) return dependencyFailureCreate(context)
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const archived = await options.projectArchiveWorkflow.projectArchive(project.id)
+      if (!archived.success) return domainFailureResponseCreate(context, archived.errorMessage)
+      return successResponseCreate(context, archived.data)
+    },
+  )
+
+  app.post(
+    `${apiVersionPath}/projects/:projectId/unarchive`,
+    authenticationMiddleware,
+    adminMiddleware,
+    async (context) => {
+      if (options.projectUnarchiveWorkflow === undefined) return dependencyFailureCreate(context)
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const unarchived = await options.projectUnarchiveWorkflow.projectUnarchive(project.id)
+      if (!unarchived.success) return domainFailureResponseCreate(context, unarchived.errorMessage)
+      return successResponseCreate(context, unarchived.data)
+    },
+  )
 
   app.get(`${apiVersionPath}/projects/:projectId/settings`, authenticationMiddleware, adminMiddleware, (context) => {
     const settings = options.projectRepository.projectSettingsRead(context.req.param("projectId"))
