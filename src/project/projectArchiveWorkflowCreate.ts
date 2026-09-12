@@ -260,13 +260,15 @@ async function dedicatedBucketCleanup(
   if (credential.data === null) return { success: true, data: { deleted: deleted.data.deleted } }
 
   archivePhaseLog(input, request.projectId, "credential-cleanup", { bucket: request.bucket })
-  const revoke = input.r2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevoke
-  const revoked = await revoke({
-    accountId: input.cloudflareCredentials.accountId,
-    apiToken: input.cloudflareCredentials.apiToken,
-    revocationId: credential.data.revocationId,
-  })
-  if (!revoked.success) return revoked
+  if (credential.data.revocationId !== null) {
+    const revoke = input.r2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevoke
+    const revoked = await revoke({
+      accountId: input.cloudflareCredentials.accountId,
+      apiToken: input.cloudflareCredentials.apiToken,
+      revocationId: credential.data.revocationId,
+    })
+    if (!revoked.success) return revoked
+  }
   if (input.r2BucketCredentialRepository === undefined)
     return resultErrorCreate("projectArchiveWorkflow", "R2 bucket credential persistence is not configured")
   const removed = input.r2BucketCredentialRepository.r2BucketCredentialDelete(request.bucket)

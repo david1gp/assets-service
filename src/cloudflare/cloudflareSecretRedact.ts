@@ -5,7 +5,7 @@ const quotedSecretAssignmentPattern = new RegExp(
   "giu",
 )
 
-export const cloudflareSecretRedact = (value: string, secrets: readonly (string | undefined)[] = []): string => {
+export const cloudflareSecretRedact = (value: string, secrets: readonly (string | null | undefined)[] = []): string => {
   const withoutAssignments = value.replace(
     new RegExp(
       `(\\b(?:${secretFieldPattern}|authorization|proxy-authorization|cookie|set-cookie|password|passwd|secret|token|api[-_ ]?key|access[-_ ]?(?:key|token)|client[-_ ]?secret|refresh[-_ ]?token|id[-_ ]?token|credential|signature|x-amz-[\\w-]+)\\b\\s*[:=]\\s*)(?:"[^"]*"|'[^']*'|[^\\s,;}]+)`,
@@ -19,6 +19,6 @@ export const cloudflareSecretRedact = (value: string, secrets: readonly (string 
   )
   const withoutBearer = withoutQuotedAssignments.replace(/(\bBearer\s+)[^\s,;}]+/giu, `$1${redactedValue}`)
   return secrets
-    .filter((secret): secret is string => secret !== undefined && secret.length > 0)
+    .filter((secret): secret is string => secret !== null && secret !== undefined && secret.length > 0)
     .reduce((current, secret) => current.replaceAll(secret, redactedValue), withoutBearer)
 }

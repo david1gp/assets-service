@@ -55,7 +55,7 @@ const statusReadAll = async (
 
 const errorMessageRedactedRead = (
   result: Extract<Result<unknown>, { success: false }>,
-  secrets: readonly (string | undefined)[],
+  secrets: readonly (string | null | undefined)[],
 ): string => cloudflareSecretRedact(result.errorMessage, secrets)
 
 const projectCreateCredentialReconciliationRun = async (
@@ -104,16 +104,18 @@ const projectCreateCredentialReconciliationRun = async (
           created.data.revocationId,
         ]
         const registrationError = errorMessageRedactedRead(registered, credentialSecrets)
-        const revoked = await credentialRevoke({
-          accountId: cloudflareCredentials.data.accountId,
-          apiToken: cloudflareCredentials.data.apiToken,
-          revocationId: created.data.revocationId,
-        })
-        if (!revoked.success) {
-          const cleanupError = errorMessageRedactedRead(revoked, credentialSecrets)
-          return resultFailure(
-            `Could not register the scoped R2 credential for ${bucket}: ${registrationError}; cleanup failed: ${cleanupError}`,
-          )
+        if (created.data.revocationId !== null) {
+          const revoked = await credentialRevoke({
+            accountId: cloudflareCredentials.data.accountId,
+            apiToken: cloudflareCredentials.data.apiToken,
+            revocationId: created.data.revocationId,
+          })
+          if (!revoked.success) {
+            const cleanupError = errorMessageRedactedRead(revoked, credentialSecrets)
+            return resultFailure(
+              `Could not register the scoped R2 credential for ${bucket}: ${registrationError}; cleanup failed: ${cleanupError}`,
+            )
+          }
         }
         return resultFailure(`Could not register the scoped R2 credential for ${bucket}: ${registrationError}`)
       }

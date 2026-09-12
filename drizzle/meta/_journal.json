@@ -168,6 +168,13 @@
       "version": "6",
       "when": 1789184031849,
       "tag": "0023_project_storage_metadata",
+       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1789216850260,
+      "tag": "0024_nullable_r2_credential_revocation_id",
       "breakpoints": true
     }
   ]
