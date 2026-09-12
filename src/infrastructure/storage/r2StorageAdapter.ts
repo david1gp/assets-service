@@ -292,12 +292,14 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
     const op = "r2StorageAdapterCreate"
     try {
       const unsignedUrl = objectUrl(input.endpoint, bucket, key, query)
+      const requestBody = body === undefined ? undefined : Buffer.from(body)
       const headers =
         method === "HEAD" && key.length > 0 ? { ...extraHeaders, "accept-encoding": "identity" } : extraHeaders
+      if (requestBody !== undefined) headers["x-amz-content-sha256"] = await hexDigest(requestBody)
       const signed = await aws.sign(unsignedUrl.toString(), {
         method,
         headers,
-        body: body ? Buffer.from(body) : undefined,
+        body: requestBody,
       })
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 30_000)
@@ -306,7 +308,7 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         response = await fetchImplementation(signed.url, {
           method,
           headers: signed.headers,
-          body: body ? Buffer.from(body) : undefined,
+          body: requestBody,
           signal: controller.signal,
         })
       } finally {

@@ -401,7 +401,7 @@ describe("storage adapters", () => {
   })
 
   test("recovers an R2 object with a guarded identity GET and streamed SHA-256 when HEAD length is unsafe", async () => {
-    const requests: Array<{ method: string; headers: Headers }> = []
+    const requests: Array<{ method: string; headers: Headers; body: RequestInit["body"] }> = []
     const adapter = r2StorageAdapterCreate({
       accountId: "account",
       accessKeyId: "access",
@@ -409,7 +409,7 @@ describe("storage adapters", () => {
       endpoint: "https://account.r2.cloudflarestorage.com",
       fetchImplementation: async (_url, init) => {
         const method = init?.method ?? "GET"
-        requests.push({ method, headers: new Headers(init?.headers) })
+        requests.push({ method, headers: new Headers(init?.headers), body: init?.body })
         if (method === "GET") {
           const response = new Response(
             new ReadableStream<Uint8Array>({
@@ -459,6 +459,10 @@ describe("storage adapters", () => {
     expect(requests[0]?.headers.get("accept-encoding")).toBe("identity")
     expect(requests[1]?.headers.get("accept-encoding")).toBe("identity")
     expect(requests[1]?.headers.get("if-match")).toBe('"strong-etag"')
+    expect(requests[0]?.body).toBeUndefined()
+    expect(requests[1]?.body).toBeUndefined()
+    expect(requests[0]?.headers.get("x-amz-content-sha256")).toBe("UNSIGNED-PAYLOAD")
+    expect(requests[1]?.headers.get("x-amz-content-sha256")).toBe("UNSIGNED-PAYLOAD")
   })
 
   test("returns null when the guarded R2 fallback GET finds no object", async () => {
@@ -625,7 +629,7 @@ describe("storage adapters", () => {
 
   test("verifies R2 checksum, content type, and immutable cache policy after upload", async () => {
     const checksum = contentSha256Create(png)
-    const requests: Array<{ method: string; headers: Headers }> = []
+    const requests: Array<{ method: string; headers: Headers; body: Uint8Array }> = []
     const adapter = r2StorageAdapterCreate({
       accountId: "account",
       accessKeyId: "access",
@@ -634,7 +638,12 @@ describe("storage adapters", () => {
       now: () => new Date("2026-08-17T12:00:00.000Z"),
       fetchImplementation: async (_url, init) => {
         const method = init?.method ?? "GET"
-        requests.push({ method, headers: new Headers(init?.headers) })
+        const request = new Request(_url, init)
+        requests.push({
+          method,
+          headers: new Headers(init?.headers),
+          body: new Uint8Array(await request.arrayBuffer()),
+        })
         if (method === "PUT") return new Response(null, { status: 200 })
         return new Response(null, {
           status: 200,
@@ -660,6 +669,11 @@ describe("storage adapters", () => {
     expect(stored).toMatchObject({ success: true, data: { sha256: checksum, mediaType: "image/png" } })
     expect(requests[0]?.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
     expect(requests[0]?.headers.get("x-amz-meta-sha256")).toBe(checksum)
+    expect(requests[0]?.body).toEqual(png)
+    expect(requests[0]?.headers.get("x-amz-content-sha256")).toBe(
+      contentSha256Create(requests[0]?.body ?? new Uint8Array()),
+    )
+    expect(requests[0]?.headers.get("authorization")).toContain("x-amz-content-sha256")
   })
 
   test("replaces R2 copy metadata when the source is private", async () => {

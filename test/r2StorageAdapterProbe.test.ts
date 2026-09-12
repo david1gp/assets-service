@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { r2StorageAdapterCreate } from "../src/infrastructure/storage/r2StorageAdapter.js"
+import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 
 type ProbeRequest = {
   body: Uint8Array
@@ -39,6 +40,8 @@ describe("R2 credential probes", () => {
     ])
     expect(probeRequest.url.pathname).toMatch(/^\/probe-bucket\/_assets-service-probes\/[0-9a-f-]{36}$/u)
     expect(requests[0]?.body).toEqual(new Uint8Array([0x61]))
+    expect(probeRequest.headers.get("x-amz-content-sha256")).toBe(contentSha256Create(probeRequest.body))
+    expect(probeRequest.headers.get("authorization")).toContain("x-amz-content-sha256")
     expect(requests.every(({ headers }) => headers.get("authorization")?.includes(`Credential=${accessKeyId}/`))).toBe(
       true,
     )
