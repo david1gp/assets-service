@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 
 import { r2CredentialsRead } from "../src/asset-cli/r2CredentialsRead.js"
+import { projectCreateR2CredentialsRead } from "../src/asset-cli/projectCreateR2CredentialsRead.js"
 
 test("prefers the complete primary R2 credential pair", () => {
   expect(
@@ -23,6 +24,10 @@ test("reads the complete compatibility R2 credential pair", () => {
     success: true,
     data: { accessKeyId: "compatibility-access", secretAccessKey: "compatibility-secret" },
   })
+})
+
+test("reports no imported pair so project creation can use its Cloudflare fallback", () => {
+  expect(projectCreateR2CredentialsRead({})).toEqual({ success: true, data: null })
 })
 
 test("rejects incomplete credential pairs", () => {

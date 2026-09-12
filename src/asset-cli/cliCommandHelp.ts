@@ -19,7 +19,7 @@ export type CliCommandHelp = {
 const commands: readonly string[] = [
   "auth login",
   "projects create --organization <key|id|slug> --name <name> --slug <slug> --default-environment <development|production> --service-project-id <id> [--zitadel-project-id <id>] --development-r2-bucket <bucket> --development-r2-prefix <prefix> --development-public-base-url <url> --production-r2-bucket <bucket> --production-r2-prefix <prefix> --production-public-base-url <url> [--create-buckets] [--wrangler-profile <name>]",
-  "projects create --create-buckets: provisions missing buckets and registers configured R2 S3 credentials without displaying secrets",
+  "projects create --create-buckets: provisions missing buckets, skips registered buckets, and registers imported R2 credentials or creates bucket-scoped Cloudflare credentials without displaying credential material",
   "projects archive --project <id-or-name>",
   "projects unarchive --project <id-or-name>",
   "r2 credentials backfill [--dry-run|--apply]",

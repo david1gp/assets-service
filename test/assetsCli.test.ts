@@ -602,6 +602,97 @@ test("projects create reconciles bucket credentials after buckets, Zitadel, and 
   }
 })
 
+test("projects create falls back to bucket-scoped Cloudflare credentials", async () => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-cloudflare-fallback-home-"))
+  const output: string[] = []
+  const registeredCredentials: Array<{ accessKeyId: string; secretAccessKey: string; revocationId: string }> = []
+  let cloudflareCreateCount = 0
+  try {
+    await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
+    await projectCreateEnvironmentFileWrite(
+      homeDirectory,
+      [
+        "ASSETS_API_URL=https://assets.example.test",
+        "CLOUDFLARE_ACCOUNT_ID=cloudflare-account",
+        "CLOUDFLARE_API_TOKEN=raw-cloudflare-token",
+      ].join("\n"),
+    )
+    const projectSettings = {
+      ...apiProjectSettingsCreate(),
+      environments: [
+        { ...apiProjectSettingsCreate().environments[0], r2Bucket: "shared-project-bucket" },
+        { ...apiProjectSettingsCreate().environments[1], r2Bucket: "shared-project-bucket" },
+      ],
+    }
+    const registeredBuckets = new Set<string>()
+    const exitCode = await assetsCliMain(
+      projectCreateArguments("zitadel-existing").slice(0, -1).concat("--create-buckets", "--json"),
+      {
+        env: {
+          HOME: homeDirectory,
+          ASSETS_CONFIG_FILE: join(homeDirectory, "missing-cli-config.json"),
+          ASSETS_SESSION_FILE: join(homeDirectory, "missing-cli-session.json"),
+        },
+        wranglerRunner: async ({ args }) => {
+          if (args[0] === "r2" && args[2] === "info")
+            return { success: true, data: { exitCode: 1, stdout: "", stderr: "bucket_not_found" } }
+          return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+        },
+        fetcher: async (input, init) => {
+          const request = new Request(String(input), init)
+          const url = new URL(request.url)
+          if (url.hostname === "api.cloudflare.com" && url.pathname.endsWith("/tokens")) {
+            cloudflareCreateCount += 1
+            return new Response(
+              JSON.stringify({ success: true, result: { id: "generated-access-id", value: "raw-generated-token" } }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            )
+          }
+          if (url.pathname === "/api/v1/projects")
+            return envelopeResponseCreate({ project: projectSettings, created: true }, 201)
+          if (url.pathname.endsWith("/r2-credential/status"))
+            return envelopeResponseCreate({
+              projectId: "project-1",
+              environment: url.pathname.includes("/development/") ? "development" : "production",
+              bucket: "shared-project-bucket",
+              registered: registeredBuckets.has("shared-project-bucket"),
+            })
+          if (url.pathname.endsWith("/r2-credential") && request.method === "PUT") {
+            const body = (await request.json()) as {
+              accessKeyId: string
+              secretAccessKey: string
+              revocationId: string
+            }
+            registeredCredentials.push(body)
+            registeredBuckets.add("shared-project-bucket")
+            return envelopeResponseCreate({
+              projectId: "project-1",
+              environment: "development",
+              bucket: "shared-project-bucket",
+              registered: true,
+            })
+          }
+          return failureResponseCreate(`Unexpected request ${url.pathname}`, 404)
+        },
+        stdout: (text) => output.push(text),
+        stderr: () => undefined,
+      },
+    )
+
+    expect(exitCode).toBe(0)
+    expect(cloudflareCreateCount).toBe(1)
+    expect(registeredCredentials).toHaveLength(1)
+    expect(registeredCredentials[0]?.revocationId).toBe("generated-access-id")
+    expect(registeredCredentials[0]?.accessKeyId).toBe("generated-access-id")
+    expect(registeredCredentials[0]?.secretAccessKey).not.toBe("raw-generated-token")
+    expect(output.join("\n")).not.toContain("raw-cloudflare-token")
+    expect(output.join("\n")).not.toContain("raw-generated-token")
+    expect(output.join("\n")).not.toContain("generated-access-id")
+  } finally {
+    await rm(homeDirectory, { recursive: true, force: true })
+  }
+})
+
 test("projects create rejects an empty Wrangler profile before side effects", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "assets-project-create-r2-profile-home-"))
   let sideEffectCount = 0

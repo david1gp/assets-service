@@ -28,11 +28,13 @@ import { cliCommandHelp } from "../asset-cli/cliCommandHelp.js"
 import { cliHelpFormat } from "../asset-cli/cliHelpFormat.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
 import { projectCreateCredentialReconciliationRun } from "../asset-cli/projectCreateCredentialReconciliationRun.js"
-import { r2CredentialsRead } from "../asset-cli/r2CredentialsRead.js"
+import { projectCreateR2CredentialsRead } from "../asset-cli/projectCreateR2CredentialsRead.js"
 import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { assetsCliVersionMetadataRender } from "../assetsCliVersionMetadataRender.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
+import { cloudflareR2BucketCredentialCreate } from "../cloudflare/cloudflareR2BucketCredentialCreate.js"
+import { cloudflareR2BucketCredentialRevoke } from "../cloudflare/cloudflareR2BucketCredentialRevoke.js"
 import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import {
@@ -2459,6 +2461,7 @@ const commandRun = async (
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
   pollIntervalMilliseconds = 1000,
+  fetchImplementation?: Fetcher,
 ): Promise<CommandOutput> => {
   const organizationId = organization?.id
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
@@ -2675,11 +2678,31 @@ const commandRun = async (
     const registered = await client.projectCreate(projectInput as ProjectCreate)
     if (!registered.success) return { result: registered }
     if (!flagRead(parsed, "create-buckets")) return { result: registered }
+    const cloudflareFetchImplementation =
+      fetchImplementation === undefined
+        ? undefined
+        : (request: string | URL | Request, init?: RequestInit) =>
+            fetchImplementation(request instanceof Request ? request.url : request, init)
     const reconciled = await projectCreateCredentialReconciliationRun({
       client,
       projectId: registered.data.project.project.id,
       environments: registered.data.project.environments,
-      r2CredentialsRead: () => r2CredentialsRead(env),
+      projectCreateR2CredentialsRead: () => projectCreateR2CredentialsRead(env),
+      cloudflareCredentialsRead: () => cloudflareRequestCredentialsRead(env, "Project create R2 credential fallback"),
+      cloudflareR2BucketCredentialCreate: (credentialInput) =>
+        cloudflareR2BucketCredentialCreate({
+          ...credentialInput,
+          ...(cloudflareFetchImplementation === undefined
+            ? {}
+            : { fetchImplementation: cloudflareFetchImplementation }),
+        }),
+      cloudflareR2BucketCredentialRevoke: (credentialInput) =>
+        cloudflareR2BucketCredentialRevoke({
+          ...credentialInput,
+          ...(cloudflareFetchImplementation === undefined
+            ? {}
+            : { fetchImplementation: cloudflareFetchImplementation }),
+        }),
     })
     if (!reconciled.success) return { result: reconciled }
     return { result: registered }
@@ -3217,6 +3240,7 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     options.wranglerRunner ?? wranglerCommandRunnerProduction,
     sleep,
     parsedPollInterval?.data,
+    options.fetcher,
   )
   return outputWrite(command, parsed.data.json, stdout, stderr)
 }

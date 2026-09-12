@@ -1,7 +1,9 @@
-import type { R2BucketCredentialCreateInput } from "../r2/r2BucketCredentialCreateInputSchema.js"
-import { cloudflareSecretRedact } from "../cloudflare/cloudflareSecretRedact.js"
 import type { R2BucketCredentialRegisterResponse } from "../api-client/r2BucketCredentialRegisterResponseSchema.js"
 import type { R2BucketCredentialStatusResponse } from "../api-client/r2BucketCredentialStatusResponseSchema.js"
+import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
+import { cloudflareR2BucketCredentialCreate as cloudflareR2BucketCredentialCreateDefault } from "../cloudflare/cloudflareR2BucketCredentialCreate.js"
+import { cloudflareR2BucketCredentialRevoke as cloudflareR2BucketCredentialRevokeDefault } from "../cloudflare/cloudflareR2BucketCredentialRevoke.js"
+import type { R2BucketCredentialCreateInput } from "../r2/r2BucketCredentialCreateInputSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { EnvironmentName } from "../schemas/environmentNameSchema.js"
@@ -27,7 +29,19 @@ type ProjectCreateCredentialReconciliationInput = {
   client: ProjectCreateCredentialClient
   projectId: string
   environments: readonly ProjectCreateCredentialEnvironment[]
-  r2CredentialsRead: () => Result<{ accessKeyId: string; secretAccessKey: string }>
+  projectCreateR2CredentialsRead: () => Result<{ accessKeyId: string; secretAccessKey: string } | null>
+  cloudflareCredentialsRead?: () => Result<CloudflareRequestCredentials>
+  cloudflareR2BucketCredentialCreate?: (input: {
+    accountId: string
+    apiToken: string
+    bucket: string
+    name?: string
+  }) => Promise<Result<R2BucketCredentialCreateInput>>
+  cloudflareR2BucketCredentialRevoke?: (input: {
+    accountId: string
+    apiToken: string
+    revocationId: string
+  }) => Promise<Result<boolean>>
 }
 
 const operation = "assetsCliProjectCreateCredentialReconciliation"
@@ -48,10 +62,34 @@ const statusReadAll = async (
   return { success: true, data: statuses }
 }
 
-const errorMessageRedactedRead = (
-  result: Extract<Result<unknown>, { success: false }>,
-  secrets: readonly (string | null | undefined)[],
-): string => cloudflareSecretRedact(result.errorMessage, secrets)
+const registrationFailure = (bucket: string): Result<never> =>
+  resultFailure(`Could not register the scoped R2 credential for ${bucket}`)
+
+const generatedCredentialCreate = async (
+  input: ProjectCreateCredentialReconciliationInput,
+  credentials: CloudflareRequestCredentials,
+  bucket: string,
+): Promise<Result<R2BucketCredentialCreateInput>> => {
+  const create = input.cloudflareR2BucketCredentialCreate ?? cloudflareR2BucketCredentialCreateDefault
+  try {
+    return await create({ ...credentials, bucket, name: `assets-service-${bucket}` })
+  } catch {
+    return resultFailure(`Could not create the scoped R2 credential for ${bucket}`)
+  }
+}
+
+const generatedCredentialRevoke = async (
+  input: ProjectCreateCredentialReconciliationInput,
+  credentials: CloudflareRequestCredentials,
+  revocationId: string,
+): Promise<Result<boolean>> => {
+  const revoke = input.cloudflareR2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevokeDefault
+  try {
+    return await revoke({ ...credentials, revocationId })
+  } catch {
+    return resultFailure("Could not revoke the generated R2 credential")
+  }
+}
 
 const projectCreateCredentialReconciliationRun = async (
   input: ProjectCreateCredentialReconciliationInput,
@@ -71,25 +109,58 @@ const projectCreateCredentialReconciliationRun = async (
   )
 
   if (missingBuckets.length > 0) {
-    const r2Credentials = input.r2CredentialsRead()
-    if (!r2Credentials.success) return r2Credentials
+    const importedCredentials = input.projectCreateR2CredentialsRead()
+    if (!importedCredentials.success) return importedCredentials
+
+    let cloudflareCredentials: CloudflareRequestCredentials | undefined
+    if (importedCredentials.data === null) {
+      if (input.cloudflareCredentialsRead === undefined)
+        return resultFailure("R2 credential registration requires Cloudflare credentials when no R2 pair is configured")
+      const credentials = input.cloudflareCredentialsRead()
+      if (!credentials.success) return credentials
+      cloudflareCredentials = credentials.data
+    }
 
     for (const bucket of missingBuckets) {
       const environment = environmentByBucket.get(bucket)
       if (environment === undefined) return resultFailure(`The R2 bucket ${bucket} had no associated environment`)
 
-      const credential: R2BucketCredentialCreateInput = {
-        bucket,
-        accessKeyId: r2Credentials.data.accessKeyId,
-        secretAccessKey: r2Credentials.data.secretAccessKey,
-        revocationId: null,
+      let credential: R2BucketCredentialCreateInput
+      if (importedCredentials.data !== null) {
+        credential = {
+          bucket,
+          accessKeyId: importedCredentials.data.accessKeyId,
+          secretAccessKey: importedCredentials.data.secretAccessKey,
+          revocationId: null,
+        }
+      } else {
+        if (cloudflareCredentials === undefined) return resultFailure("Cloudflare credentials were unavailable")
+        const created = await generatedCredentialCreate(input, cloudflareCredentials, bucket)
+        if (!created.success) return resultFailure(`Could not create the scoped R2 credential for ${bucket}`)
+        if (created.data.bucket !== bucket || created.data.revocationId === null)
+          return resultFailure(`Could not create the scoped R2 credential for ${bucket}`)
+        credential = created.data
       }
 
-      const registered = await input.client.r2BucketCredentialRegister(input.projectId, environment, credential)
+      let registered: Result<R2BucketCredentialRegisterResponse>
+      try {
+        registered = await input.client.r2BucketCredentialRegister(input.projectId, environment, credential)
+      } catch {
+        registered = registrationFailure(bucket)
+      }
       if (!registered.success) {
-        const credentialSecrets = [credential.accessKeyId, credential.secretAccessKey]
-        const registrationError = errorMessageRedactedRead(registered, credentialSecrets)
-        return resultFailure(`Could not register the scoped R2 credential for ${bucket}: ${registrationError}`)
+        if (
+          importedCredentials.data === null &&
+          cloudflareCredentials !== undefined &&
+          credential.revocationId !== null
+        ) {
+          const revoked = await generatedCredentialRevoke(input, cloudflareCredentials, credential.revocationId)
+          if (!revoked.success)
+            return resultFailure(
+              `Could not register the scoped R2 credential for ${bucket}; the generated credential could not be revoked`,
+            )
+        }
+        return registrationFailure(bucket)
       }
     }
   }

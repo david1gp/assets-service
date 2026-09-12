@@ -238,13 +238,16 @@ The command does not use `--project` or `--environment`: project and default-env
 explicitly. Quote an empty prefix (`--development-r2-prefix ""`) when a dedicated bucket should use its root.
 With `--create-buckets`, the CLI checks and creates the final development and production buckets through Wrangler
 before creating a Zitadel project or registering the project. Existing buckets are reused. Wrangler may use the
-selected profile or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from the protected project-create environment;
-the Cloudflare credentials are used only for Wrangler bucket provisioning and are never sent to assets-service or
-included in CLI output. After project registration, missing bucket credentials are checked and one already-configured
-R2 S3 pair is registered per distinct bucket with no revocation identifier. `R2_ACCESS_KEY_ID` and
-`R2_SECRET_ACCESS_KEY` take precedence; otherwise use the compatibility aliases
-`CLOUDFLARE_R2_ACCESS_KEY_ID` and `CLOUDFLARE_R2_SECRET_ACCESS_KEY`. Incomplete or mixed pairs are rejected, and
-already-registered buckets are skipped.
+selected profile or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from the protected project-create environment.
+After project registration, credential status is checked first for each distinct bucket; already-registered buckets
+are skipped. For each missing bucket, a complete imported R2 S3 pair is preferred and registered with
+`revocationId: null`. `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` take precedence; otherwise use the compatibility
+aliases `CLOUDFLARE_R2_ACCESS_KEY_ID` and `CLOUDFLARE_R2_SECRET_ACCESS_KEY`. If no complete imported pair exists, the
+complete `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` pair is required to create a bucket-scoped Cloudflare R2
+credential, which is registered with its revocation identifier. Incomplete or mixed pairs are rejected before
+credential creation, and a newly created Cloudflare credential is revoked when registration definitively fails. Raw
+tokens and derived secrets are never displayed; registration errors and CLI output do not expose credential
+identifiers or scoped credential values.
 
 Updates are targeted merges. The CLI first reads the complete project settings document, changes only the selected
 environment, and writes the complete document back. Omitted fields and all other environments remain unchanged. The
