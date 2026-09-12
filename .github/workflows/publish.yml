@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   id-token: write  # Required for OIDC
@@ -29,7 +30,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # Use Bun for everything except publishing
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun test
 
