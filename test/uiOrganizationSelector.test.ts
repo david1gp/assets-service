@@ -18,6 +18,7 @@ mock.module("@solidjs/router", () => ({
   },
   useLocation: () => ({ pathname: "/" }),
   useParams: () => ({}),
+  useSearchParams: () => [{}, () => {}],
 }))
 
 let organizationsReadResult: Result<AuthOrganizationsResponse> = {

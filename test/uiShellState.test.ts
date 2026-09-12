@@ -24,6 +24,7 @@ mock.module("@solidjs/router", () => ({
       return routeProjectId.get()
     },
   }),
+  useSearchParams: () => [{}, () => {}],
 }))
 
 mock.module("../src/ui/client/uiApiClientRead.js", () => ({
