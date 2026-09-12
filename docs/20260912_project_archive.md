@@ -31,6 +31,6 @@ Add project-level archive and unarchive library APIs and CLI commands. Archiving
 - [x] 5. Add authenticated archive/unarchive API operations and matching CLI commands/help, with authorization and command tests.
 - [x] 6. Add the off-by-default **Show archived** owner/admin project-list toggle, keep it absent from contributor view, and cover state/rendering behavior.
 - [x] 7. Run focused and full checks, fix only feature-related failures, and verify owner/contributor UI behavior in a browser.
-- [ ] 8. Use the commits skill to split, commit, and push the completed changes.
+- [x] 8. Use the commits skill to split, commit, and push the completed changes.
 - [ ] 9. Deploy production and verify service health.
 - [ ] 10. In production, identify Template exactly, archive it through the new CLI, and verify it is hidden by default, visible with **Show archived**, absent to contributors, removed from R2 including its dedicated bucket, and retained in Google Drive.
