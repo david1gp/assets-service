@@ -23,7 +23,7 @@ export const cliProjectsCreateCommand = buildCommand({
   docs: {
     brief: "Register a new project in the asset service, optionally creating its Zitadel project",
     fullDescription:
-      "Registers a new project including Zitadel bindings and R2 settings. With --create-buckets, it provisions missing buckets and reconciles missing bucket-scoped credentials; Cloudflare credentials are read only when needed and secrets are never displayed. When --zitadel-project-id is omitted, the CLI creates a Zitadel project using ZITADEL_BASE_URL and ZITADEL_TOKEN from the project-create environment.",
+      "Registers a new project including Zitadel bindings and R2 settings. With --create-buckets, it provisions missing buckets through Wrangler, then registers the configured R2 S3 credential pair for each missing bucket; CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are used only by Wrangler, and secrets are never displayed. R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY take precedence over their CLOUDFLARE_R2_* compatibility aliases. When --zitadel-project-id is omitted, the CLI creates a Zitadel project using ZITADEL_BASE_URL and ZITADEL_TOKEN from the project-create environment.",
   },
   parameters: {
     flags: {

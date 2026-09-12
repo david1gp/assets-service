@@ -239,8 +239,12 @@ explicitly. Quote an empty prefix (`--development-r2-prefix ""`) when a dedicate
 With `--create-buckets`, the CLI checks and creates the final development and production buckets through Wrangler
 before creating a Zitadel project or registering the project. Existing buckets are reused. Wrangler may use the
 selected profile or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from the protected project-create environment;
-the Cloudflare token is never sent to assets-service or included in CLI output. The registered environment bindings
-save the bucket names in assets-service, whose configured R2 credentials must have access to those buckets.
+the Cloudflare credentials are used only for Wrangler bucket provisioning and are never sent to assets-service or
+included in CLI output. After project registration, missing bucket credentials are checked and one already-configured
+R2 S3 pair is registered per distinct bucket with no revocation identifier. `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY` take precedence; otherwise use the compatibility aliases
+`CLOUDFLARE_R2_ACCESS_KEY_ID` and `CLOUDFLARE_R2_SECRET_ACCESS_KEY`. Incomplete or mixed pairs are rejected, and
+already-registered buckets are skipped.
 
 Updates are targeted merges. The CLI first reads the complete project settings document, changes only the selected
 environment, and writes the complete document back. Omitted fields and all other environments remain unchanged. The
