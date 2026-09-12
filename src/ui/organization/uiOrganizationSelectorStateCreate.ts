@@ -51,14 +51,14 @@ export const uiOrganizationSelectorStateCreate = () => {
     const list = organizations()
     return list.find((org) => org.id === id || org.current) ?? null
   })
-  const currentOrganizationName = createMemo(() => currentOrganization()?.name ?? currentOrganizationId())
+  const currentOrganizationName = createMemo(() => currentOrganization()?.name ?? "")
 
   createEffect(() => {
     if (!switching.get()) selectedOrganizationId.set(currentOrganizationId())
   })
 
   const showSelector = createMemo(() => organizations().length > 1)
-  const showLabel = createMemo(() => organizations().length <= 1 && currentOrganizationId() !== "")
+  const showLabel = createMemo(() => organizations().length <= 1 && currentOrganizationName() !== "")
 
   const switchOrganization = async (targetOrganizationId: string) => {
     if (switching.get()) return

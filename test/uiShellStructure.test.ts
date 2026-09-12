@@ -32,10 +32,37 @@ describe("UiShell navigation structure", () => {
     expect(matches?.length).toBe(1)
   })
 
-  test("aligns primary navbar typography to text-sm and preserves subtle secondary IDs", async () => {
+  test("keeps project IDs in the technical footer instead of under the project name", async () => {
     expect(shellSource).toContain('<header class="sticky top-0 z-30 border-b border-slate-200 bg-white/90 text-sm')
-    expect(shellSource).toContain('state.accountName() === "" ? "font-medium" : "text-xs text-muted-foreground"')
-    expect(shellSource).toContain('state.projectName() === "" ? "font-medium" : "text-xs text-muted-foreground"')
+    expect(shellSource).toContain('state.accountName() !== "" && state.routeMode() === "admin"')
+    expect(shellSource).not.toContain('state.accountName() === "" ? "font-medium" : "text-xs text-muted-foreground"')
+    expect(shellSource).toContain('state.session().status === "authenticated" && state.projectId() !== ""')
+
+    const breadcrumbStart = shellSource.indexOf(
+      '<nav\n              aria-label={ttc("Breadcrumb", "Brotkrumennavigation")}',
+    )
+    const breadcrumbEnd = shellSource.indexOf("              </nav>", breadcrumbStart)
+    expect(breadcrumbStart).toBeGreaterThanOrEqual(0)
+    expect(breadcrumbEnd).toBeGreaterThan(breadcrumbStart)
+    expect(shellSource.slice(breadcrumbStart, breadcrumbEnd)).not.toContain("state.projectId()")
+
+    const headerEnd = shellSource.indexOf("      </header>")
+    expect(headerEnd).toBeGreaterThanOrEqual(0)
+    expect(shellSource.slice(0, headerEnd)).not.toContain(">{state.projectId()}</")
+    expect(shellSource.slice(0, headerEnd)).not.toContain(">{state.accountId()}</")
+
+    const mobileNavigationStart = shellSource.indexOf('<nav id="mobile-project-navigation"')
+    expect(mobileNavigationStart).toBeGreaterThanOrEqual(0)
+    expect(
+      shellSource.slice(shellSource.indexOf("{/* Mobile Drawer Navigation */}"), mobileNavigationStart),
+    ).not.toContain("state.accountId()")
+
+    const footerStart = shellSource.indexOf('      <Show when={state.session().status === "authenticated"')
+    expect(footerStart).toBeGreaterThanOrEqual(0)
+    const technicalFooter = shellSource.slice(footerStart)
+    expect(technicalFooter).toContain("state.projectId()")
+    expect(technicalFooter).toContain("state.accountId()")
+    expect(technicalFooter).toContain('<dt>{ttc("Project ID", "Projekt-ID")}:</dt>')
 
     const orgSource = await readFile("src/ui/organization/UiOrganizationSelector.tsx", "utf8")
     expect(orgSource).toContain("text-sm")

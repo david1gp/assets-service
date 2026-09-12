@@ -118,7 +118,7 @@ export const uiShellStateCreate = () => {
     projectName,
     accountName,
     accountId,
-    accountLabel: () => accountName() || accountId(),
+    accountLabel: () => accountName(),
     projectLabel: () => projectName() || projectId(),
     projectPath,
     breadcrumbPage,

@@ -66,15 +66,6 @@ export function UiShell(p: RouteSectionProps) {
                 <Show when={state.projectName() !== ""}>
                   <span class="font-medium break-words">{state.projectName()}</span>
                 </Show>
-                <Show when={state.routeMode() === "admin"}>
-                  <span
-                    class={`font-mono break-all ${
-                      state.projectName() === "" ? "font-medium" : "text-xs text-muted-foreground"
-                    }`}
-                  >
-                    {state.projectId()}
-                  </span>
-                </Show>
                 <Show when={state.routeMode() === "contributor" && state.projectName() === ""}>
                   <span class="font-medium">{ttc("Project", "Projekt")}</span>
                 </Show>
@@ -92,20 +83,11 @@ export function UiShell(p: RouteSectionProps) {
           <div class="order-2 flex items-center gap-2 shrink-0 ml-auto md:order-none">
             <Show when={state.session().status === "authenticated"}>
               <UiOrganizationSelector />
-              <Show when={state.accountId() !== "" && state.routeMode() === "admin"}>
+              <Show when={state.accountName() !== "" && state.routeMode() === "admin"}>
                 <div class="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100/70 px-2.5 py-1 text-sm md:inline-flex dark:border-slate-800 dark:bg-slate-800/60">
                   <Icon path={mdiAccount} class="size-4 text-muted-foreground" />
                   <span class="flex max-w-[120px] min-w-0 flex-col leading-tight lg:max-w-[180px]">
-                    <Show when={state.accountName() !== ""}>
-                      <span class="truncate font-medium">{state.accountName()}</span>
-                    </Show>
-                    <span
-                      class={`font-mono truncate ${
-                        state.accountName() === "" ? "font-medium" : "text-xs text-muted-foreground"
-                      }`}
-                    >
-                      {state.accountId()}
-                    </span>
+                    <span class="truncate font-medium">{state.accountName()}</span>
                   </span>
                 </div>
               </Show>
@@ -209,20 +191,11 @@ export function UiShell(p: RouteSectionProps) {
               />
             </div>
 
-            <Show when={state.accountId() !== ""}>
+            <Show when={state.accountName() !== ""}>
               <div class="flex min-w-0 items-center gap-2 border-b border-slate-200 pb-4 dark:border-slate-800">
                 <Icon path={mdiAccount} class="size-4 shrink-0 text-muted-foreground" />
                 <span class="flex min-w-0 flex-col leading-tight">
-                  <Show when={state.accountName() !== ""}>
-                    <span class="truncate text-sm font-medium">{state.accountName()}</span>
-                  </Show>
-                  <span
-                    class={`font-mono truncate ${
-                      state.accountName() === "" ? "text-sm font-medium" : "text-xs text-muted-foreground"
-                    }`}
-                  >
-                    {state.accountId()}
-                  </span>
+                  <span class="truncate text-sm font-medium">{state.accountName()}</span>
                 </span>
               </div>
             </Show>
@@ -380,11 +353,7 @@ export function UiShell(p: RouteSectionProps) {
         </main>
       </div>
 
-      <Show
-        when={
-          state.routeMode() === "contributor" && state.session().status === "authenticated" && state.projectId() !== ""
-        }
-      >
+      <Show when={state.session().status === "authenticated" && state.projectId() !== ""}>
         <footer class="mx-auto w-full max-w-7xl px-4 pb-5 text-[11px] text-slate-400 sm:px-6 lg:px-8 dark:text-slate-600">
           <dl class="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-200/70 pt-3 dark:border-slate-800/70">
             <div class="flex min-w-0 gap-1.5">

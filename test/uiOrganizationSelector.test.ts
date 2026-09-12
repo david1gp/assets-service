@@ -31,6 +31,7 @@ let organizationsReadResult: Result<AuthOrganizationsResponse> = {
     currentOrganizationId: "org-contentoren",
   },
 }
+let organizationsReadImplementation = () => Promise.resolve(organizationsReadResult)
 
 let organizationSwitchResult: Result<AuthOrganizationSwitchResponse> = {
   success: true,
@@ -57,7 +58,7 @@ mock.module("../src/ui/client/uiApiClientRead.js", () => ({
   uiApiClientRead: () => ({
     success: true,
     data: {
-      authOrganizationsRead: () => Promise.resolve(organizationsReadResult),
+      authOrganizationsRead: () => organizationsReadImplementation(),
       authOrganizationSwitch: (organizationId: string) => {
         switchCalls.push(organizationId)
         return Promise.resolve(organizationSwitchResult)
@@ -111,6 +112,60 @@ describe("uiTenantCacheClear", () => {
 })
 
 describe("uiOrganizationSelectorStateCreate", () => {
+  test("does not expose the organization ID as a label while the name is loading", async () => {
+    const previousSession = uiSessionStore.get()
+    let resolveOrganizations: ((result: Result<AuthOrganizationsResponse>) => void) | undefined
+    organizationsReadImplementation = () =>
+      new Promise((resolve) => {
+        resolveOrganizations = resolve
+      })
+    uiSessionStore.set({
+      status: "authenticated",
+      principal: {
+        subjectId: "user-loading",
+        organizationId: "12345",
+        mode: "admin",
+        organizationAdmin: true,
+        method: "human_session",
+        grants: [],
+        issuedAt: 100,
+        expiresAt: 200,
+      },
+      errorMessage: null,
+    })
+
+    try {
+      const { state, dispose } = createRoot((d) => ({
+        state: uiOrganizationSelectorStateCreate(),
+        dispose: d,
+      }))
+
+      await flush()
+
+      expect(state.currentOrganizationId()).toBe("12345")
+      expect(state.currentOrganizationName()).toBe("")
+      expect(state.showLabel()).toBe(false)
+
+      resolveOrganizations?.({
+        success: true,
+        data: {
+          organizations: [
+            { id: "12345", name: "Loading Organization", current: true, mode: "admin", organizationAdmin: true },
+          ],
+          currentOrganizationId: "12345",
+        },
+      })
+      await flush()
+
+      expect(state.currentOrganizationName()).toBe("Loading Organization")
+      expect(state.showLabel()).toBe(true)
+      dispose()
+    } finally {
+      organizationsReadImplementation = () => Promise.resolve(organizationsReadResult)
+      uiSessionStore.set(previousSession)
+    }
+  })
+
   test("shows selector when user has more than 1 organization", async () => {
     uiSessionStore.set({
       status: "authenticated",

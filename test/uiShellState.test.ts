@@ -196,7 +196,7 @@ test("exposes project and account labels for the shell header", async () => {
   }
 })
 
-test("falls back to the subject ID for principals without a display name", async () => {
+test("does not use the subject ID as a display label for principals without a display name", async () => {
   const previousSession = uiSessionStore.get()
   projectReadCalls.length = 0
   projectReadImplementation = () => Promise.resolve({ success: true, data: projectCreate() })
@@ -208,7 +208,30 @@ test("falls back to the subject ID for principals without a display name", async
 
     expect(state.accountName()).toBe("")
     expect(state.accountId()).toBe("subject-1")
-    expect(state.accountLabel()).toBe("subject-1")
+    expect(state.accountLabel()).toBe("")
+    dispose()
+  } finally {
+    uiSessionStore.set(previousSession)
+  }
+})
+
+test("updates the account label when the display name resolves", async () => {
+  const previousSession = uiSessionStore.get()
+  projectReadCalls.length = 0
+  projectReadImplementation = () => Promise.resolve({ success: true, data: projectCreate() })
+  sessionSet()
+
+  try {
+    const { state, dispose } = stateCreate("/projects/project-1/assets")
+    await flush()
+
+    expect(state.accountLabel()).toBe("")
+
+    sessionSet("Ada Lovelace")
+    await flush()
+
+    expect(state.accountName()).toBe("Ada Lovelace")
+    expect(state.accountLabel()).toBe("Ada Lovelace")
     dispose()
   } finally {
     uiSessionStore.set(previousSession)
