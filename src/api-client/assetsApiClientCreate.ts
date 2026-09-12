@@ -1261,6 +1261,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     environmentsRead,
     environmentRead,
     r2BucketCredentialStatusRead,
+    r2BucketCredentialRegister,
     storageMigrationPlan,
     storageMigrationStart,
     storageMigrationStatusRead,
