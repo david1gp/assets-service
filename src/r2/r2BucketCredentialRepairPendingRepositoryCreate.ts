@@ -49,7 +49,7 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     return { success: true, data: parsed.output }
   }
 
-  const r2BucketCredentialRepairPendingCreate: PendingCreate = (input) => {
+  const r2BucketCredentialRepairPendingCreate: PendingCreate = (input, transactionInput) => {
     const op = "r2BucketCredentialRepairPendingCreate"
     const parsed = v.safeParse(r2BucketCredentialRepairPendingSchema, input)
     if (!parsed.success) return resultErrorCreate(op, "The pending R2 credential repair was invalid")
@@ -61,7 +61,9 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     if (!secretAccessKey.success)
       return resultErrorCreate(op, "The pending R2 credential repair could not be persisted")
     try {
-      db.insert(r2BucketCredentialRepairPendingTable)
+      const transaction = transactionInput ?? db
+      transaction
+        .insert(r2BucketCredentialRepairPendingTable)
         .values({
           bucket: parsed.output.bucket,
           previousAccessKeyIdCiphertext: accessKeyId.data,
@@ -83,7 +85,7 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
           },
         })
         .run()
-      const record = db
+      const record = transaction
         .select()
         .from(r2BucketCredentialRepairPendingTable)
         .where(eq(r2BucketCredentialRepairPendingTable.bucket, parsed.output.bucket))
@@ -95,10 +97,10 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     }
   }
 
-  const r2BucketCredentialRepairPendingRead: PendingRead = (bucket) => {
+  const r2BucketCredentialRepairPendingRead: PendingRead = (bucket, transactionInput) => {
     const op = "r2BucketCredentialRepairPendingRead"
     try {
-      const record = db
+      const record = (transactionInput ?? db)
         .select()
         .from(r2BucketCredentialRepairPendingTable)
         .where(eq(r2BucketCredentialRepairPendingTable.bucket, bucket))
@@ -110,10 +112,10 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     }
   }
 
-  const r2BucketCredentialRepairPendingsRead: PendingsRead = () => {
+  const r2BucketCredentialRepairPendingsRead: PendingsRead = (transactionInput) => {
     const op = "r2BucketCredentialRepairPendingsRead"
     try {
-      const records = db
+      const records = (transactionInput ?? db)
         .select()
         .from(r2BucketCredentialRepairPendingTable)
         .orderBy(asc(r2BucketCredentialRepairPendingTable.bucket))
@@ -130,16 +132,18 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     }
   }
 
-  const r2BucketCredentialRepairPendingDelete: PendingDelete = (bucket) => {
+  const r2BucketCredentialRepairPendingDelete: PendingDelete = (bucket, transactionInput) => {
     const op = "r2BucketCredentialRepairPendingDelete"
     try {
-      const existing = db
+      const transaction = transactionInput ?? db
+      const existing = transaction
         .select({ bucket: r2BucketCredentialRepairPendingTable.bucket })
         .from(r2BucketCredentialRepairPendingTable)
         .where(eq(r2BucketCredentialRepairPendingTable.bucket, bucket))
         .get()
       if (existing === undefined) return { success: true, data: false }
-      db.delete(r2BucketCredentialRepairPendingTable)
+      transaction
+        .delete(r2BucketCredentialRepairPendingTable)
         .where(eq(r2BucketCredentialRepairPendingTable.bucket, bucket))
         .run()
       return { success: true, data: true }
@@ -148,22 +152,22 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     }
   }
 
-  const r2BucketCredentialRepairClaim: RepairClaim = ({
-    bucket,
-    ownerId,
-    now = Date.now(),
-    leaseMilliseconds = 300_000,
-  }) => {
+  const r2BucketCredentialRepairClaim: RepairClaim = (
+    { bucket, ownerId, now = Date.now(), leaseMilliseconds = 300_000 },
+    transactionInput,
+  ) => {
     const op = "r2BucketCredentialRepairClaim"
     if (bucket.length === 0 || ownerId.length === 0 || !Number.isFinite(now) || !Number.isFinite(leaseMilliseconds))
       return resultErrorCreate(op, "The R2 bucket credential repair claim was invalid")
     const expiresAt = now + Math.max(1, leaseMilliseconds)
     try {
-      db.insert(r2BucketCredentialRepairLockTable)
+      const transaction = transactionInput ?? db
+      transaction
+        .insert(r2BucketCredentialRepairLockTable)
         .values({ bucket, ownerId, expiresAt })
         .onConflictDoNothing({ target: r2BucketCredentialRepairLockTable.bucket })
         .run()
-      const existing = db
+      const existing = transaction
         .select({
           ownerId: r2BucketCredentialRepairLockTable.ownerId,
           expiresAt: r2BucketCredentialRepairLockTable.expiresAt,
@@ -172,7 +176,8 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
         .where(eq(r2BucketCredentialRepairLockTable.bucket, bucket))
         .get()
       if (existing?.ownerId === ownerId) {
-        db.update(r2BucketCredentialRepairLockTable)
+        transaction
+          .update(r2BucketCredentialRepairLockTable)
           .set({ expiresAt })
           .where(
             and(
@@ -184,7 +189,8 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
         return { success: true, data: true }
       }
       if (existing !== undefined && existing.expiresAt > now) return { success: true, data: false }
-      db.update(r2BucketCredentialRepairLockTable)
+      transaction
+        .update(r2BucketCredentialRepairLockTable)
         .set({ ownerId, expiresAt })
         .where(
           and(
@@ -193,7 +199,7 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
           ),
         )
         .run()
-      const claimed = db
+      const claimed = transaction
         .select({ ownerId: r2BucketCredentialRepairLockTable.ownerId })
         .from(r2BucketCredentialRepairLockTable)
         .where(eq(r2BucketCredentialRepairLockTable.bucket, bucket))
@@ -204,18 +210,20 @@ export const r2BucketCredentialRepairPendingRepositoryCreate = (
     }
   }
 
-  const r2BucketCredentialRepairRelease: RepairRelease = ({ bucket, ownerId }) => {
+  const r2BucketCredentialRepairRelease: RepairRelease = ({ bucket, ownerId }, transactionInput) => {
     const op = "r2BucketCredentialRepairRelease"
     if (bucket.length === 0 || ownerId.length === 0)
       return resultErrorCreate(op, "The R2 bucket credential repair release was invalid")
     try {
-      const existing = db
+      const transaction = transactionInput ?? db
+      const existing = transaction
         .select({ ownerId: r2BucketCredentialRepairLockTable.ownerId })
         .from(r2BucketCredentialRepairLockTable)
         .where(eq(r2BucketCredentialRepairLockTable.bucket, bucket))
         .get()
       if (existing?.ownerId !== ownerId) return { success: true, data: false }
-      db.delete(r2BucketCredentialRepairLockTable)
+      transaction
+        .delete(r2BucketCredentialRepairLockTable)
         .where(
           and(
             eq(r2BucketCredentialRepairLockTable.bucket, bucket),

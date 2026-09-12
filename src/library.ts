@@ -645,6 +645,8 @@ export type { R2BucketCredentialRepairPending } from "./r2/r2BucketCredentialRep
 export { r2BucketCredentialRepairPendingSchema } from "./r2/r2BucketCredentialRepairPendingSchema.js"
 export type { R2BucketCredentialRepairPendingRepository } from "./r2/r2BucketCredentialRepairPendingRepository.js"
 export { r2BucketCredentialRepairPendingRepositoryCreate } from "./r2/r2BucketCredentialRepairPendingRepositoryCreate.js"
+export type { R2BucketCredentialRepairRecoveryRepository } from "./r2/r2BucketCredentialRepairRecoveryRepository.js"
+export { r2BucketCredentialRepairRecoveryRepositoryCreate } from "./r2/r2BucketCredentialRepairRecoveryRepositoryCreate.js"
 export type { R2BucketCredentialRepairRequest } from "./r2/r2BucketCredentialRepairRequestSchema.js"
 export { r2BucketCredentialRepairRequestSchema } from "./r2/r2BucketCredentialRepairRequestSchema.js"
 export type { R2BucketCredentialRepairResult } from "./r2/r2BucketCredentialRepairResultSchema.js"
