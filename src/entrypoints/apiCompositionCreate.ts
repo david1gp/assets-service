@@ -25,6 +25,7 @@ import { projectUnarchiveWorkflowCreate } from "../project/projectUnarchiveWorkf
 import { r2BucketCredentialBackfillCreate } from "../r2/r2BucketCredentialBackfillCreate.js"
 import { r2BucketCredentialRepositoryCreate } from "../r2/r2BucketCredentialRepositoryCreate.js"
 import { r2BucketCredentialRepairCreate } from "../r2/r2BucketCredentialRepairCreate.js"
+import { r2BucketCredentialRepairPendingRepositoryCreate } from "../r2/r2BucketCredentialRepairPendingRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
@@ -56,6 +57,10 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const credentialRepository = r2BucketCredentialRepositoryCreate(connection.data.db, {
     encryptionKey: config.service.r2CredentialEncryptionKey,
   })
+  const repairPendingRepository = r2BucketCredentialRepairPendingRepositoryCreate(
+    connection.data.db,
+    config.service.r2CredentialEncryptionKey,
+  )
   const r2BucketCredentialBackfill =
     projectRepository.liveStorageBindingsRead === undefined
       ? undefined
@@ -79,6 +84,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
       : r2BucketCredentialRepairCreate({
           liveStorageBindingsRead: projectRepository.liveStorageBindingsRead,
           r2BucketCredentialRepository: credentialRepository,
+          r2BucketCredentialRepairPendingRepository: repairPendingRepository,
           credentialProbe: storage.probeCredentials,
         })
   const assetApiRepository = assetApiRepositoryCreate(connection.data.db)

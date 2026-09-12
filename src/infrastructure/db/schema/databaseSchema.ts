@@ -23,6 +23,8 @@ import { projectGrantTable } from "./projectGrantTable.js"
 import { projectStorageDomainTable } from "./projectStorageDomainTable.js"
 import { projectStorageLocationTable } from "./projectStorageLocationTable.js"
 import { projectTable } from "./projectTable.js"
+import { r2BucketCredentialRepairLockTable } from "./r2BucketCredentialRepairLockTable.js"
+import { r2BucketCredentialRepairPendingTable } from "./r2BucketCredentialRepairPendingTable.js"
 import { r2BucketCredentialTable } from "./r2BucketCredentialTable.js"
 import { reconciliationRunTable } from "./reconciliationRunTable.js"
 import { sourceRevisionTable } from "./sourceRevisionTable.js"
@@ -56,6 +58,8 @@ export const databaseSchema = {
   projectStorageLocationTable,
   projectTable,
   r2BucketCredentialTable,
+  r2BucketCredentialRepairLockTable,
+  r2BucketCredentialRepairPendingTable,
   reconciliationRunTable,
   sourceRevisionTable,
   structureFolderTable,

@@ -1,5 +1,6 @@
 import type { R2BucketCredentialCreateInput } from "./r2BucketCredentialCreateInputSchema.js"
 import type { R2BucketCredentialRepository } from "./r2BucketCredentialRepository.js"
+import type { R2BucketCredentialRepairPendingRepository } from "./r2BucketCredentialRepairPendingRepository.js"
 import type { StorageBinding } from "../storage/storageBindingSchema.js"
 import type { StorageProbeResult } from "../storage/storageProbeResult.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -10,6 +11,7 @@ export type R2BucketCredentialRepairCreateInput = {
     R2BucketCredentialRepository,
     "r2BucketCredentialRead" | "r2BucketCredentialCreate"
   >
+  r2BucketCredentialRepairPendingRepository: R2BucketCredentialRepairPendingRepository
   credentialProbe: (bucket: string) => Promise<Result<StorageProbeResult>>
   r2BucketCredentialCreate?: (input: {
     accountId: string

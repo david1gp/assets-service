@@ -176,6 +176,13 @@
       "when": 1789216850260,
       "tag": "0024_nullable_r2_credential_revocation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789216850261,
+      "tag": "0025_r2_credential_repair_pending",
+      "breakpoints": true
     }
   ]
 }
