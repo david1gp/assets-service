@@ -117,6 +117,48 @@ const requestCreate = (cookie: string, body = JSON.stringify(repairInput)): Requ
     body,
   })
 
+const serviceBearerConfigure = (
+  options: ApiAppOptions,
+  subjectId: string,
+  organizationId: string,
+  grants: readonly unknown[],
+) => {
+  options.authentication.serviceBearer = {
+    issuer: options.authentication.config.issuer,
+    audience: options.authentication.config.audience,
+    organizationId: options.authentication.config.organizationId,
+    allowedOrganizationIds: ["org-1", "org-customers"],
+    jwksClient: { keysRead: async () => ({ success: true as const, data: [] }) },
+    now: () => now * 1000,
+    patFetcher: async (input) => {
+      if (String(input).endsWith("/auth/v1/users/me")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: subjectId,
+              state: "USER_STATE_ACTIVE",
+              details: { resourceOwner: organizationId },
+              machine: { name: "R2 repair" },
+            },
+          }),
+        )
+      }
+      return new Response(JSON.stringify({ result: grants }))
+    },
+  }
+}
+
+const patRequestCreate = (token: string, body = JSON.stringify(repairInput)): Request =>
+  new Request("https://assets.example.test/api/v1/operations/r2-bucket-credentials/repair", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body,
+  })
+
 test("R2 credential repair denies non-administrator human sessions without invoking the dependency", async () => {
   let repairCalls = 0
   const options = optionsCreate({
@@ -154,6 +196,97 @@ test("R2 credential repair permits human organization administrators and returns
   expect(JSON.stringify(json)).not.toContain(repairInput.accountId)
   expect(JSON.stringify(json)).not.toContain(repairInput.apiToken)
   expect(JSON.stringify(json)).not.toContain("unlisted-sensitive-bucket")
+})
+
+test("R2 credential repair permits an owner-organization PAT with the configured admin grant", async () => {
+  let receivedInput: unknown
+  const options = optionsCreate({
+    r2BucketCredentialRepair: async (input) => {
+      receivedInput = input
+      return { success: true, data: repairResult }
+    },
+  })
+  serviceBearerConfigure(options, "machine-r2-repair", "org-1", [
+    {
+      projectId: "zitadel-1",
+      orgId: "org-1",
+      state: "USER_GRANT_STATE_ACTIVE",
+      roleKeys: ["admin"],
+    },
+  ])
+  const app = apiAppCreate(options)
+  const token = "r2-repair-pat"
+  const response = await app.fetch(patRequestCreate(token))
+  const json = await response.json()
+
+  expect(response.status).toBe(200)
+  expect(json).toEqual({ ok: true, data: repairResult, requestId })
+  expect(receivedInput).toEqual(repairInput)
+
+  const sessionResponse = await app.fetch(
+    new Request("https://assets.example.test/api/v1/auth/session", {
+      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+    }),
+  )
+  const sessionJson = await sessionResponse.json()
+  expect(sessionJson).toMatchObject({
+    ok: true,
+    data: {
+      authenticated: true,
+      principal: {
+        method: "service_account",
+        organizationId: "org-1",
+        grants: [{ projectId: "zitadel-1", roles: ["admin"] }],
+      },
+    },
+  })
+})
+
+test("R2 credential repair denies non-owner, wrong-organization, and ungranted PATs", async () => {
+  let repairCalls = 0
+  const cases = [
+    {
+      name: "non-owner organization",
+      organizationId: "org-customers",
+      grants: [
+        { projectId: "zitadel-1", orgId: "org-customers", state: "USER_GRANT_STATE_ACTIVE", roleKeys: ["admin"] },
+      ],
+      status: 403,
+    },
+    {
+      name: "wrong organization",
+      organizationId: "org-other",
+      grants: [{ projectId: "zitadel-1", orgId: "org-other", state: "USER_GRANT_STATE_ACTIVE", roleKeys: ["admin"] }],
+      status: 401,
+    },
+    {
+      name: "missing configured admin grant",
+      organizationId: "org-1",
+      grants: [
+        {
+          projectId: "another-zitadel-project",
+          orgId: "org-1",
+          state: "USER_GRANT_STATE_ACTIVE",
+          roleKeys: ["admin"],
+        },
+      ],
+      status: 403,
+    },
+  ] as const
+
+  for (const repairCase of cases) {
+    const options = optionsCreate({
+      r2BucketCredentialRepair: async () => {
+        repairCalls += 1
+        return { success: true, data: repairResult }
+      },
+    })
+    serviceBearerConfigure(options, `machine-${repairCase.name}`, repairCase.organizationId, repairCase.grants)
+    const response = await apiAppCreate(options).fetch(patRequestCreate(`pat-${repairCase.name.replaceAll(" ", "-")}`))
+    expect(response.status, repairCase.name).toBe(repairCase.status)
+  }
+
+  expect(repairCalls).toBe(0)
 })
 
 test("R2 credential repair reports a missing dependency without reading the request body", async () => {

@@ -861,11 +861,17 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         },
       ],
     )
-    const organizationAdmin =
+    const humanOrganizationAdmin =
       authentication.principal.method === "human_session" &&
       authentication.principal.organizationAdmin &&
       organizationContext.isOwner(authentication.principal.organizationId)
-    if (!organizationAdmin)
+    const serviceOrganizationAdmin =
+      authentication.principal.method === "service_account" &&
+      organizationContext.isOwner(authentication.principal.organizationId) &&
+      authentication.principal.grants.some(
+        (grant) => grant.projectId === options.authentication.config.projectId && grant.roles.includes("admin"),
+      )
+    if (!humanOrganizationAdmin && !serviceOrganizationAdmin)
       return apiErrorResponseCreate({
         requestId: requestIdRead(context),
         status: 403,
