@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 
 const shellSource = await readFile("src/ui/shell/UiShell.tsx", "utf8")
 
@@ -13,6 +13,14 @@ describe("UiShell navigation structure", () => {
     expect(shellSource).toContain("mdiAccountOutline")
     expect(shellSource).toContain("mdiShieldAccountOutline")
     expect(shellSource).toContain("<Show when={state.canSwitchView()}>")
+  })
+
+  test("renders the single view toggle independently of the project breadcrumb", () => {
+    const toggleStart = shellSource.indexOf("<Show when={state.canSwitchView()}>")
+    const breadcrumbStart = shellSource.indexOf("<Show when={state.projectId()}>")
+    expect(toggleStart).toBeGreaterThan(breadcrumbStart)
+    expect(shellSource.slice(toggleStart, toggleStart + 2500)).toContain("state.contributorViewPath()")
+    expect(shellSource.slice(toggleStart, toggleStart + 2500)).toContain("state.adminViewPath()")
   })
 
   test("uses UiLinkButton for the project breadcrumb targeting projectPath", () => {

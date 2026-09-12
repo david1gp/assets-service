@@ -124,15 +124,19 @@ export const uiShellStateCreate = () => {
     breadcrumbPage,
     assetQuery,
     routeMode,
-    canSwitchView: () => projectId() !== "" && session().principal?.mode === "admin",
+    canSwitchView: () => session().principal?.mode === "admin",
     adminViewPath: () =>
-      canonicalRoute()
-        ? uiPaths.admin.project(route.organizationSlug(), route.projectSlug())
-        : uiPaths.admin.project(projectId()),
+      projectId() === ""
+        ? uiPaths.projects
+        : canonicalRoute()
+          ? uiPaths.admin.project(route.organizationSlug(), route.projectSlug())
+          : uiPaths.admin.project(projectId()),
     contributorViewPath: () =>
-      canonicalRoute()
-        ? uiPaths.contributor.project(route.organizationSlug(), route.projectSlug())
-        : uiPaths.contributor.project(projectId()),
+      projectId() === ""
+        ? uiPaths.projects
+        : canonicalRoute()
+          ? uiPaths.contributor.project(route.organizationSlug(), route.projectSlug())
+          : uiPaths.contributor.project(projectId()),
     links,
     isCurrent,
     isKnownRoute,

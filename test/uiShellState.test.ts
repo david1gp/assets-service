@@ -80,6 +80,23 @@ const sessionSet = (displayName?: string) => {
   })
 }
 
+const adminSessionSet = () => {
+  uiSessionStore.set({
+    status: "authenticated",
+    principal: {
+      subjectId: "admin-1",
+      organizationId: "organization-1",
+      mode: "admin",
+      organizationAdmin: true,
+      method: "human_session",
+      grants: [{ projectId: "project-1", roles: ["admin"] }],
+      issuedAt: 1,
+      expiresAt: 2,
+    },
+    errorMessage: null,
+  })
+}
+
 const stateCreate = (currentPathname: string, currentProjectId?: string) => {
   pathname.set(currentPathname)
   routeProjectId.set(currentProjectId)
@@ -257,20 +274,7 @@ test("resolves contributor project path to the two-card landing page", async () 
 
 test("resolves admin project path to admin root", async () => {
   const previousSession = uiSessionStore.get()
-  uiSessionStore.set({
-    status: "authenticated",
-    principal: {
-      subjectId: "admin-1",
-      organizationId: "organization-1",
-      mode: "admin",
-      organizationAdmin: true,
-      method: "human_session",
-      grants: [{ projectId: "project-1", roles: ["admin"] }],
-      issuedAt: 1,
-      expiresAt: 2,
-    },
-    errorMessage: null,
-  })
+  adminSessionSet()
 
   try {
     const { state, dispose } = stateCreate("/projects/project-1/admin/upload", "project-1")
@@ -280,6 +284,26 @@ test("resolves admin project path to admin root", async () => {
     expect(state.projectPath()).toBe("/projects/project-1/admin")
     expect(state.breadcrumbPage()).toBe("Upload")
     expect(state.canSwitchView()).toBe(true)
+    dispose()
+  } finally {
+    uiSessionStore.set(previousSession)
+  }
+})
+
+test("shows the view switch on project-less admin routes and sends both views to the project list", async () => {
+  const previousSession = uiSessionStore.get()
+  adminSessionSet()
+
+  try {
+    const { state, dispose } = stateCreate("/")
+    await flush()
+
+    expect(state.projectId()).toBe("")
+    expect(state.canSwitchView()).toBe(true)
+    expect(state.adminViewPath()).toBe("/")
+    expect(state.contributorViewPath()).toBe("/")
+    expect(state.adminViewPath()).not.toContain("/projects//")
+    expect(state.contributorViewPath()).not.toContain("/projects//")
     dispose()
   } finally {
     uiSessionStore.set(previousSession)
