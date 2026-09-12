@@ -403,6 +403,11 @@ test("projects create sends the complete registration to the service", async () 
 test("projects archive and unarchive use the project flag and support JSON and human output", async () => {
   const output: string[] = []
   const requests: Request[] = []
+  const environment = {
+    ...cliEnvironment,
+    CLOUDFLARE_ACCOUNT_ID: "cloudflare-account",
+    CLOUDFLARE_API_TOKEN: "cloudflare-token",
+  }
   const project = apiProjectCreate({ id: "project-1", name: "Example project" })
   const fetcher = async (input: string | URL, init?: RequestInit) => {
     const request = new Request(input, init)
@@ -421,13 +426,13 @@ test("projects archive and unarchive use the project flag and support JSON and h
   }
 
   const archiveExitCode = await assetsCliMain(["projects", "archive", "--project", "project-1", "--json"], {
-    env: cliEnvironment,
+    env: environment,
     fetcher,
     stdout: (text) => output.push(text),
     stderr: () => undefined,
   })
   const unarchiveExitCode = await assetsCliMain(["projects", "unarchive", "--project", "project-1"], {
-    env: cliEnvironment,
+    env: environment,
     fetcher,
     stdout: (text) => output.push(text),
     stderr: () => undefined,
@@ -448,6 +453,40 @@ test("projects archive and unarchive use the project flag and support JSON and h
   expect(output[1]).toBe(
     "Project Example project unarchived. Restored 2 originals and regenerated 3 optimized assets.\n",
   )
+  expect(await requests[1]?.clone().json()).toEqual({
+    accountId: "cloudflare-account",
+    apiToken: "cloudflare-token",
+  })
+  expect(await requests[3]?.clone().json()).toEqual({
+    accountId: "cloudflare-account",
+    apiToken: "cloudflare-token",
+  })
+  expect(output.join("\n")).not.toContain("cloudflare-token")
+})
+
+test("projects archive requires Cloudflare credentials without persisting them", async () => {
+  const output: string[] = []
+  const errors: string[] = []
+  const requests: Request[] = []
+  const environment = { ...cliEnvironment, CLOUDFLARE_ACCOUNT_ID: "cloudflare-account" }
+  const exitCode = await assetsCliMain(["projects", "archive", "--project", "project-1"], {
+    env: environment,
+    fetcher: async (input, init) => {
+      const request = new Request(String(input), init)
+      requests.push(request)
+      return envelopeResponseCreate(apiProjectCreate({ id: "project-1", name: "Example project" }))
+    },
+    stdout: (text) => output.push(text),
+    stderr: (text) => errors.push(text),
+  })
+
+  expect(exitCode).toBe(1)
+  expect(requests.map((request) => [request.method, new URL(request.url).pathname])).toEqual([
+    ["GET", "/api/v1/projects/project-1"],
+  ])
+  expect(errors.join("\n")).toContain("CLOUDFLARE_API_TOKEN")
+  expect(output.join("\n")).not.toContain("cloudflare-account")
+  expect(output.join("\n")).not.toContain("cloudflare-token")
 })
 
 test("projects create creates a Zitadel project when its ID is omitted", async () => {

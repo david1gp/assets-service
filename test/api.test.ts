@@ -76,6 +76,14 @@ const project = {
 }
 const projectListItem = { ...project, assetCount: 0, totalFileSize: 0 }
 
+const archivedProjectListItem = {
+  ...projectListItem,
+  id: "project-archived",
+  name: "Archived project",
+  slug: "archived-project",
+  archiveState: "archived" as const,
+}
+
 const binding = {
   id: "binding-1",
   projectId: "project-1",
@@ -406,16 +414,20 @@ describe("HTTP API", () => {
   test("allows project administrators to archive and unarchive, but not contributors", async () => {
     const archiveCalls: string[] = []
     const unarchiveCalls: string[] = []
+    const archiveCredentials: unknown[] = []
+    const unarchiveCredentials: unknown[] = []
     const options = optionsCreate()
     const archiveWorkflow: ProjectArchiveWorkflow = {
-      projectArchive: async (projectId) => {
+      projectArchive: async (projectId, credentials) => {
         archiveCalls.push(projectId)
+        archiveCredentials.push(credentials)
         return { success: true, data: { project, deletedBuckets: ["assets-project"], deletedObjectCount: 2 } }
       },
     }
     const unarchiveWorkflow: ProjectUnarchiveWorkflow = {
-      projectUnarchive: async (projectId) => {
+      projectUnarchive: async (projectId, credentials) => {
         unarchiveCalls.push(projectId)
+        unarchiveCredentials.push(credentials)
         return {
           success: true,
           data: { project, createdBuckets: ["assets-project"], restoredOriginalCount: 1, regeneratedOutputCount: 2 },
@@ -453,12 +465,14 @@ describe("HTTP API", () => {
       new Request("https://assets.example.test/api/v1/projects/project-service/archive", {
         method: "POST",
         headers: { cookie: administrator },
+        body: JSON.stringify({ accountId: "account-1", apiToken: "token-1" }),
       }),
     )
     const unarchive = await administratorApp.fetch(
       new Request("https://assets.example.test/api/v1/projects/project-service/unarchive", {
         method: "POST",
         headers: { cookie: administrator },
+        body: JSON.stringify({ accountId: "account-1", apiToken: "token-1" }),
       }),
     )
 
@@ -474,6 +488,18 @@ describe("HTTP API", () => {
     })
     expect(archiveCalls).toEqual(["project-1"])
     expect(unarchiveCalls).toEqual(["project-1"])
+    expect(archiveCredentials).toEqual([{ accountId: "account-1", apiToken: "token-1" }])
+    expect(unarchiveCredentials).toEqual([{ accountId: "account-1", apiToken: "token-1" }])
+
+    const invalid = await administratorApp.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service/archive", {
+        method: "POST",
+        headers: { cookie: administrator },
+        body: JSON.stringify({ accountId: "account-1" }),
+      }),
+    )
+    expect(invalid.status).toBe(400)
+    expect(archiveCredentials).toHaveLength(1)
   })
 
   test("returns aggregate metrics in the project list contract", async () => {
@@ -610,6 +636,82 @@ describe("HTTP API", () => {
     expect(requestedOrganizationAdmin).toBe(false)
     expect(requestedIncludeArchived).toBe(true)
     expect(requestedProjectAdministrator).toBe(true)
+  })
+
+  test("hides archived projects by default and returns them for administrator opt-in", async () => {
+    const requested: { organizationAdmin?: boolean; includeArchived?: boolean; projectAdministrator?: boolean }[] = []
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectsRead: (_organizationId, _projectIds, organizationAdmin, includeArchived, projectAdministrator) => {
+        requested.push({ organizationAdmin, includeArchived, projectAdministrator })
+        return { success: true, data: [projectListItem, archivedProjectListItem] }
+      },
+    }
+    const app = apiAppCreate(options)
+    const administrator = await sessionCreate(options, "contributor", true)
+
+    const defaultResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects", { headers: { cookie: administrator } }),
+    )
+    const optedInResponse = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects?includeArchived=true", {
+        headers: { cookie: administrator },
+      }),
+    )
+
+    expect(defaultResponse.status).toBe(200)
+    expect(optedInResponse.status).toBe(200)
+    expect((await defaultResponse.json()).data.projects.map((item: { id: string }) => item.id)).toEqual(["project-1"])
+    expect((await optedInResponse.json()).data.projects.map((item: { id: string }) => item.id)).toEqual([
+      "project-1",
+      "project-archived",
+    ])
+    expect(requested).toEqual([
+      { organizationAdmin: true, includeArchived: false, projectAdministrator: false },
+      { organizationAdmin: true, includeArchived: true, projectAdministrator: false },
+    ])
+  })
+
+  test("keeps archived projects out of contributor API responses even when requested", async () => {
+    let requestedIncludeArchived: boolean | undefined
+    const options = optionsCreate()
+    options.projectRepository = {
+      ...options.projectRepository,
+      projectsRead: (_organizationId, _projectIds, _organizationAdmin, includeArchived) => {
+        requestedIncludeArchived = includeArchived
+        return { success: true, data: [projectListItem, archivedProjectListItem] }
+      },
+    }
+    const app = apiAppCreate(options)
+    const contributor = await sessionCreate(options, "contributor", false, "org-customers", "zitadel-1")
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects?includeArchived=true", {
+        headers: { cookie: contributor },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect((await response.json()).data.projects.map((item: { id: string }) => item.id)).toEqual(["project-1"])
+    expect(requestedIncludeArchived).toBe(false)
+  })
+
+  test("denies contributors direct access to archived projects", async () => {
+    const options = optionsCreate()
+    const repository = options.projectRepository
+    options.projectRepository = {
+      ...repository,
+      projectRead: () => ({ success: true, data: { ...project, archiveState: "archived" as const } }),
+    }
+    const app = apiAppCreate(options)
+    const contributor = await sessionCreate(options, "contributor", false, "org-customers", "zitadel-1")
+    const response = await app.fetch(
+      new Request("https://assets.example.test/api/v1/projects/project-service", {
+        headers: { cookie: contributor },
+      }),
+    )
+
+    expect(response.status).toBe(403)
   })
 
   test("keeps customer contributors on owned bindings and exact contributor grants", async () => {

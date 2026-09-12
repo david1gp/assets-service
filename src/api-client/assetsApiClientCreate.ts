@@ -1,4 +1,6 @@
 import * as v from "valibot"
+import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
+import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import { apiClientErrorCreate } from "./apiClientErrorCreate.js"
 import { assetReprocessRequestSchema } from "./assetReprocessRequestSchema.js"
 import { assetReprocessResponseSchema } from "./assetReprocessResponseSchema.js"
@@ -547,18 +549,22 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       operation: "assetsApiClientProjectRead",
     })
 
-  const projectArchive = (projectId: string) =>
+  const projectArchive = (projectId: string, cloudflareCredentials: CloudflareRequestCredentials) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/archive`,
       method: "POST",
+      body: cloudflareCredentials,
+      bodySchema: cloudflareRequestCredentialsSchema,
       responseSchema: projectArchiveResponseSchema,
       operation: "assetsApiClientProjectArchive",
     })
 
-  const projectUnarchive = (projectId: string) =>
+  const projectUnarchive = (projectId: string, cloudflareCredentials: CloudflareRequestCredentials) =>
     requestRead({
       path: `/projects/${encodeURIComponent(projectId)}/unarchive`,
       method: "POST",
+      body: cloudflareCredentials,
+      bodySchema: cloudflareRequestCredentialsSchema,
       responseSchema: projectUnarchiveResponseSchema,
       operation: "assetsApiClientProjectUnarchive",
     })

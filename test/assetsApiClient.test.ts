@@ -149,8 +149,9 @@ test("assets API client archives and unarchives a project with authenticated POS
 
   expect(clientResult.success).toBe(true)
   if (!clientResult.success) return
-  const archived = await clientResult.data.projectArchive("project:1")
-  const unarchived = await clientResult.data.projectUnarchive("project:1")
+  const cloudflareCredentials = { accountId: "cloudflare-account", apiToken: "cloudflare-token" }
+  const archived = await clientResult.data.projectArchive("project:1", cloudflareCredentials)
+  const unarchived = await clientResult.data.projectUnarchive("project:1", cloudflareCredentials)
 
   expect(archived).toMatchObject({ success: true, data: { deletedObjectCount: 1 } })
   expect(unarchived).toMatchObject({ success: true, data: { regeneratedOutputCount: 1 } })
@@ -158,6 +159,8 @@ test("assets API client archives and unarchives a project with authenticated POS
     ["POST", "https://assets.example.test/api/v1/projects/project%3A1/archive", "Bearer admin-token"],
     ["POST", "https://assets.example.test/api/v1/projects/project%3A1/unarchive", "Bearer admin-token"],
   ])
+  expect(await requests[0]?.clone().json()).toEqual(cloudflareCredentials)
+  expect(await requests[1]?.clone().json()).toEqual(cloudflareCredentials)
 })
 
 test("assets API client returns safe network diagnostics", async () => {

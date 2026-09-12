@@ -29,6 +29,7 @@ import { sessionCookieRead } from "../authentication/sessionCookieRead.js"
 import { sessionOrganizationSwitch } from "../authentication/sessionOrganizationSwitch.js"
 import { sessionOrganizationsRead } from "../authentication/sessionOrganizationsRead.js"
 import { zitadelOrganizationContextCreate } from "../authentication/zitadelOrganizationContextCreate.js"
+import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
@@ -774,9 +775,11 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     adminMiddleware,
     async (context) => {
       if (options.projectArchiveWorkflow === undefined) return dependencyFailureCreate(context)
+      const credentials = v.safeParse(cloudflareRequestCredentialsSchema, await requestBodyRead(context.req.raw))
+      if (!credentials.success) return validationFailureCreate(context, "Cloudflare request credentials are invalid")
       const project = projectRead(context)
       if (!project) return failureFromRepositoryCreate(context)
-      const archived = await options.projectArchiveWorkflow.projectArchive(project.id)
+      const archived = await options.projectArchiveWorkflow.projectArchive(project.id, credentials.output)
       if (!archived.success) return domainFailureResponseCreate(context, archived.errorMessage)
       return successResponseCreate(context, archived.data)
     },
@@ -788,9 +791,11 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     adminMiddleware,
     async (context) => {
       if (options.projectUnarchiveWorkflow === undefined) return dependencyFailureCreate(context)
+      const credentials = v.safeParse(cloudflareRequestCredentialsSchema, await requestBodyRead(context.req.raw))
+      if (!credentials.success) return validationFailureCreate(context, "Cloudflare request credentials are invalid")
       const project = projectRead(context)
       if (!project) return failureFromRepositoryCreate(context)
-      const unarchived = await options.projectUnarchiveWorkflow.projectUnarchive(project.id)
+      const unarchived = await options.projectUnarchiveWorkflow.projectUnarchive(project.id, credentials.output)
       if (!unarchived.success) return domainFailureResponseCreate(context, unarchived.errorMessage)
       return successResponseCreate(context, unarchived.data)
     },

@@ -31,6 +31,8 @@ import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryM
 import { assetsCliVersionMetadataRender } from "../assetsCliVersionMetadataRender.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
+import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
+import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import {
   type EnvironmentConfiguration,
   environmentConfigurationResolve,
@@ -232,6 +234,19 @@ const commandHelp = cliCommandHelp
 
 const resultFailure = (op: string, message: string, rawData?: unknown): Result<never> =>
   resultErrorCreate(op, message, rawData)
+
+const cloudflareRequestCredentialsRead = (environment: NodeJS.ProcessEnv): Result<CloudflareRequestCredentials> => {
+  const op = "assetsCliCloudflareRequestCredentialsRead"
+  const accountId = environment.CLOUDFLARE_ACCOUNT_ID
+  if (accountId === undefined || accountId.trim().length === 0)
+    return resultFailure(op, "Archive and unarchive require CLOUDFLARE_ACCOUNT_ID")
+  const apiToken = environment.CLOUDFLARE_API_TOKEN
+  if (apiToken === undefined || apiToken.trim().length === 0)
+    return resultFailure(op, "Archive and unarchive require CLOUDFLARE_API_TOKEN")
+  const credentials = v.safeParse(cloudflareRequestCredentialsSchema, { accountId, apiToken })
+  if (!credentials.success) return resultFailure(op, "Cloudflare request credentials are invalid")
+  return { success: true, data: credentials.output }
+}
 
 const zitadelProjectCreateDefault: ZitadelProjectCreate = async (options) => {
   const result = await projectServiceCreateProject({ config: options.config, request: options.request })
@@ -2562,15 +2577,17 @@ const commandRun = async (
         true,
       )
       if (!selected.success) return { result: selected }
+      const cloudflareCredentials = cloudflareRequestCredentialsRead(env)
+      if (!cloudflareCredentials.success) return { result: cloudflareCredentials }
       if (parsed.subcommand === "archive") {
-        const result = await client.projectArchive(selected.data.projectId)
+        const result = await client.projectArchive(selected.data.projectId, cloudflareCredentials.data)
         if (!result.success) return { result }
         return {
           result,
           humanOutput: `Project ${result.data.project.name} archived. Deleted ${result.data.deletedObjectCount} R2 objects and ${result.data.deletedBuckets.length} buckets.\n`,
         }
       }
-      const result = await client.projectUnarchive(selected.data.projectId)
+      const result = await client.projectUnarchive(selected.data.projectId, cloudflareCredentials.data)
       if (!result.success) return { result }
       return {
         result,
