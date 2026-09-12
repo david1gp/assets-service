@@ -164,7 +164,7 @@ describe("storage adapters", () => {
     })
   })
 
-  test("only proves a bucket dedicated when no other project binding references it", () => {
+  test("only proves a bucket dedicated when no other project binding references it, including root buckets", () => {
     const dedicated = storageBucketDedicatedValidate({
       projectId: "project-1",
       bucket: "dedicated-bucket",
@@ -188,14 +188,14 @@ describe("storage adapters", () => {
           projectId: "project-1",
           environment: "development",
           bucket: "shared-bucket",
-          prefix: "projects/project-1",
+          prefix: "",
           publicBaseUrl: "https://dev.assets.example.test",
         },
         {
           projectId: "project-2",
           environment: "development",
           bucket: "shared-bucket",
-          prefix: "projects/project-2",
+          prefix: "",
           publicBaseUrl: "https://dev.assets.example.test",
         },
       ],
@@ -215,10 +215,7 @@ describe("storage adapters", () => {
         },
       ],
     })
-    expect(root).toMatchObject({
-      success: false,
-      errorMessage: "The bucket dedication could not be proven for an empty prefix",
-    })
+    expect(root).toMatchObject({ success: true, data: { projectId: "project-1", bucket: "root-bucket" } })
   })
 
   test("verifies size, checksum, and detected media type", async () => {

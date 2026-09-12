@@ -31,7 +31,5 @@ export const storageBucketDedicatedValidate = (input: {
   if (matching.length === 0) return resultErrorCreate(op, "The bucket was not bound to the project")
   if (matching.some((binding) => binding.projectId !== input.projectId))
     return resultErrorCreate(op, "The bucket is shared with another project")
-  if (matching.some((binding) => binding.prefix.length === 0))
-    return resultErrorCreate(op, "The bucket dedication could not be proven for an empty prefix")
   return { success: true, data: { projectId: input.projectId, bucket: input.bucket, bindings: matching } }
 }
