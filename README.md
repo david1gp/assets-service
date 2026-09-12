@@ -97,7 +97,8 @@ The environment file is selected in this order: `--env-file <path>`, `ASSETS_ENV
 the CLI automatically loads `~/.config/assets-service/project-create.env`, taking precedence over project/PWD `.env`
 discovery. All other commands keep standard project-scoped credential behavior and never implicitly load this global
 provisioner file. Explicit paths are relative to the working directory and must exist; a default `.env` is optional. The CLI
-does not search ancestor directories. For organization selection, the precise precedence is `--organization`,
+does not search ancestor directories. When the selected `.env` path is a directory, the CLI reads its `production` or
+`development` file according to `ASSETS_ENVIRONMENT` (defaulting to `development`). For organization selection, the precise precedence is `--organization`,
 `ASSETS_ORGANIZATION` in the selected `.env`, process `ASSETS_ORGANIZATION`, the global directory mapping, then
 unrestricted resolution. Organization selectors may be a configured alias key, ID, or slug:
 
@@ -179,12 +180,14 @@ newline-terminated deterministic JSON envelope.
 Organization administrators and authorized automation can register a project and its complete initial service
 configuration through the authenticated remote CLI. The command requires one explicit service binding and both
 environment bindings. It requires either an authenticated human session whose principal has organization-admin authority for the
-selected organization, or a bearer token corresponding to the exact machine identity configured as the Assets
-Service project provisioner (via `ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID`) in the same organization. Ordinary
-service credentials without the dedicated provisioner subject are rejected. When registered by a human session,
+selected organization, or a bearer token corresponding to an exact machine identity in the Assets Service project
+provisioner allowlist in the same organization. Configure the existing singular
+`ZITADEL_PROJECT_PROVISIONER_SUBJECT_ID` and/or additional comma-separated exact IDs through
+`ZITADEL_PROJECT_PROVISIONER_SUBJECT_IDS`; the values are merged and deduplicated. Ordinary service credentials
+outside the allowlist are rejected. When registered by a human session,
 the administrator is recorded as an initial `project_grants` database row for the new project; machine provisioners
-record the provisioner subject ID. Runtime authorization remains based on the authenticated Zitadel claims, not that
-database row. The `--zitadel-project-id` value records an existing binding. When omitted, the CLI creates exactly one
+record the provisioner subject ID. Runtime authorization, including uploads, remains based on the authenticated
+Zitadel project grants, not that database row or the provisioner allowlist. The `--zitadel-project-id` value records an existing binding. When omitted, the CLI creates exactly one
 Zitadel project with the resolved organization ID and project name, then submits the returned ID through the same
 registration request. It does not create applications or roles.
 
@@ -226,11 +229,18 @@ bun run assets projects create \
   --production-r2-bucket <bucket> \
   --production-r2-prefix <prefix> \
   --production-public-base-url <url> \
+  [--create-buckets] \
+  [--wrangler-profile <name>] \
   [--json]
 ```
 
 The command does not use `--project` or `--environment`: project and default-environment values must be supplied
 explicitly. Quote an empty prefix (`--development-r2-prefix ""`) when a dedicated bucket should use its root.
+With `--create-buckets`, the CLI checks and creates the final development and production buckets through Wrangler
+before creating a Zitadel project or registering the project. Existing buckets are reused. Wrangler may use the
+selected profile or `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` from the protected project-create environment;
+the Cloudflare token is never sent to assets-service or included in CLI output. The registered environment bindings
+save the bucket names in assets-service, whose configured R2 credentials must have access to those buckets.
 
 Updates are targeted merges. The CLI first reads the complete project settings document, changes only the selected
 environment, and writes the complete document back. Omitted fields and all other environments remain unchanged. The

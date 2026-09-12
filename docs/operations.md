@@ -169,7 +169,8 @@ does not trigger fallback; an old saved CLI configuration at the fallback path i
 
 The selected environment file is, in order, `--env-file <path>`, `ASSETS_ENV_FILE`, `<command-root>/.env`, or `$PWD/.env`.
 Relative explicit paths resolve from the working directory. Explicit files must exist, the default `.env` is optional, and
-ancestor directories are never searched. Organization precedence is `--organization`, `ASSETS_ORGANIZATION` in the
+ancestor directories are never searched. If the selected `.env` path is a directory, its `production` or `development`
+file is selected from `ASSETS_ENVIRONMENT` (default `development`). Organization precedence is `--organization`, `ASSETS_ORGANIZATION` in the
 selected `.env`, process `ASSETS_ORGANIZATION`, global directory mapping, then unrestricted resolution.
 `ZITADEL_ORGANIZATION_ID` is reserved for server authentication. Use `assets config show [root] [--json]` (root defaults to
 `.`) to inspect effective values, paths, load state, and sources without exposing secrets.
