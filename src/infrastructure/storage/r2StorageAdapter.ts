@@ -34,10 +34,9 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
         unsignedUrl.searchParams.set("X-Amz-Expires", String(intentInput.expiresInSeconds))
         const signed = await aws.sign(unsignedUrl.toString(), {
           method: "PUT",
+          headers: intentInput.sha256 ? { "x-amz-meta-sha256": intentInput.sha256 } : undefined,
           aws: { signQuery: true, datetime: timestampCreate(createdAt) },
-          datetime: timestampCreate(createdAt),
-          signQuery: true,
-        } as never)
+        })
         const intent: StorageUploadIntent = {
           method: "PUT",
           url: signed.url,

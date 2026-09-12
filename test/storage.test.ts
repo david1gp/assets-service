@@ -370,6 +370,68 @@ describe("storage adapters", () => {
     ).toBe(true)
   })
 
+  test("signs checksum metadata with its exact value and canonical header order", async () => {
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      now: () => new Date("2026-08-17T12:00:00.000Z"),
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const checksum = contentSha256Create(png)
+
+    const intent = await storageUploadIntentCreate(adapter, {
+      binding: binding.data,
+      uploadId: "signed-checksum",
+      byteSize: png.byteLength,
+      mediaType: "image/png",
+      sha256: checksum,
+      now: new Date("2026-08-17T12:00:00.000Z"),
+    })
+
+    expect(intent).toMatchObject({
+      success: true,
+      data: {
+        headers: {
+          "x-amz-meta-sha256": checksum,
+        },
+      },
+    })
+    if (!intent.success) return
+    const signedUrl = new URL(intent.data.url)
+    expect(signedUrl.searchParams.get("X-Amz-SignedHeaders")).toBe("host;x-amz-meta-sha256")
+    expect(signedUrl.searchParams.get("X-Amz-Signature")).toBe(
+      "7566d9dcdc2d3f29bf0a42aef29f61ac507ece8330b8e112129ad694271f4be1",
+    )
+  })
+
+  test("keeps checksum-free presigned uploads host-only", async () => {
+    const adapter = r2StorageAdapterCreate({
+      accountId: "account",
+      accessKeyId: "access",
+      secretAccessKey: "secret",
+      endpoint: "https://account.r2.cloudflarestorage.com",
+      now: () => new Date("2026-08-17T12:00:00.000Z"),
+    })
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+
+    const intent = await storageUploadIntentCreate(adapter, {
+      binding: binding.data,
+      uploadId: "signed-without-checksum",
+      byteSize: png.byteLength,
+      mediaType: "image/png",
+      now: new Date("2026-08-17T12:00:00.000Z"),
+    })
+
+    expect(intent).toMatchObject({ success: true })
+    if (!intent.success) return
+    expect(new URL(intent.data.url).searchParams.get("X-Amz-SignedHeaders")).toBe("host")
+    expect(intent.data.headers["x-amz-meta-sha256"]).toBeUndefined()
+  })
+
   test("requests identity encoding for signed R2 object HEADs", async () => {
     let requestHeaders: Headers | undefined
     const adapter = r2StorageAdapterCreate({

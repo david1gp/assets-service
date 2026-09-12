@@ -911,7 +911,7 @@ test("assets API client creates an encoded optimized output content URL", () => 
   )
 })
 
-test("direct uploads use the signed intent without the service bearer", async () => {
+test("direct uploads forward signed metadata unchanged without the service bearer", async () => {
   const requests: Request[] = []
   const clientResult = assetsApiClientCreate({
     apiUrl: "https://assets.example.test",
