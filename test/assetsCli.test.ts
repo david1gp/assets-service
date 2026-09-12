@@ -487,14 +487,20 @@ test("projects create reconciles bucket credentials after buckets, Zitadel, and 
   const output: string[] = []
   const events: string[] = []
   const registeredBuckets = new Set<string>()
+  const registeredCredentials: Array<{
+    bucket: string
+    accessKeyId: string
+    secretAccessKey: string
+    revocationId: null
+  }> = []
   try {
     await globalOrganizationConfigurationWrite(homeDirectory, organizationConfiguration)
     await projectCreateEnvironmentFileWrite(
       homeDirectory,
       [
         "ASSETS_API_URL=https://assets.example.test",
-        "CLOUDFLARE_ACCOUNT_ID=cloudflare-account",
-        "CLOUDFLARE_API_TOKEN=broad-cloudflare-token",
+        "R2_ACCESS_KEY_ID=configured-access-key",
+        "R2_SECRET_ACCESS_KEY=configured-secret-key",
         "ZITADEL_BASE_URL=https://zitadel.example.test",
         "ZITADEL_TOKEN=zitadel-project-token",
       ].join("\n"),
@@ -525,22 +531,6 @@ test("projects create reconciles bucket credentials after buckets, Zitadel, and 
         events.push("zitadel")
         return { success: true, data: { projectId: "zitadel-created" } }
       },
-      cloudflareR2BucketCredentialCreate: async ({ bucket }) => {
-        events.push(`cloudflare:create:${bucket}`)
-        return {
-          success: true,
-          data: {
-            bucket,
-            accessKeyId: `${bucket}-access-secret`,
-            secretAccessKey: `${bucket}-secret-secret`,
-            revocationId: `${bucket}-revocation-secret`,
-          },
-        }
-      },
-      cloudflareR2BucketCredentialRevoke: async () => {
-        events.push("cloudflare:revoke")
-        return { success: true, data: true }
-      },
       fetcher: async (input, init) => {
         const request = new Request(String(input), init)
         const url = new URL(request.url)
@@ -560,10 +550,16 @@ test("projects create reconciles bucket credentials after buckets, Zitadel, and 
           })
         }
         if (url.pathname.endsWith("/r2-credential") && request.method === "PUT") {
-          const body = (await request.json()) as { bucket: string }
+          const body = (await request.json()) as {
+            bucket: string
+            accessKeyId: string
+            secretAccessKey: string
+            revocationId: null
+          }
           events.push(`assets:put:${body.bucket}`)
           registeredBuckets.add(body.bucket)
           const environment = body.bucket === "allgroups-chat" ? "development" : "production"
+          registeredCredentials.push(body)
           return envelopeResponseCreate({ projectId: "project-1", environment, bucket: body.bucket, registered: true })
         }
         return failureResponseCreate(`Unexpected request ${url.pathname}`, 404)
@@ -580,16 +576,27 @@ test("projects create reconciles bucket credentials after buckets, Zitadel, and 
       "assets:project",
       "assets:status",
       "assets:status",
-      "cloudflare:create:allgroups-chat",
       "assets:put:allgroups-chat",
-      "cloudflare:create:allgroups-chat-production",
       "assets:put:allgroups-chat-production",
       "assets:status",
       "assets:status",
     ])
-    expect(output.join("\n")).not.toContain("broad-cloudflare-token")
-    expect(output.join("\n")).not.toContain("access-secret")
-    expect(output.join("\n")).not.toContain("secret-secret")
+    expect(registeredCredentials).toEqual([
+      {
+        bucket: "allgroups-chat",
+        accessKeyId: "configured-access-key",
+        secretAccessKey: "configured-secret-key",
+        revocationId: null,
+      },
+      {
+        bucket: "allgroups-chat-production",
+        accessKeyId: "configured-access-key",
+        secretAccessKey: "configured-secret-key",
+        revocationId: null,
+      },
+    ])
+    expect(output.join("\n")).not.toContain("configured-access-key")
+    expect(output.join("\n")).not.toContain("configured-secret-key")
   } finally {
     await rm(homeDirectory, { recursive: true, force: true })
   }
