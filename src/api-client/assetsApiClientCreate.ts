@@ -59,6 +59,8 @@ import { outputSetRequestSchema } from "./outputSetRequestSchema.js"
 import { projectArchiveResponseSchema } from "./projectArchiveResponseSchema.js"
 import { projectListResponseSchema } from "./projectListResponseSchema.js"
 import { projectUnarchiveResponseSchema } from "./projectUnarchiveResponseSchema.js"
+import { r2BucketCredentialRegisterRequestSchema } from "./r2BucketCredentialRegisterRequestSchema.js"
+import { r2BucketCredentialRegisterResponseSchema } from "./r2BucketCredentialRegisterResponseSchema.js"
 import { r2BucketCredentialStatusResponseSchema } from "./r2BucketCredentialStatusResponseSchema.js"
 import type { SourceRevisionContentMode } from "./sourceRevisionContentModeSchema.js"
 import { sourceRevisionDeletionEligibilityResponseSchema } from "./sourceRevisionDeletionEligibilityResponseSchema.js"
@@ -204,6 +206,15 @@ const schemaParse = <T>(schema: Schema, input: unknown, op: string, message: str
   return { success: true, data: parsed.output as T }
 }
 
+const r2BucketCredentialRegisterSecretsRead = (input: unknown): readonly (string | undefined)[] => {
+  if (input === null || typeof input !== "object") return []
+  const record = input as Record<string, unknown>
+  return ["accessKeyId", "secretAccessKey", "revocationId"].map((key) => {
+    const value = record[key]
+    return typeof value === "string" ? value : undefined
+  })
+}
+
 const queryStringCreate = (query: Query): string => {
   const search = new URLSearchParams()
   for (const key of Object.keys(query).sort()) {
@@ -250,7 +261,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
   const clientErrorCreate = (input: Parameters<typeof apiClientErrorCreate>[0]) =>
     apiClientErrorCreate({
       ...input,
-      redactionSecrets: [options.accessToken, options.sessionCookie],
+      redactionSecrets: [options.accessToken, options.sessionCookie, ...(input.redactionSecrets ?? [])],
     })
 
   const apiUrlCreate = (path: string, query: Query = {}): string =>
@@ -265,7 +276,13 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     responseSchema: v.GenericSchema<any, T>
     operation: string
     authenticated?: boolean
+    redactionSecrets?: readonly (string | undefined)[]
   }): Promise<Result<T>> => {
+    const requestErrorCreate = (input: Parameters<typeof apiClientErrorCreate>[0]) =>
+      clientErrorCreate({
+        ...input,
+        redactionSecrets: [...(request.redactionSecrets ?? []), ...(input.redactionSecrets ?? [])],
+      })
     const method = request.method ?? "GET"
     if (request.bodySchema !== undefined) {
       const parsedBody = schemaParse(
@@ -294,7 +311,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
         ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
       })
     } catch (error) {
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: "The assets service could not be reached",
         kind: "network",
@@ -310,7 +327,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     try {
       bodyText = await response.text()
     } catch (error) {
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: "The assets service response could not be read",
         kind: "network",
@@ -328,7 +345,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     try {
       body = JSON.parse(bodyText)
     } catch {
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: response.ok ? "The assets service returned invalid JSON" : "The assets service returned an error",
         kind: response.ok ? "invalid-response" : "http",
@@ -360,7 +377,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       body,
     )
     if (!envelope.success)
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: response.ok
           ? "The assets service returned an invalid envelope"
@@ -377,7 +394,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       })
     if (!response.ok || !envelope.output.ok) {
       if (!envelope.output.ok) {
-        return clientErrorCreate({
+        return requestErrorCreate({
           operation: request.operation,
           message: envelope.output.error.message,
           kind: "http",
@@ -395,7 +412,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
           },
         })
       }
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: "The assets service returned an error",
         kind: "http",
@@ -411,7 +428,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
 
     const parsedData = v.safeParse(request.responseSchema, envelope.output.data)
     if (!parsedData.success)
-      return clientErrorCreate({
+      return requestErrorCreate({
         operation: request.operation,
         message: "The response data was invalid",
         kind: "invalid-response",
@@ -606,6 +623,17 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/r2-credential/status`,
       responseSchema: r2BucketCredentialStatusResponseSchema,
       operation: "assetsApiClientR2BucketCredentialStatusRead",
+    })
+
+  const r2BucketCredentialRegister = (projectId: string, environment: string, input: unknown) =>
+    requestRead({
+      path: `/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environment)}/r2-credential`,
+      method: "PUT",
+      body: input,
+      bodySchema: r2BucketCredentialRegisterRequestSchema,
+      responseSchema: r2BucketCredentialRegisterResponseSchema,
+      operation: "assetsApiClientR2BucketCredentialRegister",
+      redactionSecrets: r2BucketCredentialRegisterSecretsRead(input),
     })
 
   const storageMigrationPlan = (projectId: string, environment: string, input: unknown = {}) =>

@@ -21,7 +21,8 @@ export type ApiAppOptions = {
   projectRepository: ProjectRepository
   projectArchiveWorkflow?: ProjectArchiveWorkflow
   projectUnarchiveWorkflow?: ProjectUnarchiveWorkflow
-  r2BucketCredentialRepository?: Pick<R2BucketCredentialRepository, "r2BucketCredentialRead">
+  r2BucketCredentialRepository?: Pick<R2BucketCredentialRepository, "r2BucketCredentialRead"> &
+    Partial<Pick<R2BucketCredentialRepository, "r2BucketCredentialCreate">>
   storageMigrationRepository?: StorageMigrationRepository
   storageMigrationWorkflowEnqueue?: (
     input: StorageMigrationCreateInput,

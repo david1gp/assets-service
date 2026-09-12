@@ -11,6 +11,7 @@ import { outputAddRequestSchema } from "../api-client/outputAddRequestSchema.js"
 import { outputRemoveRequestSchema } from "../api-client/outputRemoveRequestSchema.js"
 import { outputSetRequestSchema } from "../api-client/outputSetRequestSchema.js"
 import { projectListQuerySchema } from "../api-client/projectListQuerySchema.js"
+import { r2BucketCredentialRegisterRequestSchema } from "../api-client/r2BucketCredentialRegisterRequestSchema.js"
 import { sourceRevisionContentModeSchema } from "../api-client/sourceRevisionContentModeSchema.js"
 import { uploadCompletionRequestSchema } from "../api-client/uploadCompletionRequestSchema.js"
 import { uploadIntentRequestSchema } from "../api-client/uploadIntentRequestSchema.js"
@@ -22,6 +23,7 @@ import { humanLoginInitiate } from "../authentication/humanLoginInitiate.js"
 import { organizationSwitchRequestSchema } from "../authentication/organizationSwitchRequestSchema.js"
 import { pkceCallbackRequestSchema } from "../authentication/pkceCallbackRequestSchema.js"
 import { pkceLoginRequestSchema } from "../authentication/pkceLoginRequestSchema.js"
+import { projectAuthorizationCheck } from "../authentication/projectAuthorizationCheck.js"
 import type { RequestAuthentication } from "../authentication/requestAuthenticationSchema.js"
 import { sessionAccessTokenStoreCreate } from "../authentication/sessionAccessTokenStoreCreate.js"
 import { sessionCookieCreate } from "../authentication/sessionCookieCreate.js"
@@ -104,6 +106,14 @@ const dependencyFailureCreate = (context: { get: (key: string) => unknown }) =>
     code: "not_configured",
     message: "The requested API operation is not configured",
     retryable: true,
+  })
+
+const r2BucketCredentialConflictResponseCreate = (context: { get: (key: string) => unknown }) =>
+  apiErrorResponseCreate({
+    requestId: requestIdRead(context),
+    status: 409,
+    code: "conflict",
+    message: "The R2 bucket credential conflicts with another project",
   })
 
 const requestBodyRead = async (request: Request): Promise<unknown | undefined> => {
@@ -210,6 +220,11 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/settings$/, methods: ["GET"] },
+    { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/r2-credential$/, methods: ["PUT"] },
+    {
+      pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/r2-credential\/status$/,
+      methods: ["GET"],
+    },
     {
       pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+\/storage-migration\/plan$/,
       methods: ["POST"],
@@ -927,6 +942,85 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
         environment: binding.data.environment,
         bucket: binding.data.bucket,
         registered: credential.data !== null,
+      })
+    },
+  )
+
+  app.put(
+    `${apiVersionPath}/projects/:projectId/environments/:environment/r2-credential`,
+    authenticationMiddleware,
+    adminMiddleware,
+    async (context) => {
+      const repository = options.r2BucketCredentialRepository
+      if (repository?.r2BucketCredentialCreate === undefined) return dependencyFailureCreate(context)
+      const project = projectRead(context)
+      if (!project) return failureFromRepositoryCreate(context)
+      const parsedEnvironment = v.safeParse(idSchema, context.req.param("environment"))
+      if (!parsedEnvironment.success) return validationFailureCreate(context, "The environment identifier was invalid")
+      const environment = options.projectRepository.environmentRead(project.id, parsedEnvironment.output)
+      if (!environment.success) return failureFromRepositoryCreate(context)
+      if (!environment.data) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 404,
+          code: "not_found",
+          message: "The environment was not found",
+        })
+      }
+      const binding = storageBindingResolve(environment.data, project.id)
+      if (!binding.success) return failureFromRepositoryCreate(context)
+      const body = await requestBodyRead(context.req.raw)
+      const parsed = v.safeParse(r2BucketCredentialRegisterRequestSchema, body)
+      if (!parsed.success) return validationFailureCreate(context, "The R2 bucket credential was invalid")
+      if (parsed.output.bucket !== binding.data.bucket)
+        return validationFailureCreate(context, "The R2 bucket credential bucket did not match the environment")
+
+      const storageBindingsRead = options.projectRepository.storageBindingsRead
+      if (storageBindingsRead === undefined) return r2BucketCredentialConflictResponseCreate(context)
+      const storageBindings = storageBindingsRead()
+      if (!storageBindings.success) return failureFromRepositoryCreate(context)
+      const bucketProjectIds = [
+        ...new Set(
+          storageBindings.data
+            .filter((candidate) => candidate.bucket === binding.data.bucket)
+            .map((candidate) => candidate.projectId),
+        ),
+      ]
+      const authentication = context.get("authentication") as RequestAuthentication | undefined
+      if (!authentication) {
+        return apiErrorResponseCreate({
+          requestId: requestIdRead(context),
+          status: 401,
+          code: "unauthorized",
+          message: "Authentication is required",
+        })
+      }
+      for (const bucketProjectId of bucketProjectIds) {
+        const bucketProjectBinding = options.projectRepository.projectBindingRead(bucketProjectId)
+        if (!bucketProjectBinding.success) return failureFromRepositoryCreate(context)
+        if (!bucketProjectBinding.data) return r2BucketCredentialConflictResponseCreate(context)
+        const authorization = projectAuthorizationCheck(
+          authentication.principal,
+          bucketProjectBinding.data,
+          "admin",
+          bucketProjectBinding.data.serviceProjectId,
+          undefined,
+          {
+            organizationId: options.authentication.config.organizationId,
+            customerOrganizationId: options.authentication.config.customerOrganizationId,
+            organizationMappings: options.authentication.config.organizationMappings,
+          },
+        )
+        if (!authorization.success) return r2BucketCredentialConflictResponseCreate(context)
+      }
+
+      const persisted = repository.r2BucketCredentialCreate(parsed.output)
+      if (!persisted.success) return domainFailureResponseCreate(context, persisted.errorMessage)
+      return successResponseCreate(context, {
+        projectId: binding.data.projectId,
+        environment: binding.data.environment,
+        bucket: binding.data.bucket,
+        registered: true,
       })
     },
   )
