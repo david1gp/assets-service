@@ -42,5 +42,8 @@ export type StorageAdapter = {
     continuationToken?: string
     maxKeys?: number
   }) => Promise<Result<{ objects: readonly StorageObject[]; nextContinuationToken: string | null }>>
-  probeCredentials: (bucket: string) => Promise<Result<StorageProbeResult>>
+  probeCredentials: (
+    bucket: string,
+    credential?: { accessKeyId: string; secretAccessKey: string },
+  ) => Promise<Result<StorageProbeResult>>
 }

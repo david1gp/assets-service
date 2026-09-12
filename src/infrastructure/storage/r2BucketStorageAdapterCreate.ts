@@ -15,9 +15,21 @@ export const r2BucketStorageAdapterCreate = (input: R2BucketStorageAdapterOption
     ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
   } satisfies Pick<R2StorageAdapterOptions, "accountId" | "endpoint" | "fetchImplementation" | "now" | "timeoutMs">
 
-  const adapterResolve = (bucket: string): Result<StorageAdapter> => {
+  const adapterResolve = (
+    bucket: string,
+    credentialOverride?: { accessKeyId: string; secretAccessKey: string },
+  ): Result<StorageAdapter> => {
     const op = "r2BucketStorageAdapterResolve"
     if (bucket.length === 0) return resultErrorCreate(op, "The R2 bucket is required")
+    if (credentialOverride !== undefined)
+      return {
+        success: true,
+        data: r2StorageAdapterCreate({
+          ...adapterOptions,
+          accessKeyId: credentialOverride.accessKeyId,
+          secretAccessKey: credentialOverride.secretAccessKey,
+        }),
+      }
     const credential = input.credentialRepository.r2BucketCredentialRead(bucket)
     if (!credential.success) return credential
     if (credential.data !== null)
@@ -93,8 +105,8 @@ export const r2BucketStorageAdapterCreate = (input: R2BucketStorageAdapterOption
       if (!adapter.success) return adapter
       return adapter.data.deleteObject(location)
     },
-    probeCredentials: async (bucket) => {
-      const adapter = adapterResolve(bucket)
+    probeCredentials: async (bucket, credentialOverride) => {
+      const adapter = adapterResolve(bucket, credentialOverride)
       if (!adapter.success) return adapter
       return adapter.data.probeCredentials(bucket)
     },

@@ -152,7 +152,7 @@ export const r2BucketCredentialRepairCreate = (
           const recovered = await pendingRepairRun(input, credentials.output, bucket, pendingRepair, current.data)
           if (!recovered.success) return recovered
           pendingByBucket.delete(bucket)
-          if (recovered.data.replacementReachable) {
+          if (recovered.data.replacementReachable || recovered.data.restored) {
             skippedBuckets.push(bucket)
             verifiedBuckets.push(bucket)
             if (recovered.data.obsoleteRevoked) revokedBuckets.push(bucket)
@@ -322,6 +322,7 @@ export const r2BucketCredentialRepairCreate = (
 type PendingRepairOutcome = {
   replacementReachable: boolean
   obsoleteRevoked: boolean
+  restored: boolean
 }
 
 type R2BucketCredentialRepairReplacement = Omit<R2BucketCredentialCreateInput, "revocationId"> & {
@@ -406,7 +407,7 @@ async function pendingRepairRun(
         pending.previousCredential,
         pendingReplacementCreate(pending),
       )
-    return { success: true, data: { replacementReachable: false, obsoleteRevoked: false } }
+    return { success: true, data: { replacementReachable: false, obsoleteRevoked: false, restored: false } }
   }
 
   const probe = await credentialProbeRun(input, bucket)
@@ -441,11 +442,11 @@ async function pendingRepairRun(
       )
     return {
       success: true,
-      data: { replacementReachable: true, obsoleteRevoked: obsoleteRevocationIds.length > 0 },
+      data: { replacementReachable: true, obsoleteRevoked: obsoleteRevocationIds.length > 0, restored: false },
     }
   }
 
-  return replacementRollbackRun(
+  return pendingPreviousRestoreRun(
     input,
     credentials,
     bucket,
@@ -456,12 +457,133 @@ async function pendingRepairRun(
       secretAccessKey: current.secretAccessKey,
       revocationId: pending.replacementRevocationId,
     },
-    "verify",
-    "The pending replacement credential was not reachable",
+    current,
     current.revocationId === pending.replacementRevocationId || current.revocationId === null
       ? []
       : [current.revocationId],
   )
+}
+
+async function pendingPreviousRestoreRun(
+  input: R2BucketCredentialRepairCreateInput,
+  credentials: CloudflareRequestCredentials,
+  bucket: string,
+  previousCredential: R2BucketCredential,
+  replacement: R2BucketCredentialRepairReplacement,
+  expectedCurrentCredential: R2BucketCredential,
+  additionalRevocationIds: readonly string[] = [],
+): Promise<Result<PendingRepairOutcome>> {
+  repairLogWrite(input, {
+    event: "phase",
+    operation: "r2BucketCredentialRepair",
+    phase: "rollback",
+    bucket,
+    recovery: "pending-previous-credential",
+  })
+  const restoredProbe = await credentialProbeRun(input, bucket, previousCredential)
+  if (!restoredProbe.success || !restoredProbe.data.reachable) {
+    const revoked = await replacementRevocationsRun(input, credentials, bucket, [
+      replacement.revocationId,
+      ...additionalRevocationIds,
+    ])
+    if (!revoked.success)
+      return repairFailure(
+        input,
+        credentials,
+        "revoke",
+        bucket,
+        "The pending replacement was not reachable and could not be revoked",
+        previousCredential,
+        replacement,
+        "previous-credential-restore-failed",
+      )
+    return repairFailure(
+      input,
+      credentials,
+      "rollback",
+      bucket,
+      restoredProbe.success ? "The previous credential was not reachable" : restoredProbe.errorMessage,
+      previousCredential,
+      replacement,
+      "previous-credential-restore-failed",
+    )
+  }
+
+  repairLogWrite(input, {
+    event: "verify",
+    operation: "r2BucketCredentialRepair",
+    phase: "verify",
+    bucket,
+    recovery: "previous-credential-verified",
+  })
+  const revoked = await replacementRevocationsRun(input, credentials, bucket, [
+    replacement.revocationId,
+    ...additionalRevocationIds,
+  ])
+  if (!revoked.success)
+    return repairFailure(
+      input,
+      credentials,
+      "revoke",
+      bucket,
+      "The previous credential was verified but the pending replacement could not be revoked",
+      previousCredential,
+      replacement,
+      "previous-credential-restore-pending",
+    )
+
+  const restored = pendingRestoreAndDeleteRun(input, bucket, previousCredential, expectedCurrentCredential)
+  if (!restored.success)
+    return repairFailure(
+      input,
+      credentials,
+      "persist",
+      bucket,
+      "The previous credential was verified but local recovery could not be committed",
+      previousCredential,
+      replacement,
+      "previous-credential-restore-transaction-failed",
+    )
+  repairLogWrite(input, {
+    event: "persist",
+    operation: "r2BucketCredentialRepair",
+    phase: "persist",
+    bucket,
+    recovery: "previous-credential-restored",
+  })
+  return {
+    success: true,
+    data: {
+      replacementReachable: false,
+      obsoleteRevoked: new Set([replacement.revocationId, ...additionalRevocationIds]).size > 0,
+      restored: true,
+    },
+  }
+}
+
+function pendingRestoreAndDeleteRun(
+  input: R2BucketCredentialRepairCreateInput,
+  bucket: string,
+  previousCredential: R2BucketCredential,
+  expectedCurrentCredential?: R2BucketCredential,
+): Result<R2BucketCredential> {
+  const recovery = input.r2BucketCredentialRepairRecoveryRepository
+  if (recovery !== undefined) {
+    try {
+      return recovery.r2BucketCredentialRepairRecoveryRestorePreviousAndDeletePending({
+        bucket,
+        previousCredential,
+        expectedCurrentCredential,
+      })
+    } catch {
+      return resultErrorCreate("r2BucketCredentialRepair", "The local credential recovery transaction failed")
+    }
+  }
+  const restored = persistCredential(input, previousCredential)
+  if (!restored.success) return restored
+  const deleted = pendingDelete(input, bucket)
+  if (!deleted.success) return deleted
+  return restored
 }
 
 function pendingReplacementCreate(pending: R2BucketCredentialRepairPending): R2BucketCredentialRepairReplacement {
@@ -496,36 +618,42 @@ async function replacementRollbackRun(
   message: string,
   additionalRevocationIds: readonly string[] = [],
 ): Promise<Result<never>> {
-  repairLogWrite(input, { event: "persist", operation: "r2BucketCredentialRepair", phase: "rollback", bucket })
-  const restored = persistCredential(input, previousCredential)
-  const restoredMatches = restored.success && credentialMatches(restored.data, previousCredential)
-  if (restoredMatches) {
-    const restoredProbe = await credentialProbeRun(input, bucket)
-    if (!restoredProbe.success || !restoredProbe.data.reachable) {
-      const revoked = await replacementRevocationsRun(input, credentials, bucket, [
-        replacement.revocationId,
-        ...additionalRevocationIds,
-      ])
-      if (!revoked.success)
-        return repairFailure(
-          input,
-          credentials,
-          "revoke",
-          bucket,
-          "The replacement was not reachable and could not be revoked",
-          previousCredential,
-          replacement,
-        )
+  repairLogWrite(input, {
+    event: "persist",
+    operation: "r2BucketCredentialRepair",
+    phase: "rollback",
+    bucket,
+    recovery: "pending-previous-credential",
+  })
+  const restoredProbe = await credentialProbeRun(input, bucket, previousCredential)
+  if (!restoredProbe.success || !restoredProbe.data.reachable) {
+    const revoked = await replacementRevocationsRun(input, credentials, bucket, [
+      replacement.revocationId,
+      ...additionalRevocationIds,
+    ])
+    if (!revoked.success)
       return repairFailure(
         input,
         credentials,
-        "rollback",
+        "revoke",
         bucket,
-        "The replacement was not reachable and the restored credential could not be verified",
+        "The replacement was not reachable and could not be revoked",
         previousCredential,
         replacement,
+        "previous-credential-restore-failed",
       )
-    }
+    return repairFailure(
+      input,
+      credentials,
+      "rollback",
+      bucket,
+      restoredProbe.success
+        ? "The replacement was not reachable and the previous credential could not be verified"
+        : restoredProbe.errorMessage,
+      previousCredential,
+      replacement,
+      "previous-credential-restore-failed",
+    )
   }
 
   const revoked = await replacementRevocationsRun(input, credentials, bucket, [
@@ -538,26 +666,31 @@ async function replacementRollbackRun(
       credentials,
       "revoke",
       bucket,
-      restoredMatches
-        ? "The replacement was not reachable and could not be revoked"
-        : "The replacement could not be restored or revoked",
+      "The replacement was not reachable and could not be revoked",
       previousCredential,
       replacement,
+      "previous-credential-restore-pending",
     )
-  if (!restoredMatches)
+  const restored = pendingRestoreAndDeleteRun(input, bucket, previousCredential)
+  if (!restored.success)
     return repairFailure(
       input,
       credentials,
-      "rollback",
+      "persist",
       bucket,
-      "The replacement could not be restored or revoked",
+      "The previous credential was verified but local recovery could not be committed",
       previousCredential,
       replacement,
+      "previous-credential-restore-transaction-failed",
     )
-  const deleted = pendingDelete(input, bucket)
-  if (!deleted.success)
-    return repairFailure(input, credentials, "persist", bucket, deleted.errorMessage, previousCredential, replacement)
-  return repairFailure(input, credentials, phase, bucket, message, previousCredential, replacement)
+  repairLogWrite(input, {
+    event: "persist",
+    operation: "r2BucketCredentialRepair",
+    phase: "persist",
+    bucket,
+    recovery: "previous-credential-restored",
+  })
+  return repairFailure(input, credentials, phase, bucket, message, previousCredential, replacement, "rollback-complete")
 }
 
 async function replacementCreate(
@@ -586,7 +719,9 @@ async function replacementRevoke(
   const revoke = input.r2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevoke
   repairLogWrite(input, { event: "revoke", operation: "r2BucketCredentialRepair", phase: "revoke", bucket })
   try {
-    return await revoke({ ...credentials, revocationId })
+    const result = await revoke({ ...credentials, revocationId })
+    if (!result.success && credentialProbeStatusRead(result.diagnostics) === 404) return { success: true, data: false }
+    return result
   } catch {
     return resultErrorCreate("r2BucketCredentialRepair", "The credential could not be revoked")
   }
@@ -607,21 +742,33 @@ async function replacementRevocationsRun(
 
 function persistCredential(
   input: R2BucketCredentialRepairCreateInput,
-  credential: R2BucketCredentialCreateInput,
+  credential: R2BucketCredentialCreateInput | R2BucketCredential,
 ): Result<R2BucketCredential> {
   try {
-    return input.r2BucketCredentialRepository.r2BucketCredentialCreate(credential)
+    return input.r2BucketCredentialRepository.r2BucketCredentialCreate(credentialInputCreate(credential))
   } catch {
     return resultErrorCreate("r2BucketCredentialRepair", "The credential could not be persisted")
+  }
+}
+
+function credentialInputCreate(
+  credential: R2BucketCredentialCreateInput | R2BucketCredential,
+): R2BucketCredentialCreateInput {
+  return {
+    bucket: credential.bucket,
+    accessKeyId: credential.accessKeyId,
+    secretAccessKey: credential.secretAccessKey,
+    revocationId: credential.revocationId,
   }
 }
 
 async function credentialProbeRun(
   input: R2BucketCredentialRepairCreateInput,
   bucket: string,
+  credential?: Pick<R2BucketCredentialCreateInput, "accessKeyId" | "secretAccessKey">,
 ): Promise<Result<{ reachable: boolean }>> {
   try {
-    const probed = await input.credentialProbe(bucket)
+    const probed = await input.credentialProbe(bucket, credential)
     if (!probed.success) {
       const status = credentialProbeStatusRead(probed.diagnostics)
       if (status === 401 || status === 403) return { success: true, data: { reachable: false } }
@@ -667,6 +814,7 @@ function repairFailure(
   message: string,
   current?: R2BucketCredential,
   replacement?: R2BucketCredentialCreateInput,
+  recovery?: string,
 ): Result<never> {
   const error = cloudflareSecretRedact(message, [
     credentials.accountId,
@@ -683,10 +831,15 @@ function repairFailure(
     operation: "r2BucketCredentialRepair",
     phase,
     ...(bucket === undefined ? {} : { bucket }),
+    ...(recovery === undefined ? {} : { recovery }),
     error,
   })
   return resultErrorCreate("r2BucketCredentialRepair", error, undefined, {
-    diagnostics: { phase, ...(bucket === undefined ? {} : { bucket }) },
+    diagnostics: {
+      phase,
+      ...(bucket === undefined ? {} : { bucket }),
+      ...(recovery === undefined ? {} : { recovery }),
+    },
     retryable: true,
   })
 }
