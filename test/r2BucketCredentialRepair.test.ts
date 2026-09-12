@@ -3,6 +3,7 @@ import type { R2BucketCredentialCreateInput } from "../src/r2/r2BucketCredential
 import { r2BucketCredentialRepairCreate } from "../src/r2/r2BucketCredentialRepairCreate.js"
 import type { R2BucketCredentialRepairPendingRepository } from "../src/r2/r2BucketCredentialRepairPendingRepository.js"
 import type { R2BucketCredentialRepairPending } from "../src/r2/r2BucketCredentialRepairPendingSchema.js"
+import type { R2BucketCredentialRepairRecoveryRepository } from "../src/r2/r2BucketCredentialRepairRecoveryRepository.js"
 import type { R2BucketCredential } from "../src/r2/r2BucketCredentialSchema.js"
 import type { StorageBinding } from "../src/storage/storageBindingSchema.js"
 
@@ -501,5 +502,174 @@ test("retains pending repair metadata when the persisted credential is missing",
   expect(pendingRepository.r2BucketCredentialRepairPendingsRead()).toMatchObject({
     success: true,
     data: [{ bucket: "bucket", replacementRevocationId: "revocation-replacement" }],
+  })
+})
+
+test("reruns safely from a revoked replacement and atomically cleans the pending recovery state", async () => {
+  const previous = credentialCreate("bucket", "old")
+  const replacement = credentialCreate("bucket", "replacement")
+  const credentials = new Map<string, R2BucketCredential>([["bucket", replacement]])
+  const pendingRepository = pendingRepositoryCreate()
+  pendingRepository.r2BucketCredentialRepairPendingCreate({
+    bucket: "bucket",
+    previousCredential: previous,
+    replacementRevocationId: replacement.revocationId ?? "",
+  })
+  const logs: unknown[] = []
+  let createCalls = 0
+  let revokeCalls = 0
+  const recoveryRepository: R2BucketCredentialRepairRecoveryRepository = {
+    r2BucketCredentialRepairRecoveryRestorePreviousAndDeletePending: ({
+      bucket: recoveryBucket,
+      previousCredential,
+      expectedCurrentCredential,
+    }) => {
+      expect(expectedCurrentCredential).toEqual(replacement)
+      const saved = { ...previousCredential }
+      credentials.set(recoveryBucket, saved)
+      const deleted = pendingRepository.r2BucketCredentialRepairPendingDelete(recoveryBucket)
+      if (!deleted.success) return deleted
+      return { success: true, data: saved }
+    },
+  }
+  const operation = r2BucketCredentialRepairCreate({
+    liveStorageBindingsRead: () => ({ success: true, data: [bindingCreate("bucket")] }),
+    r2BucketCredentialRepository: {
+      r2BucketCredentialRead: (bucket) => ({ success: true, data: credentials.get(bucket) ?? null }),
+      r2BucketCredentialCreate: (input) => {
+        const saved = { ...previous, ...input }
+        credentials.set(input.bucket, saved)
+        return { success: true, data: saved }
+      },
+    },
+    r2BucketCredentialRepairPendingRepository: pendingRepository,
+    r2BucketCredentialRepairRecoveryRepository: recoveryRepository,
+    credentialProbe: async (bucket, candidate) => {
+      const accessKeyId = candidate?.accessKeyId ?? credentials.get(bucket)?.accessKeyId
+      return accessKeyId === previous.accessKeyId
+        ? { success: true, data: { reachable: true, status: 200 } }
+        : { success: false, op: "testProbe", errorMessage: "R2 request failed", diagnostics: { status: 403 } }
+    },
+    r2BucketCredentialCreate: async () => {
+      createCalls += 1
+      return { success: false, op: "testCreate", errorMessage: "must not create another replacement" }
+    },
+    r2BucketCredentialRevoke: async () => {
+      revokeCalls += 1
+      return { success: false, op: "testRevoke", errorMessage: "already revoked", diagnostics: { status: 404 } }
+    },
+    repairLogger: (entry) => logs.push(entry),
+  })
+
+  const result = await operation.r2BucketCredentialRepair(requestCredentials)
+
+  expect(result).toEqual({
+    success: true,
+    data: {
+      discoveredBuckets: ["bucket"],
+      repairedBuckets: [],
+      skippedBuckets: ["bucket"],
+      verifiedBuckets: ["bucket"],
+      revokedBuckets: ["bucket"],
+    },
+  })
+  expect(credentials.get("bucket")).toEqual({ ...previous, updatedAt: previous.updatedAt })
+  expect(pendingRepository.r2BucketCredentialRepairPendingsRead()).toEqual({ success: true, data: [] })
+  expect(createCalls).toBe(0)
+  expect(revokeCalls).toBe(1)
+  expect(JSON.stringify(logs)).toContain("previous-credential-restored")
+  expect(JSON.stringify(logs)).not.toContain(previous.secretAccessKey)
+  expect(JSON.stringify(logs)).not.toContain(replacement.secretAccessKey)
+})
+
+test("retains pending recovery state when the previous credential cannot be verified", async () => {
+  const previous = credentialCreate("bucket", "old")
+  const replacement = credentialCreate("bucket", "replacement")
+  const credentials = new Map<string, R2BucketCredential>([["bucket", replacement]])
+  const pendingRepository = pendingRepositoryCreate()
+  pendingRepository.r2BucketCredentialRepairPendingCreate({
+    bucket: "bucket",
+    previousCredential: previous,
+    replacementRevocationId: replacement.revocationId ?? "",
+  })
+  const operation = r2BucketCredentialRepairCreate({
+    liveStorageBindingsRead: () => ({ success: true, data: [bindingCreate("bucket")] }),
+    r2BucketCredentialRepository: {
+      r2BucketCredentialRead: (bucket) => ({ success: true, data: credentials.get(bucket) ?? null }),
+      r2BucketCredentialCreate: (input) => ({ success: true, data: { ...replacement, ...input } }),
+    },
+    r2BucketCredentialRepairPendingRepository: pendingRepository,
+    credentialProbe: async (_bucket, candidate) =>
+      candidate === undefined || candidate.accessKeyId === replacement.accessKeyId
+        ? { success: false, op: "testProbe", errorMessage: "R2 request failed", diagnostics: { status: 403 } }
+        : { success: true, data: { reachable: false, status: 403 } },
+    r2BucketCredentialCreate: async () => ({ success: false, op: "testCreate", errorMessage: "must not create" }),
+    r2BucketCredentialRevoke: async () => ({ success: true, data: true }),
+  })
+
+  const result = await operation.r2BucketCredentialRepair(requestCredentials)
+
+  expect(result).toMatchObject({
+    success: false,
+    diagnostics: {
+      bucket: "bucket",
+      phase: "rollback",
+      recovery: "previous-credential-restore-failed",
+    },
+  })
+  expect(credentials.get("bucket")).toEqual(replacement)
+  expect(pendingRepository.r2BucketCredentialRepairPendingsRead()).toMatchObject({
+    success: true,
+    data: [{ bucket: "bucket", replacementRevocationId: replacement.revocationId }],
+  })
+})
+
+test("retains pending recovery state when the local restore transaction fails", async () => {
+  const previous = credentialCreate("bucket", "old")
+  const replacement = credentialCreate("bucket", "replacement")
+  const credentials = new Map<string, R2BucketCredential>([["bucket", replacement]])
+  const pendingRepository = pendingRepositoryCreate()
+  pendingRepository.r2BucketCredentialRepairPendingCreate({
+    bucket: "bucket",
+    previousCredential: previous,
+    replacementRevocationId: replacement.revocationId ?? "",
+  })
+  const recoveryRepository: R2BucketCredentialRepairRecoveryRepository = {
+    r2BucketCredentialRepairRecoveryRestorePreviousAndDeletePending: () => ({
+      success: false,
+      op: "testRecovery",
+      errorMessage: "database is busy",
+    }),
+  }
+  const operation = r2BucketCredentialRepairCreate({
+    liveStorageBindingsRead: () => ({ success: true, data: [bindingCreate("bucket")] }),
+    r2BucketCredentialRepository: {
+      r2BucketCredentialRead: (bucket) => ({ success: true, data: credentials.get(bucket) ?? null }),
+      r2BucketCredentialCreate: (input) => ({ success: true, data: { ...replacement, ...input } }),
+    },
+    r2BucketCredentialRepairPendingRepository: pendingRepository,
+    r2BucketCredentialRepairRecoveryRepository: recoveryRepository,
+    credentialProbe: async (_bucket, candidate) =>
+      candidate === undefined
+        ? { success: false, op: "testProbe", errorMessage: "R2 request failed", diagnostics: { status: 403 } }
+        : { success: true, data: { reachable: true, status: 200 } },
+    r2BucketCredentialCreate: async () => ({ success: false, op: "testCreate", errorMessage: "must not create" }),
+    r2BucketCredentialRevoke: async () => ({ success: true, data: true }),
+  })
+
+  const result = await operation.r2BucketCredentialRepair(requestCredentials)
+
+  expect(result).toMatchObject({
+    success: false,
+    diagnostics: {
+      bucket: "bucket",
+      phase: "persist",
+      recovery: "previous-credential-restore-transaction-failed",
+    },
+  })
+  expect(credentials.get("bucket")).toEqual(replacement)
+  expect(pendingRepository.r2BucketCredentialRepairPendingsRead()).toMatchObject({
+    success: true,
+    data: [{ bucket: "bucket", replacementRevocationId: replacement.revocationId }],
   })
 })

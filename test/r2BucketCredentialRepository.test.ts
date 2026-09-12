@@ -8,6 +8,7 @@ import { r2BucketCredentialRepairLockTable } from "../src/infrastructure/db/sche
 import { r2BucketCredentialRepairPendingTable } from "../src/infrastructure/db/schema/r2BucketCredentialRepairPendingTable.js"
 import { r2BucketCredentialTable } from "../src/infrastructure/db/schema/r2BucketCredentialTable.js"
 import { r2BucketCredentialRepairPendingRepositoryCreate } from "../src/r2/r2BucketCredentialRepairPendingRepositoryCreate.js"
+import { r2BucketCredentialRepairRecoveryRepositoryCreate } from "../src/r2/r2BucketCredentialRepairRecoveryRepositoryCreate.js"
 import { r2BucketCredentialRepositoryCreate } from "../src/r2/r2BucketCredentialRepositoryCreate.js"
 
 test("R2 bucket credential repository encrypts, rotates, and removes credentials", () => {
@@ -182,6 +183,136 @@ test("R2 credential repair pending repository durably retains and decrypts rollb
     expect(repository.r2BucketCredentialRepairRelease({ bucket: "assets", ownerId: "repair-a" })).toEqual({
       success: true,
       data: true,
+    })
+  } finally {
+    databaseClose(opened.data)
+  }
+})
+
+test("R2 credential repair recovery restores the previous credential and deletes pending state atomically", () => {
+  const opened = databaseOpen(":memory:")
+  expect(opened.success).toBe(true)
+  if (!opened.success) return
+  try {
+    expect(databaseMigrate(opened.data)).toEqual({ success: true, data: null })
+    const credentialRepository = r2BucketCredentialRepositoryCreate(opened.data.db, {
+      encryptionKey: "test-master-key",
+      clock: () => new Date("2026-09-13T00:00:00.000Z"),
+    })
+    const pendingRepository = r2BucketCredentialRepairPendingRepositoryCreate(opened.data.db, "test-master-key")
+    const previousCredential = {
+      bucket: "assets",
+      accessKeyId: "access-key-old",
+      secretAccessKey: "secret-key-old",
+      revocationId: "token-old",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    }
+    const replacementCredential = {
+      bucket: "assets",
+      accessKeyId: "access-key-replacement",
+      secretAccessKey: "secret-key-replacement",
+      revocationId: "token-replacement",
+    }
+    expect(credentialRepository.r2BucketCredentialCreate(replacementCredential).success).toBe(true)
+    expect(
+      pendingRepository.r2BucketCredentialRepairPendingCreate({
+        bucket: "assets",
+        previousCredential,
+        replacementRevocationId: "token-replacement",
+      }).success,
+    ).toBe(true)
+
+    const recoveryRepository = r2BucketCredentialRepairRecoveryRepositoryCreate(
+      opened.data.db,
+      credentialRepository,
+      pendingRepository,
+    )
+    const restored = recoveryRepository.r2BucketCredentialRepairRecoveryRestorePreviousAndDeletePending({
+      bucket: "assets",
+      previousCredential,
+    })
+
+    expect(restored).toMatchObject({
+      success: true,
+      data: {
+        bucket: "assets",
+        accessKeyId: "access-key-old",
+        secretAccessKey: "secret-key-old",
+        revocationId: "token-old",
+      },
+    })
+    expect(credentialRepository.r2BucketCredentialRead("assets")).toMatchObject({
+      success: true,
+      data: { accessKeyId: "access-key-old", secretAccessKey: "secret-key-old", revocationId: "token-old" },
+    })
+    expect(pendingRepository.r2BucketCredentialRepairPendingRead("assets")).toEqual({ success: true, data: null })
+  } finally {
+    databaseClose(opened.data)
+  }
+})
+
+test("R2 credential repair recovery rolls back the credential restore when pending deletion fails", () => {
+  const opened = databaseOpen(":memory:")
+  expect(opened.success).toBe(true)
+  if (!opened.success) return
+  try {
+    expect(databaseMigrate(opened.data)).toEqual({ success: true, data: null })
+    const credentialRepository = r2BucketCredentialRepositoryCreate(opened.data.db, {
+      encryptionKey: "test-master-key",
+      clock: () => new Date("2026-09-13T00:00:00.000Z"),
+    })
+    const pendingRepository = r2BucketCredentialRepairPendingRepositoryCreate(opened.data.db, "test-master-key")
+    const previousCredential = {
+      bucket: "assets",
+      accessKeyId: "access-key-old",
+      secretAccessKey: "secret-key-old",
+      revocationId: "token-old",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    }
+    expect(
+      credentialRepository.r2BucketCredentialCreate({
+        bucket: "assets",
+        accessKeyId: "access-key-replacement",
+        secretAccessKey: "secret-key-replacement",
+        revocationId: "token-replacement",
+      }).success,
+    ).toBe(true)
+    expect(
+      pendingRepository.r2BucketCredentialRepairPendingCreate({
+        bucket: "assets",
+        previousCredential,
+        replacementRevocationId: "token-replacement",
+      }).success,
+    ).toBe(true)
+    const failingPendingRepository = {
+      ...pendingRepository,
+      r2BucketCredentialRepairPendingDelete: () => ({
+        success: false as const,
+        op: "testPendingDelete",
+        errorMessage: "pending delete failed",
+      }),
+    }
+    const recoveryRepository = r2BucketCredentialRepairRecoveryRepositoryCreate(
+      opened.data.db,
+      credentialRepository,
+      failingPendingRepository,
+    )
+
+    const result = recoveryRepository.r2BucketCredentialRepairRecoveryRestorePreviousAndDeletePending({
+      bucket: "assets",
+      previousCredential,
+    })
+
+    expect(result).toMatchObject({ success: false, op: "testPendingDelete" })
+    expect(credentialRepository.r2BucketCredentialRead("assets")).toMatchObject({
+      success: true,
+      data: { accessKeyId: "access-key-replacement", secretAccessKey: "secret-key-replacement" },
+    })
+    expect(pendingRepository.r2BucketCredentialRepairPendingRead("assets")).toMatchObject({
+      success: true,
+      data: { bucket: "assets", replacementRevocationId: "token-replacement" },
     })
   } finally {
     databaseClose(opened.data)
