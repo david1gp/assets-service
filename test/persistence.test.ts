@@ -69,6 +69,8 @@ describe("SQLite persistence", () => {
         "project_storage_domains",
         "project_storage_locations",
         "projects",
+        "r2_bucket_credential_repair_locks",
+        "r2_bucket_credential_repair_pending",
         "r2_bucket_credentials",
         "reconciliation_runs",
         "source_revisions",
