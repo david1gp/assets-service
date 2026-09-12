@@ -28,13 +28,12 @@ import { cliCommandHelp } from "../asset-cli/cliCommandHelp.js"
 import { cliHelpFormat } from "../asset-cli/cliHelpFormat.js"
 import { localAssetManifestLoad } from "../asset-cli/localAssetManifestLoad.js"
 import { projectCreateCredentialReconciliationRun } from "../asset-cli/projectCreateCredentialReconciliationRun.js"
+import { r2CredentialsRead } from "../asset-cli/r2CredentialsRead.js"
 import { remoteAssetHistoryManifestLoad } from "../asset-cli/remoteAssetHistoryManifestLoad.js"
 import { assetsCliVersionMetadataRender } from "../assetsCliVersionMetadataRender.js"
 import { catalogListsCheck } from "../catalog/catalogListsCheck.js"
 import { catalogListsWrite } from "../catalog/catalogListsWrite.js"
 import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
-import { cloudflareR2BucketCredentialCreate } from "../cloudflare/cloudflareR2BucketCredentialCreate.js"
-import { cloudflareR2BucketCredentialRevoke } from "../cloudflare/cloudflareR2BucketCredentialRevoke.js"
 import { cloudflareRequestCredentialsSchema } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
 import {
   type EnvironmentConfiguration,
@@ -83,8 +82,6 @@ export type AssetsCliOptions = {
   stderr?: (text: string) => void
   stdinRead?: () => Promise<string>
   wranglerRunner?: WranglerCommandRunner
-  cloudflareR2BucketCredentialCreate?: typeof cloudflareR2BucketCredentialCreate
-  cloudflareR2BucketCredentialRevoke?: typeof cloudflareR2BucketCredentialRevoke
 }
 
 type CliConfig = {
@@ -2459,8 +2456,6 @@ const commandRun = async (
   organization?: OrganizationDefinition,
   zitadelProjectCreate: ZitadelProjectCreate = zitadelProjectCreateDefault,
   wranglerRunner: WranglerCommandRunner = wranglerCommandRunnerProduction,
-  cloudflareCredentialCreate: typeof cloudflareR2BucketCredentialCreate = cloudflareR2BucketCredentialCreate,
-  cloudflareCredentialRevoke: typeof cloudflareR2BucketCredentialRevoke = cloudflareR2BucketCredentialRevoke,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) =>
     new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
   pollIntervalMilliseconds = 1000,
@@ -2684,9 +2679,7 @@ const commandRun = async (
       client,
       projectId: registered.data.project.project.id,
       environments: registered.data.project.environments,
-      cloudflareCredentialsRead: () => cloudflareRequestCredentialsRead(env, "R2 credential registration"),
-      cloudflareCredentialCreate: cloudflareCredentialCreate,
-      cloudflareCredentialRevoke: cloudflareCredentialRevoke,
+      r2CredentialsRead: () => r2CredentialsRead(env),
     })
     if (!reconciled.success) return { result: reconciled }
     return { result: registered }
@@ -3222,8 +3215,6 @@ export const assetsCliMain = async (args = process.argv.slice(2), options: Asset
     organizationResult.data.organization ?? undefined,
     options.zitadelProjectCreate ?? zitadelProjectCreateDefault,
     options.wranglerRunner ?? wranglerCommandRunnerProduction,
-    options.cloudflareR2BucketCredentialCreate ?? cloudflareR2BucketCredentialCreate,
-    options.cloudflareR2BucketCredentialRevoke ?? cloudflareR2BucketCredentialRevoke,
     sleep,
     parsedPollInterval?.data,
   )

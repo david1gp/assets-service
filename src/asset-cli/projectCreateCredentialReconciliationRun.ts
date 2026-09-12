@@ -1,7 +1,4 @@
 import type { R2BucketCredentialCreateInput } from "../r2/r2BucketCredentialCreateInputSchema.js"
-import type { CloudflareRequestCredentials } from "../cloudflare/cloudflareRequestCredentialsSchema.js"
-import { cloudflareR2BucketCredentialCreate } from "../cloudflare/cloudflareR2BucketCredentialCreate.js"
-import { cloudflareR2BucketCredentialRevoke } from "../cloudflare/cloudflareR2BucketCredentialRevoke.js"
 import { cloudflareSecretRedact } from "../cloudflare/cloudflareSecretRedact.js"
 import type { R2BucketCredentialRegisterResponse } from "../api-client/r2BucketCredentialRegisterResponseSchema.js"
 import type { R2BucketCredentialStatusResponse } from "../api-client/r2BucketCredentialStatusResponseSchema.js"
@@ -30,9 +27,7 @@ type ProjectCreateCredentialReconciliationInput = {
   client: ProjectCreateCredentialClient
   projectId: string
   environments: readonly ProjectCreateCredentialEnvironment[]
-  cloudflareCredentialsRead: () => Result<CloudflareRequestCredentials>
-  cloudflareCredentialCreate?: typeof cloudflareR2BucketCredentialCreate
-  cloudflareCredentialRevoke?: typeof cloudflareR2BucketCredentialRevoke
+  r2CredentialsRead: () => Result<{ accessKeyId: string; secretAccessKey: string }>
 }
 
 const operation = "assetsCliProjectCreateCredentialReconciliation"
@@ -76,47 +71,24 @@ const projectCreateCredentialReconciliationRun = async (
   )
 
   if (missingBuckets.length > 0) {
-    const cloudflareCredentials = input.cloudflareCredentialsRead()
-    if (!cloudflareCredentials.success) return cloudflareCredentials
-    const credentialCreate = input.cloudflareCredentialCreate ?? cloudflareR2BucketCredentialCreate
-    const credentialRevoke = input.cloudflareCredentialRevoke ?? cloudflareR2BucketCredentialRevoke
+    const r2Credentials = input.r2CredentialsRead()
+    if (!r2Credentials.success) return r2Credentials
 
     for (const bucket of missingBuckets) {
       const environment = environmentByBucket.get(bucket)
       if (environment === undefined) return resultFailure(`The R2 bucket ${bucket} had no associated environment`)
 
-      const created = await credentialCreate({
-        accountId: cloudflareCredentials.data.accountId,
-        apiToken: cloudflareCredentials.data.apiToken,
+      const credential: R2BucketCredentialCreateInput = {
         bucket,
-      })
-      if (!created.success)
-        return resultFailure(
-          `Could not create the scoped R2 credential for ${bucket}: ${errorMessageRedactedRead(created, [cloudflareCredentials.data.apiToken])}`,
-        )
+        accessKeyId: r2Credentials.data.accessKeyId,
+        secretAccessKey: r2Credentials.data.secretAccessKey,
+        revocationId: null,
+      }
 
-      const registered = await input.client.r2BucketCredentialRegister(input.projectId, environment, created.data)
+      const registered = await input.client.r2BucketCredentialRegister(input.projectId, environment, credential)
       if (!registered.success) {
-        const credentialSecrets = [
-          cloudflareCredentials.data.apiToken,
-          created.data.accessKeyId,
-          created.data.secretAccessKey,
-          created.data.revocationId,
-        ]
+        const credentialSecrets = [credential.accessKeyId, credential.secretAccessKey]
         const registrationError = errorMessageRedactedRead(registered, credentialSecrets)
-        if (created.data.revocationId !== null) {
-          const revoked = await credentialRevoke({
-            accountId: cloudflareCredentials.data.accountId,
-            apiToken: cloudflareCredentials.data.apiToken,
-            revocationId: created.data.revocationId,
-          })
-          if (!revoked.success) {
-            const cleanupError = errorMessageRedactedRead(revoked, credentialSecrets)
-            return resultFailure(
-              `Could not register the scoped R2 credential for ${bucket}: ${registrationError}; cleanup failed: ${cleanupError}`,
-            )
-          }
-        }
         return resultFailure(`Could not register the scoped R2 credential for ${bucket}: ${registrationError}`)
       }
     }
