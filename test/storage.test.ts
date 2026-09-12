@@ -5,9 +5,11 @@ import { memoryStorageAdapterCreate } from "../src/infrastructure/storage/memory
 import { r2StorageAdapterCreate } from "../src/infrastructure/storage/r2StorageAdapter.js"
 import { contentSha256Create } from "../src/schemas/contentSha256Create.js"
 import { storageBindingResolve } from "../src/storage/storageBindingResolve.js"
+import { storageBucketDedicatedValidate } from "../src/storage/storageBucketDedicatedValidate.js"
 import { storageCopyImmutable } from "../src/storage/storageCopyImmutable.js"
 import { storageObjectLocationCreate } from "../src/storage/storageObjectLocationCreate.js"
 import { storageObjectVerify } from "../src/storage/storageObjectVerify.js"
+import { storageProjectObjectsDelete } from "../src/storage/storageProjectObjectsDelete.js"
 import { storagePutImmutable } from "../src/storage/storagePutImmutable.js"
 import { storageUploadIntentComplete } from "../src/storage/storageUploadIntentComplete.js"
 import { storageUploadIntentCreate } from "../src/storage/storageUploadIntentCreate.js"
@@ -107,6 +109,115 @@ describe("storage adapters", () => {
     expect(await adapter.listObjects?.({ bucket: binding.data.bucket })).toMatchObject({
       success: true,
       data: { objects: [] },
+    })
+  })
+
+  test("deletes all project objects across listing pages without touching another prefix", async () => {
+    const binding = storageBindingResolve(environment)
+    if (!binding.success) return
+    const adapter = memoryStorageAdapterCreate()
+    const objects = [
+      ["private-source", "uploads/one"],
+      ["private-staging", "uploads/two"],
+      ["public-output", "outputs/three_v1.png"],
+    ] as const
+    for (const [namespace, key] of objects) {
+      const location = storageObjectLocationCreate(binding.data, namespace, key)
+      if (!location.success) return
+      await adapter.putImmutable({ location: location.data, bytes: png, mediaType: "image/png" })
+    }
+    const otherBinding = storageBindingResolve({
+      ...environment,
+      projectId: "project-2",
+      r2Prefix: "projects/project-2",
+    })
+    if (!otherBinding.success) return
+    const otherLocation = storageObjectLocationCreate(otherBinding.data, "private-source", "kept")
+    if (!otherLocation.success) return
+    await adapter.putImmutable({ location: otherLocation.data, bytes: png, mediaType: "image/png" })
+
+    const deletedLocations: Array<{ namespace: string; key: string }> = []
+    const trackingAdapter = {
+      ...adapter,
+      deleteObject: async (location: Parameters<typeof adapter.deleteObject>[0]) => {
+        deletedLocations.push({ namespace: location.namespace, key: location.key })
+        return adapter.deleteObject(location)
+      },
+    }
+    const deleted = await storageProjectObjectsDelete(trackingAdapter, { binding: binding.data, maxKeys: 1 })
+
+    expect(deleted).toEqual({ success: true, data: { deletedCount: 3 } })
+    expect(deletedLocations).toEqual([
+      { namespace: "private-source", key: "uploads/one" },
+      { namespace: "private-staging", key: "uploads/two" },
+      { namespace: "public-output", key: "outputs/three_v1.png" },
+    ])
+    expect(await adapter.listObjects?.({ bucket: binding.data.bucket, prefix: "projects/project-1/" })).toMatchObject({
+      success: true,
+      data: { objects: [] },
+    })
+    expect(
+      await adapter.listObjects?.({ bucket: otherBinding.data.bucket, prefix: "projects/project-2/" }),
+    ).toMatchObject({
+      success: true,
+      data: { objects: [{ key: "projects/project-2/private/source/kept" }] },
+    })
+  })
+
+  test("only proves a bucket dedicated when no other project binding references it", () => {
+    const dedicated = storageBucketDedicatedValidate({
+      projectId: "project-1",
+      bucket: "dedicated-bucket",
+      bindings: [
+        {
+          projectId: "project-1",
+          environment: "development",
+          bucket: "dedicated-bucket",
+          prefix: "projects/project-1",
+          publicBaseUrl: "https://dev.assets.example.test",
+        },
+      ],
+    })
+    expect(dedicated).toMatchObject({ success: true, data: { projectId: "project-1", bucket: "dedicated-bucket" } })
+
+    const shared = storageBucketDedicatedValidate({
+      projectId: "project-1",
+      bucket: "shared-bucket",
+      bindings: [
+        {
+          projectId: "project-1",
+          environment: "development",
+          bucket: "shared-bucket",
+          prefix: "projects/project-1",
+          publicBaseUrl: "https://dev.assets.example.test",
+        },
+        {
+          projectId: "project-2",
+          environment: "development",
+          bucket: "shared-bucket",
+          prefix: "projects/project-2",
+          publicBaseUrl: "https://dev.assets.example.test",
+        },
+      ],
+    })
+    expect(shared).toMatchObject({ success: false, errorMessage: "The bucket is shared with another project" })
+
+    const root = storageBucketDedicatedValidate({
+      projectId: "project-1",
+      bucket: "root-bucket",
+      bindings: [
+        {
+          projectId: "project-1",
+          environment: "development",
+          bucket: "root-bucket",
+          prefix: "",
+          publicBaseUrl: "https://dev.assets.example.test",
+        },
+      ],
+    })
+    expect(root).toMatchObject({
+      success: false,
+      errorMessage: "The bucket dedication could not be proven for an empty prefix",
     })
   })
 
