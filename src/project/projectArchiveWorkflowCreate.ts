@@ -165,7 +165,6 @@ async function verifiedReceiptRead(
         receipt.byteSize === byteSize &&
         receipt.sha256 === sha256 &&
         receipt.checkResult === "verified" &&
-        receipt.remotePath.startsWith(`gdrive_beta:backups/${projectId}/`) &&
         rcloneBackupRemotePathValidate(receipt.remotePath),
     )
     if (matching !== undefined) return { success: true, data: matching }

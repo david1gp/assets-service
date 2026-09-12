@@ -169,6 +169,16 @@ describe("project archive workflow", () => {
     expect(setup.runnerCalls).toEqual([])
   })
 
+  test("accepts verified receipts at historical Drive paths without reading Drive bytes", async () => {
+    const setup = workflowSetup({ receiptPathPrefix: "gdrive_beta:backups/contentoren/template" })
+
+    const archived = await setup.workflow.projectArchive(projectId, cloudflareCredentials)
+
+    expect(archived).toMatchObject({ success: true, data: { project: { archiveState: "archived" } } })
+    expect(setup.state).toBe("archived")
+    expect(setup.restoreCalls).toHaveLength(0)
+  })
+
   test("requires a matching verified receipt for every source revision without reading Drive bytes", async () => {
     const setup = workflowSetup({ missingReceiptRevisionId: "source-current-previous" })
 
@@ -374,6 +384,7 @@ function workflowSetup(
     verifiedBackup?: boolean
     receiptMismatch?: boolean
     missingReceiptRevisionId?: string
+    receiptPathPrefix?: string
     assetCount?: number
     globalBindings?: readonly ReturnType<typeof setupBinding>[]
     historicalLocations?: readonly ProjectStorageLocation[]
@@ -511,7 +522,7 @@ function workflowSetup(
                     projectId,
                     sourceRevisionId: receiptOptions.sourceRevisionId ?? sourceRevisionId,
                     jobId: "job-1",
-                    remotePath: `gdrive_beta:backups/${projectId}/${receiptOptions.sourceRevisionId ?? sourceRevisionId}.png`,
+                    remotePath: `${options.receiptPathPrefix ?? `gdrive_beta:backups/${projectId}`}/${receiptOptions.sourceRevisionId ?? sourceRevisionId}.png`,
                     byteSize: options.receiptMismatch ? sourceBytes.byteLength + 1 : sourceBytes.byteLength,
                     sha256: options.receiptMismatch ? "b".repeat(64) : sourceSha256,
                     checkResult: "verified" as const,
