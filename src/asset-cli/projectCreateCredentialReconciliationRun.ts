@@ -72,7 +72,7 @@ const generatedCredentialCreate = async (
 ): Promise<Result<R2BucketCredentialCreateInput>> => {
   const create = input.cloudflareR2BucketCredentialCreate ?? cloudflareR2BucketCredentialCreateDefault
   try {
-    return await create({ ...credentials, bucket, name: `assets-service-${bucket}` })
+    return await create({ ...credentials, bucket })
   } catch {
     return resultFailure(`Could not create the scoped R2 credential for ${bucket}`)
   }
