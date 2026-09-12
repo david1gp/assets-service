@@ -41,7 +41,10 @@ test("creates a bucket-scoped R2 credential with request-scoped Cloudflare crede
       {
         effect: "allow",
         resources: { "com.cloudflare.edge.r2.bucket.account-1_default_project-bucket": "*" },
-        permission_groups: [{ name: "Workers R2 Storage Bucket Item Write" }],
+        permission_groups: [
+          { id: "6a018a9f2fc74eb6b293b0c548f38b39", name: "Workers R2 Storage Bucket Item Read" },
+          { id: "2efd5506f9c8494dacb1fa10a3e7d5b6", name: "Workers R2 Storage Bucket Item Write" },
+        ],
       },
     ],
   })

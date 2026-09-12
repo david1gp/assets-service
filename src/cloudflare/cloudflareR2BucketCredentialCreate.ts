@@ -5,8 +5,10 @@ import type { Result } from "../schemas/resultSchema.js"
 import { cloudflareApiRequest } from "./cloudflareApiRequest.js"
 import { cloudflareRequestCredentialsSchema } from "./cloudflareRequestCredentialsSchema.js"
 
-const r2PermissionGroupId = "2efd5506f9c8494dacb1fa10a3e7d5b6"
-const r2PermissionGroupName = "Workers R2 Storage Bucket Item Write"
+const r2PermissionGroupReadId = "6a018a9f2fc74eb6b293b0c548f38b39"
+const r2PermissionGroupReadName = "Workers R2 Storage Bucket Item Read"
+const r2PermissionGroupWriteId = "2efd5506f9c8494dacb1fa10a3e7d5b6"
+const r2PermissionGroupWriteName = "Workers R2 Storage Bucket Item Write"
 
 export const cloudflareR2BucketCredentialCreate = async (input: {
   accountId: string
@@ -37,7 +39,10 @@ export const cloudflareR2BucketCredentialCreate = async (input: {
         {
           effect: "allow",
           resources: { [resource]: "*" },
-          permission_groups: [{ id: r2PermissionGroupId, name: r2PermissionGroupName }],
+          permission_groups: [
+            { id: r2PermissionGroupReadId, name: r2PermissionGroupReadName },
+            { id: r2PermissionGroupWriteId, name: r2PermissionGroupWriteName },
+          ],
         },
       ],
     },
