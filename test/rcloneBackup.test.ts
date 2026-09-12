@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { rm } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import { backupOriginal } from "../src/backup/backupOriginal.js"
 import { rcloneBackupAdapterFake } from "../src/backup/rcloneBackupAdapterFake.js"
+import { rcloneBackupRemotePathValidate } from "../src/backup/rcloneBackupRemotePathValidate.js"
 import { rcloneErrorCreate } from "../src/backup/rcloneErrorCreate.js"
 import { rcloneBackupAdapterProduction } from "../src/infrastructure/rclone/rcloneBackupAdapterProduction.js"
+import { rcloneBackupRestoreAdapterProduction } from "../src/infrastructure/rclone/rcloneBackupRestoreAdapterProduction.js"
 import type { RcloneCommandRunner } from "../src/infrastructure/rclone/rcloneCommandRunner.js"
 import { rcloneCommandRunnerProduction } from "../src/infrastructure/rclone/rcloneCommandRunnerProduction.js"
 
@@ -79,6 +83,101 @@ test("backupOriginal creates a verified receipt and reuses an existing one", asy
   )
   expect(second).toEqual(first)
   expect(adapter.invocations).toHaveLength(1)
+})
+
+test("rclone restore downloads to a temporary path and verifies before replacing the destination", async () => {
+  const bytes = new Uint8Array([4, 5, 6, 7])
+  const root = await mkdtemp(join(tmpdir(), "assets-rclone-restore-test-"))
+  const destinationPath = join(root, "restored", "hero.png")
+  const commands: string[][] = []
+  const runner: RcloneCommandRunner = async (input) => {
+    commands.push(input.args)
+    const temporaryPath = input.args[2]
+    if (input.args[0] !== "copyto" || temporaryPath === undefined)
+      return { success: true, data: { exitCode: 1, stdout: "", stderr: "invalid command" } }
+    await Bun.write(temporaryPath, bytes)
+    return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+  }
+
+  try {
+    const adapter = rcloneBackupRestoreAdapterProduction(
+      { rcloneExecutable: "rclone", rcloneRemote: "gdrive_beta", rcloneBackupRoot: "backups", rcloneTimeoutMs: 1000 },
+      runner,
+    )
+    const result = await adapter({
+      remotePath: "gdrive_beta:backups/adaptive/website/assets/home/revision-1_hero.png",
+      destinationPath,
+      expectedByteSize: bytes.byteLength,
+      expectedSha256: createHash("sha256").update(bytes).digest("hex"),
+    })
+
+    expect(result).toMatchObject({ success: true, data: { destinationPath, checkResult: "verified" } })
+    expect(commands).toHaveLength(1)
+    expect(commands[0]?.slice(0, 2)).toEqual([
+      "copyto",
+      "gdrive_beta:backups/adaptive/website/assets/home/revision-1_hero.png",
+    ])
+    expect(await Bun.file(destinationPath).arrayBuffer()).toEqual(bytes.buffer)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("rclone restore rejects a downloaded checksum mismatch without creating the destination", async () => {
+  const root = await mkdtemp(join(tmpdir(), "assets-rclone-restore-mismatch-test-"))
+  const destinationPath = join(root, "restored.bin")
+  const runner: RcloneCommandRunner = async (input) => {
+    const temporaryPath = input.args[2]
+    if (temporaryPath !== undefined) await Bun.write(temporaryPath, new Uint8Array([9]))
+    return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+  }
+
+  try {
+    const adapter = rcloneBackupRestoreAdapterProduction(
+      { rcloneExecutable: "rclone", rcloneRemote: "gdrive_beta", rcloneBackupRoot: "backups", rcloneTimeoutMs: 1000 },
+      runner,
+    )
+    const result = await adapter({
+      remotePath: "gdrive_beta:backups/adaptive/website/assets/home/revision-1_hero.png",
+      destinationPath,
+      expectedByteSize: 2,
+      expectedSha256: "0".repeat(64),
+    })
+
+    expect(result).toMatchObject({ success: false, rawData: { code: "verification_failed" } })
+    expect(await Bun.file(destinationPath).exists()).toBe(false)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("rclone restore rejects backup path traversal before invoking rclone", async () => {
+  let called = false
+  const adapter = rcloneBackupRestoreAdapterProduction(
+    { rcloneExecutable: "rclone", rcloneRemote: "gdrive_beta", rcloneBackupRoot: "backups", rcloneTimeoutMs: 1000 },
+    async () => {
+      called = true
+      return { success: true, data: { exitCode: 0, stdout: "", stderr: "" } }
+    },
+  )
+
+  const result = await adapter({
+    remotePath: "gdrive_beta:backups/../outside.bin",
+    destinationPath: "/tmp/restore.bin",
+    expectedByteSize: 1,
+    expectedSha256: "0".repeat(64),
+  })
+
+  expect(result).toMatchObject({ success: false, rawData: { code: "invalid_request" } })
+  expect(called).toBe(false)
+})
+
+test("backup remote path validation accepts only safe gdrive_beta backup paths", () => {
+  expect(rcloneBackupRemotePathValidate("gdrive_beta:backups/adaptive/website/original.png")).toBe(true)
+  expect(rcloneBackupRemotePathValidate("gdrive_beta:backups/../outside.png")).toBe(false)
+  expect(rcloneBackupRemotePathValidate("gdrive_beta:backups/..\\outside.png")).toBe(false)
+  expect(rcloneBackupRemotePathValidate("gdrive_beta:backups/adaptive:outside.png")).toBe(false)
+  expect(rcloneBackupRemotePathValidate("gdrive_beta:other/original.png")).toBe(false)
 })
 
 test("fake adapter returns structured cancellation and verification failures", async () => {
