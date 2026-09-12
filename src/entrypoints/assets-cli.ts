@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto"
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { join, resolve, sep } from "node:path"
 import { type ProjectServiceCreateProjectOptions, projectServiceCreateProject } from "@adaptive-ds/zitadel-cli/v2"
 import * as v from "valibot"
 
@@ -783,7 +783,9 @@ const configShowEnvironmentFileSourceRead = (
   if (commandRoot === undefined) return "working-directory"
   const workingDirectory = resolve(sourceEnvironment.PWD ?? process.cwd())
   const commandRootFilePath = join(resolve(workingDirectory, commandRoot), ".env")
-  return envFilePath === commandRootFilePath ? "command-root" : "working-directory"
+  return envFilePath === commandRootFilePath || envFilePath.startsWith(`${commandRootFilePath}${sep}`)
+    ? "command-root"
+    : "working-directory"
 }
 
 const configShowValueRead = (candidates: readonly (readonly [string | undefined, string])[]): ConfigShowValueOutput => {
