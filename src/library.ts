@@ -214,6 +214,8 @@ export type { CliProjectsUnarchiveFlags } from "./asset-cli/cliProjectsUnarchive
 export { cliProjectsUnarchiveCommand } from "./asset-cli/cliProjectsUnarchiveCommand.js"
 export type { CliR2CredentialsBackfillFlags } from "./asset-cli/cliR2CredentialsBackfillCommand.js"
 export { cliR2CredentialsBackfillCommand } from "./asset-cli/cliR2CredentialsBackfillCommand.js"
+export type { CliR2CredentialsRepairFlags } from "./asset-cli/cliR2CredentialsRepairCommand.js"
+export { cliR2CredentialsRepairCommand } from "./asset-cli/cliR2CredentialsRepairCommand.js"
 export type { CliReprocessFlags } from "./asset-cli/cliReprocessCommand.js"
 export { cliReprocessCommand } from "./asset-cli/cliReprocessCommand.js"
 export type { CliSettingsMigrateFlags } from "./asset-cli/cliSettingsMigrateCommand.js"
@@ -632,6 +634,13 @@ export type { R2BucketCredentialBackfillRequest } from "./r2/r2BucketCredentialB
 export { r2BucketCredentialBackfillRequestSchema } from "./r2/r2BucketCredentialBackfillRequestSchema.js"
 export type { R2BucketCredentialBackfillResult } from "./r2/r2BucketCredentialBackfillResultSchema.js"
 export { r2BucketCredentialBackfillResultSchema } from "./r2/r2BucketCredentialBackfillResultSchema.js"
+export type { R2BucketCredentialRepair } from "./r2/r2BucketCredentialRepair.js"
+export { r2BucketCredentialRepairCreate } from "./r2/r2BucketCredentialRepairCreate.js"
+export type { R2BucketCredentialRepairCreateInput } from "./r2/r2BucketCredentialRepairCreateInput.js"
+export type { R2BucketCredentialRepairRequest } from "./r2/r2BucketCredentialRepairRequestSchema.js"
+export { r2BucketCredentialRepairRequestSchema } from "./r2/r2BucketCredentialRepairRequestSchema.js"
+export type { R2BucketCredentialRepairResult } from "./r2/r2BucketCredentialRepairResultSchema.js"
+export { r2BucketCredentialRepairResultSchema } from "./r2/r2BucketCredentialRepairResultSchema.js"
 export type {
   ReconciliationObject,
   ReconciliationOwnership,

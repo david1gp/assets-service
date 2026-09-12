@@ -13,6 +13,9 @@ import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSch
 import type { R2BucketCredentialBackfillRequest } from "../r2/r2BucketCredentialBackfillRequestSchema.js"
 import { r2BucketCredentialBackfillRequestSchema } from "../r2/r2BucketCredentialBackfillRequestSchema.js"
 import { r2BucketCredentialBackfillResultSchema } from "../r2/r2BucketCredentialBackfillResultSchema.js"
+import type { R2BucketCredentialRepairRequest } from "../r2/r2BucketCredentialRepairRequestSchema.js"
+import { r2BucketCredentialRepairRequestSchema } from "../r2/r2BucketCredentialRepairRequestSchema.js"
+import { r2BucketCredentialRepairResultSchema } from "../r2/r2BucketCredentialRepairResultSchema.js"
 import { assetClassSchema } from "../schemas/assetClassSchema.js"
 import { environmentNameSchema } from "../schemas/environmentNameSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
@@ -598,6 +601,17 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
       bodySchema: r2BucketCredentialBackfillRequestSchema,
       responseSchema: r2BucketCredentialBackfillResultSchema,
       operation: "assetsApiClientR2BucketCredentialBackfill",
+      redactionSecrets: [input.apiToken],
+    })
+
+  const r2BucketCredentialRepair = (input: R2BucketCredentialRepairRequest) =>
+    requestRead({
+      path: "/operations/r2-bucket-credentials/repair",
+      method: "POST",
+      body: input,
+      bodySchema: r2BucketCredentialRepairRequestSchema,
+      responseSchema: r2BucketCredentialRepairResultSchema,
+      operation: "assetsApiClientR2BucketCredentialRepair",
       redactionSecrets: [input.apiToken],
     })
 
@@ -1256,6 +1270,7 @@ export const assetsApiClientCreate = (options: AssetsApiClientOptions) => {
     projectArchive,
     projectUnarchive,
     r2BucketCredentialBackfill,
+    r2BucketCredentialRepair,
     projectSettingsRead,
     projectSettingsWrite,
     environmentsRead,

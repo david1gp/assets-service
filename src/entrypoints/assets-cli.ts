@@ -2467,8 +2467,24 @@ const commandRun = async (
   if (parsed.command === "help") return { result: { success: true, data: commandHelp } }
 
   if (parsed.command === "r2") {
-    if (parsed.subcommand !== "credentials" || parsed.positionals.length !== 1 || parsed.positionals[0] !== "backfill")
-      return { result: resultFailure("assetsCliR2", "Use r2 credentials backfill") }
+    if (parsed.subcommand !== "credentials" || parsed.positionals.length !== 1)
+      return { result: resultFailure("assetsCliR2", "Use r2 credentials backfill or r2 credentials repair") }
+    if (parsed.positionals[0] === "repair") {
+      const allowed = optionAllowed(parsed, ["apply"])
+      if (!allowed.success) return { result: allowed }
+      if (!flagRead(parsed, "apply"))
+        return { result: resultFailure("assetsCliR2BucketCredentialRepair", "R2 credential repair requires --apply") }
+      const cloudflareCredentials = cloudflareRequestCredentialsRead(env, "R2 bucket credential repair")
+      if (!cloudflareCredentials.success) return { result: cloudflareCredentials }
+      const result = await client.r2BucketCredentialRepair(cloudflareCredentials.data)
+      if (!result.success) return { result }
+      return {
+        result,
+        humanOutput: `R2 bucket credential repair applied: ${result.data.discoveredBuckets.length} live buckets, ${result.data.repairedBuckets.length} repaired, ${result.data.skippedBuckets.length} skipped, ${result.data.verifiedBuckets.length} verified, ${result.data.revokedBuckets.length} revoked.\n`,
+      }
+    }
+    if (parsed.positionals[0] !== "backfill")
+      return { result: resultFailure("assetsCliR2", "Use r2 credentials backfill or r2 credentials repair") }
     const allowed = optionAllowed(parsed, ["dry-run", "apply"])
     if (!allowed.success) return { result: allowed }
     if (flagRead(parsed, "dry-run") && flagRead(parsed, "apply"))

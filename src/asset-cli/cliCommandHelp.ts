@@ -23,6 +23,7 @@ const commands: readonly string[] = [
   "projects archive --project <id-or-name>",
   "projects unarchive --project <id-or-name>",
   "r2 credentials backfill [--dry-run|--apply]",
+  "r2 credentials repair --apply",
   "config show [root]",
   "doctor --environment <development|production>",
   "diff [root]",
@@ -77,6 +78,7 @@ const subcommands: Record<string, readonly string[]> = {
   "projects archive": ["--project"],
   "projects unarchive": ["--project"],
   "r2 credentials backfill": ["--dry-run", "--apply"],
+  "r2 credentials repair": ["--apply"],
   "config show": [],
   doctor: ["--environment"],
   diff: [

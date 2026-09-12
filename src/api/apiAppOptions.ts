@@ -11,6 +11,7 @@ import type { ProjectRepository } from "../project/projectRepository.js"
 import type { ProjectUnarchiveWorkflow } from "../project/projectUnarchiveWorkflow.js"
 import type { R2BucketCredentialBackfill } from "../r2/r2BucketCredentialBackfill.js"
 import type { R2BucketCredentialRepository } from "../r2/r2BucketCredentialRepository.js"
+import type { R2BucketCredentialRepair } from "../r2/r2BucketCredentialRepair.js"
 import type { Result } from "../schemas/resultSchema.js"
 import type { StorageAdapter } from "../storage/storageAdapter.js"
 import type { UploadApiRepository } from "../upload/uploadApiRepository.js"
@@ -23,6 +24,7 @@ export type ApiAppOptions = {
   projectArchiveWorkflow?: ProjectArchiveWorkflow
   projectUnarchiveWorkflow?: ProjectUnarchiveWorkflow
   r2BucketCredentialBackfill?: R2BucketCredentialBackfill
+  r2BucketCredentialRepair?: R2BucketCredentialRepair
   r2BucketCredentialRepository?: Pick<R2BucketCredentialRepository, "r2BucketCredentialRead"> &
     Partial<Pick<R2BucketCredentialRepository, "r2BucketCredentialCreate">>
   storageMigrationRepository?: StorageMigrationRepository

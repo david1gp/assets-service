@@ -36,6 +36,7 @@ import { projectCreateSchema } from "../project/projectCreateSchema.js"
 import type { Project } from "../project/projectSchema.js"
 import { projectSettingsUpdateSchema } from "../project/projectSettingsUpdateSchema.js"
 import { r2BucketCredentialBackfillRequestSchema } from "../r2/r2BucketCredentialBackfillRequestSchema.js"
+import { r2BucketCredentialRepairRequestSchema } from "../r2/r2BucketCredentialRepairRequestSchema.js"
 import { idSchema } from "../schemas/idSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
@@ -218,6 +219,7 @@ const knownRouteMethodsRead = (path: string): readonly string[] | null => {
     { pattern: /^\/api\/v1\/projects\/[^/]+$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/(archive|unarchive)$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/operations\/r2-bucket-credentials\/backfill$/, methods: ["POST"] },
+    { pattern: /^\/api\/v1\/operations\/r2-bucket-credentials\/repair$/, methods: ["POST"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/settings$/, methods: ["GET", "PUT"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments$/, methods: ["GET"] },
     { pattern: /^\/api\/v1\/projects\/[^/]+\/environments\/[^/]+$/, methods: ["GET"] },
@@ -840,6 +842,42 @@ export const apiAppCreate = (options: ApiAppOptions): ApiApplication => {
     )
     if (!backfill.success) return domainFailureResponseCreate(context, backfill.errorMessage)
     return successResponseCreate(context, backfill.data)
+  })
+
+  app.post(`${apiVersionPath}/operations/r2-bucket-credentials/repair`, authenticationMiddleware, async (context) => {
+    const authentication = context.get("authentication") as RequestAuthentication | undefined
+    if (!authentication)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required",
+      })
+    const organizationContext = zitadelOrganizationContextCreate(
+      options.authentication.config.organizationMappings ?? [
+        {
+          ownerOrganizationId: options.authentication.config.organizationId,
+          customerOrganizationId: options.authentication.config.customerOrganizationId,
+        },
+      ],
+    )
+    const organizationAdmin =
+      authentication.principal.method === "human_session" &&
+      authentication.principal.organizationAdmin &&
+      organizationContext.isOwner(authentication.principal.organizationId)
+    if (!organizationAdmin)
+      return apiErrorResponseCreate({
+        requestId: requestIdRead(context),
+        status: 403,
+        code: "forbidden",
+        message: "Organization administrator access is required",
+      })
+    if (options.r2BucketCredentialRepair === undefined) return dependencyFailureCreate(context)
+    const parsed = v.safeParse(r2BucketCredentialRepairRequestSchema, await requestBodyRead(context.req.raw))
+    if (!parsed.success) return validationFailureCreate(context, "The R2 bucket credential repair request was invalid")
+    const repaired = await options.r2BucketCredentialRepair.r2BucketCredentialRepair(parsed.output)
+    if (!repaired.success) return domainFailureResponseCreate(context, repaired.errorMessage)
+    return successResponseCreate(context, repaired.data)
   })
 
   app.post(
