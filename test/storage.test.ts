@@ -461,8 +461,11 @@ describe("storage adapters", () => {
     expect(requests[1]?.headers.get("if-match")).toBe('"strong-etag"')
     expect(requests[0]?.body).toBeUndefined()
     expect(requests[1]?.body).toBeUndefined()
-    expect(requests[0]?.headers.get("x-amz-content-sha256")).toBe("UNSIGNED-PAYLOAD")
-    expect(requests[1]?.headers.get("x-amz-content-sha256")).toBe("UNSIGNED-PAYLOAD")
+    const emptyPayloadSha256 = contentSha256Create(new Uint8Array())
+    expect(requests[0]?.headers.get("x-amz-content-sha256")).toBe(emptyPayloadSha256)
+    expect(requests[1]?.headers.get("x-amz-content-sha256")).toBe(emptyPayloadSha256)
+    expect(requests[0]?.headers.get("authorization")).toContain("x-amz-content-sha256")
+    expect(requests[1]?.headers.get("authorization")).toContain("x-amz-content-sha256")
   })
 
   test("returns null when the guarded R2 fallback GET finds no object", async () => {

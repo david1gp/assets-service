@@ -41,10 +41,13 @@ describe("R2 credential probes", () => {
     expect(probeRequest.url.pathname).toMatch(/^\/probe-bucket\/_assets-service-probes\/[0-9a-f-]{36}$/u)
     expect(requests[0]?.body).toEqual(new Uint8Array([0x61]))
     expect(probeRequest.headers.get("x-amz-content-sha256")).toBe(contentSha256Create(probeRequest.body))
-    expect(probeRequest.headers.get("authorization")).toContain("x-amz-content-sha256")
-    expect(requests.every(({ headers }) => headers.get("authorization")?.includes(`Credential=${accessKeyId}/`))).toBe(
-      true,
-    )
+    const emptyPayloadSha256 = contentSha256Create(new Uint8Array())
+    for (const request of requests) {
+      expect(request.headers.get("authorization")).toContain("x-amz-content-sha256")
+      expect(request.headers.get("authorization")).toContain(`Credential=${accessKeyId}/`)
+    }
+    expect(requests[1]?.headers.get("x-amz-content-sha256")).toBe(emptyPayloadSha256)
+    expect(requests[2]?.headers.get("x-amz-content-sha256")).toBe(emptyPayloadSha256)
   })
 
   test("does not delete when the sentinel PUT fails", async () => {

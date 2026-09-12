@@ -293,9 +293,12 @@ export const r2StorageAdapterCreate = (input: R2StorageAdapterOptions): StorageA
     try {
       const unsignedUrl = objectUrl(input.endpoint, bucket, key, query)
       const requestBody = body === undefined ? undefined : Buffer.from(body)
-      const headers =
+      const requestHeaders =
         method === "HEAD" && key.length > 0 ? { ...extraHeaders, "accept-encoding": "identity" } : extraHeaders
-      if (requestBody !== undefined) headers["x-amz-content-sha256"] = await hexDigest(requestBody)
+      const headers = {
+        ...requestHeaders,
+        "x-amz-content-sha256": await hexDigest(requestBody ?? new Uint8Array()),
+      }
       const signed = await aws.sign(unsignedUrl.toString(), {
         method,
         headers,
