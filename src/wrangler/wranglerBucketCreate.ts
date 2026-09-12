@@ -5,7 +5,7 @@ import { wranglerProvisioningRun } from "./wranglerProvisioningRun.js"
 
 export const wranglerBucketCreate = async (
   runner: WranglerCommandRunner,
-  input: { bucket: string; profile?: string },
+  input: { bucket: string; profile?: string; accountId?: string; apiToken?: string },
 ): Promise<Result<{ name: string; created: boolean }>> => {
   if (typeof input.bucket !== "string" || input.bucket.length === 0)
     return resultErrorCreate("wranglerBucketCreate", "Bucket is required")
@@ -13,6 +13,8 @@ export const wranglerBucketCreate = async (
     bucket: input.bucket,
     createBucket: true,
     ...(input.profile === undefined ? {} : { profile: input.profile }),
+    ...(input.accountId === undefined ? {} : { accountId: input.accountId }),
+    ...(input.apiToken === undefined ? {} : { apiToken: input.apiToken }),
   })
   if (!result.success) return result
   if (result.data.bucket === undefined)

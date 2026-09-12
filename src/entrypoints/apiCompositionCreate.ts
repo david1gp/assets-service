@@ -12,15 +12,17 @@ import { deletionApiRepositoryCreate } from "../deletion/deletionApiRepositoryCr
 import { databaseClose } from "../infrastructure/db/databaseClose.js"
 import { databaseMigrate } from "../infrastructure/db/databaseMigrate.js"
 import { databaseOpen } from "../infrastructure/db/databaseOpen.js"
-import { r2StorageAdapterCreate } from "../infrastructure/storage/r2StorageAdapter.js"
 import { rcloneBackupRestoreAdapterProduction } from "../infrastructure/rclone/rcloneBackupRestoreAdapterProduction.js"
+import { r2BucketStorageAdapterCreate } from "../infrastructure/storage/r2BucketStorageAdapterCreate.js"
 import { zitadelJwksClientCreate } from "../infrastructure/zitadel/zitadelJwksClientCreate.js"
 import { zitadelOidcClientCreate } from "../infrastructure/zitadel/zitadelOidcClientCreate.js"
-import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
-import { projectArchiveWorkflowCreate } from "../project/projectArchiveWorkflowCreate.js"
-import { projectUnarchiveWorkflowCreate } from "../project/projectUnarchiveWorkflowCreate.js"
 import { storageMigrationRepositoryCreate } from "../migration/storageMigrationRepositoryCreate.js"
 import { storageMigrationWorkflowEnqueue } from "../migration/storageMigrationWorkflowEnqueue.js"
+import { projectArchiveWorkflowCreate } from "../project/projectArchiveWorkflowCreate.js"
+import { projectRepositoryCreate } from "../project/projectRepositoryCreate.js"
+import { projectStorageDomainRepositoryCreate } from "../project/projectStorageDomainRepositoryCreate.js"
+import { projectUnarchiveWorkflowCreate } from "../project/projectUnarchiveWorkflowCreate.js"
+import { r2BucketCredentialRepositoryCreate } from "../r2/r2BucketCredentialRepositoryCreate.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
 import { uploadApiRepositoryCreate } from "../upload/uploadApiRepositoryCreate.js"
@@ -49,11 +51,18 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   }
   const projectRepository = projectRepositoryCreate(connection.data.db)
   const storageMigrationRepository = storageMigrationRepositoryCreate(connection.data.db)
-  const storage = r2StorageAdapterCreate({
+  const credentialRepository = r2BucketCredentialRepositoryCreate(connection.data.db, {
+    encryptionKey: config.service.r2CredentialEncryptionKey,
+  })
+  const storageDomainRepository = projectStorageDomainRepositoryCreate(connection.data.db)
+  const storage = r2BucketStorageAdapterCreate({
     accountId: config.service.r2AccountId,
-    accessKeyId: config.service.r2AccessKeyId,
-    secretAccessKey: config.service.r2SecretAccessKey,
     endpoint: config.service.r2Endpoint,
+    credentialRepository,
+    bootstrapCredential: {
+      accessKeyId: config.service.r2AccessKeyId,
+      secretAccessKey: config.service.r2SecretAccessKey,
+    },
   })
   const assetApiRepository = assetApiRepositoryCreate(connection.data.db)
   const uploadApiRepository = uploadApiRepositoryCreate(connection.data.db, storage)
@@ -79,6 +88,8 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     storage,
     storageBindingsRead,
     wranglerRunner,
+    projectStorageDomainRepository: storageDomainRepository,
+    r2BucketCredentialRepository: credentialRepository,
   })
   const projectUnarchiveWorkflow = projectUnarchiveWorkflowCreate({
     projectRepository,
@@ -89,6 +100,8 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     storageBindingsRead,
     wranglerRunner,
     workflowApiRepository,
+    projectStorageDomainRepository: storageDomainRepository,
+    r2BucketCredentialRepository: credentialRepository,
   })
   const oidcClient = zitadelOidcClientCreate({ config: config.zitadel })
   const jwksClient = zitadelJwksClientCreate({ ttlSeconds: config.zitadel.jwksCacheTtlSeconds })

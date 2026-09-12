@@ -8,6 +8,8 @@ type WranglerProvisioningInput = {
   customDomain?: string
   zoneId?: string
   profile?: string
+  accountId?: string
+  apiToken?: string
 }
 
 type WranglerProvisioningOutput = {
@@ -42,7 +44,7 @@ const wranglerFailureReasonRead = (result: { stdout: string; stderr: string }): 
   )
     return "service"
   if (
-    /\b(?:bucket|r2 bucket)\b[\s\S]{0,100}\b(?:not found|does not exist|no such)\b|(?:code\s*[:=]|"code"\s*:)\s*10006\b/u.test(
+    /\b(?:bucket|r2 bucket)\b[\s\S]{0,100}\b(?:not found|does not exist|no such)\b|bucket[_ -]+not[_ -]+found|(?:code\s*[:=]|"code"\s*:)\s*10006\b/u.test(
       output,
     )
   )
@@ -68,7 +70,7 @@ const profileArgumentsCreate = (args: readonly string[], profile: string | undef
   profile === undefined ? args : [...args, "--profile", profile]
 
 const customDomainVerifiedRead = (stdout: string): boolean => {
-  const withoutAnsi = stdout.replace(/\u001B\[[0-?]*[ -/]*[@-~]/gu, "")
+  const withoutAnsi = stdout.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "gu"), "")
   const jsonStart = withoutAnsi.indexOf("{")
   const jsonEnd = withoutAnsi.lastIndexOf("}")
   let value: unknown
@@ -110,10 +112,15 @@ const commandInvoke = async (
   runner: WranglerCommandRunner,
   args: readonly string[],
   profile: string | undefined,
+  credentials: { accountId?: string; apiToken?: string },
 ): Promise<Result<WranglerCommandOutput>> => {
   let result: Awaited<ReturnType<WranglerCommandRunner>>
   try {
-    result = await runner({ args: profileArgumentsCreate(args, profile) })
+    result = await runner({
+      args: profileArgumentsCreate(args, profile),
+      ...(credentials.accountId === undefined ? {} : { accountId: credentials.accountId }),
+      ...(credentials.apiToken === undefined ? {} : { apiToken: credentials.apiToken }),
+    })
   } catch {
     return resultFailure("Wrangler command failed")
   }
@@ -125,9 +132,10 @@ const commandRun = async (
   runner: WranglerCommandRunner,
   args: readonly string[],
   profile: string | undefined,
+  credentials: { accountId?: string; apiToken?: string },
   description: string,
 ): Promise<Result<WranglerCommandOutput>> => {
-  const result = await commandInvoke(runner, args, profile)
+  const result = await commandInvoke(runner, args, profile, credentials)
   if (!result.success) return result
   if (result.data.exitCode !== 0) {
     const reason = wranglerFailureReasonRead(result.data)
@@ -146,12 +154,18 @@ export const wranglerProvisioningRun = async (
       data: { wranglerVerified: false },
     }
 
-  const verified = await commandRun(runner, ["--version"], input.profile, "version check")
+  const credentials = { accountId: input.accountId, apiToken: input.apiToken }
+  const verified = await commandRun(runner, ["--version"], input.profile, credentials, "version check")
   if (!verified.success) return verified
 
   let bucketCreated = false
   if (input.createBucket) {
-    const info = await commandInvoke(runner, ["r2", "bucket", "info", input.bucket, "--json"], input.profile)
+    const info = await commandInvoke(
+      runner,
+      ["r2", "bucket", "info", input.bucket, "--json"],
+      input.profile,
+      credentials,
+    )
     if (!info.success) return info
     if (info.data.exitCode !== 0) {
       const reason = wranglerFailureReasonRead(info.data)
@@ -161,6 +175,7 @@ export const wranglerProvisioningRun = async (
         runner,
         ["r2", "bucket", "create", input.bucket],
         input.profile,
+        credentials,
         "bucket creation",
       )
       if (!created.success) return created
@@ -181,6 +196,7 @@ export const wranglerProvisioningRun = async (
     runner,
     ["r2", "bucket", "domain", "get", input.bucket, "--domain", input.customDomain],
     input.profile,
+    credentials,
   )
   if (!listedDomain.success) return listedDomain
   let domainAttached = listedDomain.data.exitCode === 0
@@ -193,12 +209,13 @@ export const wranglerProvisioningRun = async (
     const domainArguments = ["r2", "bucket", "domain", "add", input.bucket, "--domain", input.customDomain]
     if (input.zoneId !== undefined) domainArguments.push("--zone-id", input.zoneId)
     domainArguments.push("--force")
-    const attached = await commandRun(runner, domainArguments, input.profile, "bucket domain attachment")
+    const attached = await commandRun(runner, domainArguments, input.profile, credentials, "bucket domain attachment")
     if (!attached.success) return attached
     const verifiedDomain = await commandInvoke(
       runner,
       ["r2", "bucket", "domain", "get", input.bucket, "--domain", input.customDomain],
       input.profile,
+      credentials,
     )
     if (!verifiedDomain.success) return verifiedDomain
     verifiedDomainData = verifiedDomain.data

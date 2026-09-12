@@ -483,6 +483,8 @@ export type { ReconciliationPlan, ReconciliationPlanItem } from "./reconciliatio
 export { reconciliationPlanSchema } from "./reconciliation/reconciliationPlanSchema.js"
 export { reconciliationServiceCreate } from "./reconciliation/reconciliationServiceCreate.js"
 export { cleanupServiceCreate } from "./cleanup/cleanupServiceCreate.js"
+export type { CloudflareRequestCredentials } from "./cloudflare/cloudflareRequestCredentialsSchema.js"
+export { cloudflareRequestCredentialsSchema } from "./cloudflare/cloudflareRequestCredentialsSchema.js"
 export type { VideoMetadata } from "./metadata/videoMetadataSchema.js"
 export { videoMetadataSchema } from "./metadata/videoMetadataSchema.js"
 export type { DocumentMetadata } from "./metadata/documentMetadataSchema.js"
