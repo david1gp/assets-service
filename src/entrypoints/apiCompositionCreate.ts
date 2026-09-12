@@ -64,6 +64,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
   const catalogPublicationService = catalogPublicationServiceCreate(connection.data.db, storage)
   const auditApiRepository = auditApiRepositoryCreate(connection.data.db)
   const wranglerRunner = wranglerCommandRunnerProduction
+  const restore = rcloneBackupRestoreAdapterProduction(config.service)
   const storageBindingsRead = () =>
     projectRepository.storageBindingsRead?.() ?? {
       success: false as const,
@@ -74,6 +75,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     projectRepository,
     assetApiRepository,
     backupApiRepository,
+    restore,
     storage,
     storageBindingsRead,
     wranglerRunner,
@@ -82,7 +84,7 @@ export const apiCompositionCreate = (config: ServiceRuntimeConfig): Result<ApiCo
     projectRepository,
     assetApiRepository,
     backupApiRepository,
-    restore: rcloneBackupRestoreAdapterProduction(config.service),
+    restore,
     storage,
     storageBindingsRead,
     wranglerRunner,

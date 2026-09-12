@@ -1,5 +1,11 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import type { BackupReceipt } from "../backup/backupReceiptSchema.js"
 import { resultErrorCreate } from "../schemas/resultErrorCreate.js"
 import type { Result } from "../schemas/resultSchema.js"
+import { contentSha256Create } from "../schemas/contentSha256Create.js"
 import { rcloneBackupRemotePathValidate } from "../backup/rcloneBackupRemotePathValidate.js"
 import { storageBindingResolve } from "../storage/storageBindingResolve.js"
 import { storageBucketDedicatedValidate } from "../storage/storageBucketDedicatedValidate.js"
@@ -88,26 +94,89 @@ async function currentSourcesBackupsVerify(
 ): Promise<Result<true>> {
   const assets = input.assetApiRepository.assetsRead(projectId)
   if (!assets.success) return assets
-  for (const asset of assets.data) {
+  let workspace: string | undefined
+  try {
+    workspace = await mkdtemp(join(input.temporaryDirectory ?? tmpdir(), "assets-archive-"))
+    for (const asset of assets.data) {
+      const detail = input.assetApiRepository.assetRead(projectId, asset.id)
+      if (!detail.success) return detail
+      if (detail.data === null) return resultErrorCreate("projectArchiveWorkflow", `Asset ${asset.id} was not found`)
+      const sourceRevisionId = detail.data.currentSourceRevisionId
+      const source = detail.data.sourceHistory.find((candidate) => candidate.id === sourceRevisionId)
+      if (source === undefined)
+        return resultErrorCreate("projectArchiveWorkflow", `Current source revision is missing for asset ${asset.id}`)
+
+      const receipt = await verifiedReceiptRead(input, projectId, source.id, source.byteSize, source.sha256)
+      if (!receipt.success) return receipt
+      const destinationPath = join(workspace, `${source.id}.original`)
+      try {
+        const restored = await input.restore({
+          remotePath: receipt.data.remotePath,
+          destinationPath,
+          expectedByteSize: source.byteSize,
+          expectedSha256: source.sha256,
+        })
+        if (!restored.success) return restored
+        if (
+          restored.data.destinationPath !== destinationPath ||
+          restored.data.checkResult !== "verified" ||
+          restored.data.byteSize !== source.byteSize ||
+          restored.data.sha256 !== source.sha256
+        )
+          return resultErrorCreate("projectArchiveWorkflow", "The restored original did not match its verified receipt")
+
+        let bytes: Uint8Array
+        try {
+          bytes = new Uint8Array(await readFile(destinationPath))
+        } catch (error) {
+          return resultErrorCreate("projectArchiveWorkflow", "The restored original could not be read", error)
+        }
+        if (bytes.byteLength !== source.byteSize || contentSha256Create(bytes) !== source.sha256)
+          return resultErrorCreate("projectArchiveWorkflow", "The restored original checksum did not match its receipt")
+      } finally {
+        await rm(destinationPath, { force: true }).catch(() => undefined)
+      }
+    }
+    return { success: true, data: true }
+  } catch (error) {
+    return resultErrorCreate("projectArchiveWorkflow", "The current source backups could not be verified", error)
+  } finally {
+    if (workspace !== undefined) await rm(workspace, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
+async function verifiedReceiptRead(
+  input: ProjectArchiveWorkflowCreateInput,
+  projectId: string,
+  sourceRevisionId: string,
+  byteSize: number,
+  sha256: string,
+): Promise<Result<BackupReceipt>> {
+  let cursor: number | undefined
+  do {
     const receipts = input.backupApiRepository.backupReceiptsRead(projectId, {
-      sourceRevisionId: asset.currentSourceRevisionId,
+      ...(cursor === undefined ? {} : { cursor }),
+      sourceRevisionId,
       checkResult: "verified",
-      limit: 1,
+      limit: 100,
     })
     if (!receipts.success) return receipts
-    const receipt = receipts.data.items[0]
-    if (receipt === undefined || receipt.sourceRevisionId !== asset.currentSourceRevisionId)
-      return resultErrorCreate(
-        "projectArchiveWorkflow",
-        `A verified backup is required for current source revision ${asset.currentSourceRevisionId}`,
-      )
-    if (!rcloneBackupRemotePathValidate(receipt.remotePath))
-      return resultErrorCreate(
-        "projectArchiveWorkflow",
-        `A verified Google Drive backup is required for current source revision ${asset.currentSourceRevisionId}`,
-      )
-  }
-  return { success: true, data: true }
+    const matching = receipts.data.items.find(
+      (receipt) =>
+        receipt.projectId === projectId &&
+        receipt.sourceRevisionId === sourceRevisionId &&
+        receipt.byteSize === byteSize &&
+        receipt.sha256 === sha256 &&
+        receipt.checkResult === "verified" &&
+        rcloneBackupRemotePathValidate(receipt.remotePath),
+    )
+    if (matching !== undefined) return { success: true, data: matching }
+    cursor = receipts.data.nextCursor ?? undefined
+  } while (cursor !== undefined)
+  return resultErrorCreate(
+    "projectArchiveWorkflow",
+    `A verified Google Drive backup is required for current source revision ${sourceRevisionId}`,
+  )
 }
 
 function archiveResourcesRead(input: ProjectArchiveWorkflowCreateInput, projectId: string): Result<ArchiveResources> {
